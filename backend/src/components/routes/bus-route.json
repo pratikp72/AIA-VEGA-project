@@ -1,0 +1,19 @@
+{
+  "collectionName": "components_routes_bus_routes",
+  "info": {
+    "displayName": "Bus route"
+  },
+  "options": {},
+  "attributes": {
+    "bus_stop_name": {
+      "type": "string",
+      "required": true
+    },
+    "bus_sifts": {
+      "type": "component",
+      "component": "routes.sift",
+      "repeatable": true
+    }
+  },
+  "config": {}
+}

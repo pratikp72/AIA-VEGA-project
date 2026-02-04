@@ -19,7 +19,7 @@
     "upgrade:dry": "npx @strapi/upgrade latest --dry"
   },
   "dependencies": {
-    "recharts": "^2.15.0",
+    "@arshiash80/strapi-plugin-iconhub": "^1.1.1",
     "@strapi/plugin-cloud": "5.33.1",
     "@strapi/plugin-users-permissions": "5.33.1",
     "@strapi/strapi": "5.33.1",
@@ -30,6 +30,7 @@
     "react": "^18.0.0",
     "react-dom": "^18.0.0",
     "react-router-dom": "^6.0.0",
+    "recharts": "^2.15.0",
     "styled-components": "^6.0.0"
   },
   "engines": {

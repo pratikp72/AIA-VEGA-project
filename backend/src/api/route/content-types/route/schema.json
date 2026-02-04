@@ -18,30 +18,11 @@
     "bus_number": {
       "type": "string"
     },
-    "route_map_image": {
-      "type": "media",
-      "multiple": false,
-      "allowedTypes": [
-        "images",
-        "files",
-        "videos",
-        "audios"
-      ]
-    },
-    "start_pickup": {
-      "type": "time"
-    },
-    "reached_at_company": {
-      "type": "time"
-    },
     "bus_stops": {
-      "type": "json",
+      "type": "component",
+      "component": "routes.bus-route",
+      "repeatable": true,
       "required": true
-    },
-    "active": {
-      "type": "boolean",
-      "required": true,
-      "default": true
     },
     "unit_location": {
       "type": "relation",
@@ -57,6 +38,11 @@
       "type": "relation",
       "relation": "manyToMany",
       "target": "api::company.company"
+    },
+    "active": {
+      "type": "boolean",
+      "required": true,
+      "default": true
     }
   }
 }

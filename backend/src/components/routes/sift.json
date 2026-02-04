@@ -1,0 +1,18 @@
+{
+  "collectionName": "components_routes_sifts",
+  "info": {
+    "displayName": "Sift"
+  },
+  "options": {},
+  "attributes": {
+    "sift_name": {
+      "type": "string",
+      "required": true
+    },
+    "sift_time": {
+      "type": "time",
+      "required": true
+    }
+  },
+  "config": {}
+}

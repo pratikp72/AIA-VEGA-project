@@ -77,6 +77,28 @@ export interface QuizQuizInstruction extends Struct.ComponentSchema {
   };
 }
 
+export interface RoutesBusRoute extends Struct.ComponentSchema {
+  collectionName: 'components_routes_bus_routes';
+  info: {
+    displayName: 'Bus route';
+  };
+  attributes: {
+    bus_sifts: Schema.Attribute.Component<'routes.sift', true>;
+    bus_stop_name: Schema.Attribute.String & Schema.Attribute.Required;
+  };
+}
+
+export interface RoutesSift extends Struct.ComponentSchema {
+  collectionName: 'components_routes_sifts';
+  info: {
+    displayName: 'Sift';
+  };
+  attributes: {
+    sift_name: Schema.Attribute.String & Schema.Attribute.Required;
+    sift_time: Schema.Attribute.Time & Schema.Attribute.Required;
+  };
+}
+
 export interface SharedMedia extends Struct.ComponentSchema {
   collectionName: 'components_shared_media';
   info: {
@@ -147,6 +169,8 @@ declare module '@strapi/strapi' {
       'quiz.options': QuizOptions;
       'quiz.question': QuizQuestion;
       'quiz.quiz-instruction': QuizQuizInstruction;
+      'routes.bus-route': RoutesBusRoute;
+      'routes.sift': RoutesSift;
       'shared.media': SharedMedia;
       'shared.quote': SharedQuote;
       'shared.rich-text': SharedRichText;

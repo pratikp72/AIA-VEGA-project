@@ -941,7 +941,15 @@ export interface ApiImportantLinkImportantLink
     createdAt: Schema.Attribute.DateTime;
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
-    icon: Schema.Attribute.Media<'images'> & Schema.Attribute.Required;
+    icon: Schema.Attribute.JSON &
+      Schema.Attribute.Required &
+      Schema.Attribute.CustomField<
+        'plugin::strapi-plugin-iconhub.iconhub',
+        {
+          storeIconData: true;
+          storeIconName: true;
+        }
+      >;
     locale: Schema.Attribute.String & Schema.Attribute.Private;
     localizations: Schema.Attribute.Relation<
       'oneToMany',
@@ -1228,7 +1236,8 @@ export interface ApiRouteRoute extends Struct.CollectionTypeSchema {
       Schema.Attribute.DefaultTo<true>;
     area: Schema.Attribute.Relation<'manyToOne', 'api::area.area'>;
     bus_number: Schema.Attribute.String;
-    bus_stops: Schema.Attribute.JSON & Schema.Attribute.Required;
+    bus_stops: Schema.Attribute.Component<'routes.bus-route', true> &
+      Schema.Attribute.Required;
     company: Schema.Attribute.Relation<'manyToMany', 'api::company.company'>;
     createdAt: Schema.Attribute.DateTime;
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
@@ -1237,12 +1246,7 @@ export interface ApiRouteRoute extends Struct.CollectionTypeSchema {
     localizations: Schema.Attribute.Relation<'oneToMany', 'api::route.route'> &
       Schema.Attribute.Private;
     publishedAt: Schema.Attribute.DateTime;
-    reached_at_company: Schema.Attribute.Time;
-    route_map_image: Schema.Attribute.Media<
-      'images' | 'files' | 'videos' | 'audios'
-    >;
     route_name: Schema.Attribute.String & Schema.Attribute.Required;
-    start_pickup: Schema.Attribute.Time;
     unit_location: Schema.Attribute.Relation<
       'manyToOne',
       'api::unit-location.unit-location'
