@@ -15,7 +15,7 @@
       "type": "string",
       "required": true
     },
-    "is_active": {
+    "active": {
       "type": "boolean",
       "required": true,
       "default": true

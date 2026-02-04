@@ -19,7 +19,7 @@
       "type": "integer",
       "required": true
     },
-    "is_active": {
+    "active": {
       "type": "boolean",
       "required": true,
       "default": true
@@ -27,11 +27,6 @@
     "completion_time": {
       "type": "integer",
       "required": true
-    },
-    "reattempt_after": {
-      "type": "integer",
-      "required": true,
-      "default": 24
     },
     "course": {
       "type": "relation",
@@ -53,6 +48,15 @@
       "type": "component",
       "component": "quiz.checklist",
       "repeatable": true
+    },
+    "reattempts": {
+      "type": "enumeration",
+      "required": true,
+      "enum": [
+        "One",
+        "Two",
+        "Three"
+      ]
     }
   }
 }

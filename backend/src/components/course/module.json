@@ -15,56 +15,61 @@
     },
     "module_content_type": {
       "type": "enumeration",
+      "required": true,
       "enum": [
         "Video",
         "Pdf",
-        "Scorm",
         "Text"
-      ],
-      "required": true
+      ]
     },
     "video_file": {
       "type": "media",
-      "multiple": true,
-      "allowedTypes": [
-        "images",
-        "videos",
-        "files",
-        "audios"
-      ],
       "conditions": {
         "visible": {
           "==": [
-            { "var": "module_content_type" },
+            {
+              "var": "module_content_type"
+            },
             "Video"
           ]
         }
-      }
-    },
-    "pdf_file": {
-      "type": "media",
+      },
       "multiple": true,
       "allowedTypes": [
         "images",
         "videos",
         "files",
         "audios"
-      ],
+      ]
+    },
+    "pdf_file": {
+      "type": "media",
       "conditions": {
         "visible": {
           "==": [
-            { "var": "module_content_type" },
+            {
+              "var": "module_content_type"
+            },
             "Pdf"
           ]
         }
-      }
+      },
+      "multiple": true,
+      "allowedTypes": [
+        "images",
+        "videos",
+        "files",
+        "audios"
+      ]
     },
     "text_content": {
       "type": "blocks",
       "conditions": {
         "visible": {
           "==": [
-            { "var": "module_content_type" },
+            {
+              "var": "module_content_type"
+            },
             "Text"
           ]
         }

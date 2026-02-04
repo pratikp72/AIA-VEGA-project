@@ -20,7 +20,7 @@
       "required": true,
       "unique": false
     },
-    "is_active": {
+    "active": {
       "type": "boolean",
       "required": true,
       "default": true

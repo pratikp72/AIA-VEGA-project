@@ -14,7 +14,6 @@
     "assignment_target_type": {
       "type": "enumeration",
       "required": true,
-      "description": "Assign to Department, Location, Role, or Individual",
       "enum": [
         "Department",
         "Location",
@@ -26,7 +25,7 @@
       "type": "date",
       "required": true
     },
-    "is_active": {
+    "active": {
       "type": "boolean",
       "required": true,
       "default": true
@@ -53,7 +52,6 @@
     },
     "individual_user": {
       "type": "relation",
-      "description": "Select employees to assign",
       "relation": "manyToMany",
       "target": "plugin::users-permissions.user",
       "conditions": {
@@ -65,7 +63,8 @@
             "Individual"
           ]
         }
-      }
+      },
+      "description": "Select employees to assign"
     },
     "unit_locations": {
       "type": "relation",

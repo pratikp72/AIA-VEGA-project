@@ -23,11 +23,10 @@
       "type": "string",
       "required": true
     },
-    "is_active": {
+    "active": {
       "type": "boolean",
       "required": true,
-      "default": true,
-      "description": "Active = visible, Inactive = hidden"
+      "default": true
     },
     "company": {
       "type": "relation",

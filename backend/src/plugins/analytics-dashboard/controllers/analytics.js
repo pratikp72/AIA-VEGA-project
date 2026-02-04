@@ -33,9 +33,13 @@ module.exports = ({ strapi }) => {
         const service = getAnalyticsService();
         const data = await service.getLearningGlobal(params);
 
-        // Include quiz data
-        const quizData = await service.getQuizGlobal(params);
-        data.quiz = quizData;
+        // Include quiz data (don't 500 if quiz fails)
+        try {
+          data.quiz = await service.getQuizGlobal(params);
+        } catch (quizError) {
+          strapi.log.warn('Analytics learningGlobal: quiz data failed:', quizError?.message);
+          data.quiz = { passRate: 0, avgScore: 0, totalAttempts: 0, passed: 0, failed: 0 };
+        }
 
         ctx.body = data;
       } catch (error) {
@@ -60,14 +64,22 @@ module.exports = ({ strapi }) => {
           return ctx.notFound('No learning data found for this user');
         }
 
-        // Include quiz data
-        const quizData = await service.getQuizPersonal(userId, params);
-        data.quiz = quizData;
+        try {
+          data.quiz = await service.getQuizPersonal(userId, params);
+        } catch (quizError) {
+          strapi.log.warn('Analytics learningPersonal: quiz failed:', quizError?.message);
+          data.quiz = { passRate: 0, avgScore: 0, totalAttempts: 0, passed: 0, failed: 0 };
+        }
 
-        // Include module video progress (watched fully vs skipped to end)
-        const moduleVideoData = await service.getLearningPersonalModuleVideoProgress(userId, params);
-        data.moduleVideoKpis = moduleVideoData.moduleVideoKpis;
-        data.moduleVideoProgress = moduleVideoData.moduleVideoProgress;
+        try {
+          const moduleVideoData = await service.getLearningPersonalModuleVideoProgress(userId, params);
+          data.moduleVideoKpis = moduleVideoData.moduleVideoKpis;
+          data.moduleVideoProgress = moduleVideoData.moduleVideoProgress;
+        } catch (moduleError) {
+          strapi.log.warn('Analytics learningPersonal: module video progress failed:', moduleError?.message);
+          data.moduleVideoKpis = { watchedFully: 0, skippedToEnd: 0, inProgress: 0, notStarted: 0 };
+          data.moduleVideoProgress = [];
+        }
 
         ctx.body = data;
       } catch (error) {

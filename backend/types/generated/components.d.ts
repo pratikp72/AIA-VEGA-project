@@ -11,7 +11,7 @@ export interface CourseModule extends Struct.ComponentSchema {
       Schema.Attribute.Required &
       Schema.Attribute.DefaultTo<false>;
     module_content_type: Schema.Attribute.Enumeration<
-      ['Video', 'Pdf', 'Scorm', 'Text']
+      ['Video', 'Pdf', 'Text']
     > &
       Schema.Attribute.Required;
     order: Schema.Attribute.Integer & Schema.Attribute.Required;

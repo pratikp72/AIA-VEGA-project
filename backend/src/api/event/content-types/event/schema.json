@@ -31,13 +31,23 @@
       "type": "text",
       "required": true
     },
-    "is_active": {
+    "active": {
       "type": "boolean",
       "required": true,
       "default": true
     },
-    "is_featured": {
+    "visible_on_homepage": {
       "type": "boolean",
+      "conditions": {
+        "visible": {
+          "==": [
+            {
+              "var": "active"
+            },
+            true
+          ]
+        }
+      },
       "required": true,
       "default": false
     },

@@ -24,12 +24,10 @@
       "required": true
     },
     "alternative_contact": {
-      "type": "string",
-      "description": "Secondary or alternate contact number"
+      "type": "string"
     },
     "map_snapshot": {
       "type": "media",
-      "description": "Map or location image",
       "multiple": false,
       "allowedTypes": [
         "images",
@@ -40,7 +38,6 @@
     },
     "emergency_gate_images": {
       "type": "media",
-      "description": "Photos of emergency gate/exit",
       "multiple": true,
       "allowedTypes": [
         "images",
@@ -49,7 +46,7 @@
         "audios"
       ]
     },
-    "is_active": {
+    "active": {
       "type": "boolean",
       "required": true,
       "default": true
@@ -66,13 +63,11 @@
     },
     "is_office_location": {
       "type": "boolean",
-      "required": true,
-      "description": "Is this an office location?"
+      "required": true
     },
     "is_factory_location": {
       "type": "boolean",
-      "required": true,
-      "description": "Is this a factory location?"
+      "required": true
     }
   }
 }

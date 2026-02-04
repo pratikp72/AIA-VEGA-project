@@ -68,33 +68,24 @@
     },
     "employee_name": {
       "type": "string",
-      "required": true,
-      "description": "Full name of the employee"
+      "required": true
     },
     "joining_date": {
       "type": "date",
-      "required": true,
-      "description": "Date of joining the company"
+      "required": true
     },
     "date_of_birth": {
       "type": "date",
-      "required": true,
-      "description": "Employee date of birth"
+      "required": true
     },
     "contact_no": {
       "type": "string",
-      "required": true,
-      "description": "Phone or contact number"
+      "required": true
     },
     "department": {
       "type": "relation",
       "relation": "manyToOne",
       "target": "api::department.department"
-    },
-    "designation": {
-      "type": "relation",
-      "relation": "manyToOne",
-      "target": "api::designation.designation"
     },
     "company": {
       "type": "enumeration",
@@ -120,7 +111,6 @@
     },
     "photograph": {
       "type": "media",
-      "description": "Employee photo",
       "conditions": {
         "visible": {
           "==": [
@@ -156,7 +146,6 @@
     },
     "working_location": {
       "type": "string",
-      "description": "Office or work location",
       "conditions": {
         "visible": {
           "==": [
@@ -171,7 +160,6 @@
     },
     "exit_date": {
       "type": "date",
-      "description": "Last working date or resignation date",
       "conditions": {
         "visible": {
           "==": [
@@ -186,7 +174,6 @@
     },
     "employment_type": {
       "type": "string",
-      "description": "e.g. Full-time, Part-time, Contract",
       "conditions": {
         "visible": {
           "==": [
@@ -201,7 +188,6 @@
     },
     "ext": {
       "type": "integer",
-      "description": "Phone extension number",
       "conditions": {
         "visible": {
           "==": [
@@ -214,14 +200,13 @@
       },
       "required": true
     },
-    "is_active": {
+    "active": {
       "type": "boolean",
       "required": true,
       "default": true
     },
     "emp_code": {
       "type": "string",
-      "description": "Employee code or ID",
       "conditions": {
         "visible": {
           "==": [
@@ -236,7 +221,6 @@
     },
     "emp_id": {
       "type": "string",
-      "description": "Employee ID",
       "conditions": {
         "visible": {
           "==": [
@@ -251,6 +235,10 @@
     },
     "description": {
       "type": "text"
+    },
+    "designation": {
+      "type": "string",
+      "required": true
     }
   }
 }

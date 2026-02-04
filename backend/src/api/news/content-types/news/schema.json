@@ -30,14 +30,25 @@
         "audios"
       ]
     },
-    "is_active": {
+    "active": {
       "type": "boolean",
       "required": true,
       "default": true
     },
-    "is_featured": {
+    "visible_on_homepage": {
       "type": "boolean",
-      "required": true
+      "conditions": {
+        "visible": {
+          "==": [
+            {
+              "var": "active"
+            },
+            true
+          ]
+        }
+      },
+      "required": true,
+      "default": false
     },
     "news_category": {
       "type": "relation",
@@ -48,6 +59,10 @@
       "type": "relation",
       "relation": "manyToMany",
       "target": "api::company.company"
+    },
+    "publish_date": {
+      "type": "customField",
+      "customField": "global::date-future-only"
     }
   }
 }
