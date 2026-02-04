@@ -1,0 +1,54 @@
+{
+  "kind": "collectionType",
+  "collectionName": "activity_logs",
+  "info": {
+    "singularName": "activity-log",
+    "pluralName": "activity-logs",
+    "displayName": "Activity Log"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "user": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "plugin::users-permissions.user",
+      "required": true
+    },
+    "company": {
+      "type": "relation",
+      "relation": "manyToMany",
+      "target": "api::company.company",
+      "required": false
+    },
+    "activity_type": {
+      "type": "enumeration",
+      "required": true,
+      "description": "Type of activity performed",
+      "enum": [
+        "News_Reading",
+        "Event_Info",
+        "Townhall_Video",
+        "Townhall_PDF",
+        "Holiday_View"
+      ]
+    },
+    "activity_description": {
+      "type": "string",
+      "required": true,
+      "description": "Brief description of the activity"
+    },
+    "duration_seconds": {
+      "type": "integer",
+      "required": true,
+      "default": 0
+    },
+    "timestamp": {
+      "type": "datetime",
+      "required": true,
+      "description": "Date and time when activity occurred"
+    }
+  }
+}

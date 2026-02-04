@@ -1,0 +1,79 @@
+{
+  "kind": "collectionType",
+  "collectionName": "townhalls",
+  "info": {
+    "singularName": "townhall",
+    "pluralName": "townhalls",
+    "displayName": "Townhall"
+  },
+  "options": {
+    "draftAndPublish": true
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "name": {
+      "type": "string",
+      "required": true
+    },
+    "meeting_date": {
+      "type": "date",
+      "required": true,
+      "description": "Date of the townhall meeting"
+    },
+    "description": {
+      "type": "richtext",
+      "required": true
+    },
+    "meeting_content_type": {
+      "type": "enumeration",
+      "required": true,
+      "description": "Video or PDF document",
+      "enum": [
+        "Video",
+        "Pdf"
+      ]
+    },
+    "meeting_video": {
+      "type": "media",
+      "conditions": {
+        "visible": {
+          "==": [
+            {
+              "var": "meeting_content_type"
+            },
+            "Video"
+          ]
+        }
+      },
+      "multiple": false,
+      "required": true,
+      "allowedTypes": [
+        "videos",
+        "audios"
+      ]
+    },
+    "meeting_document": {
+      "type": "media",
+      "conditions": {
+        "visible": {
+          "==": [
+            {
+              "var": "meeting_content_type"
+            },
+            "Pdf"
+          ]
+        }
+      },
+      "multiple": false,
+      "required": true,
+      "allowedTypes": [
+        "files"
+      ]
+    },
+    "company": {
+      "type": "relation",
+      "relation": "manyToMany",
+      "target": "api::company.company"
+    }
+  }
+}

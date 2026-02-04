@@ -1,0 +1,13 @@
+{
+  "collectionName": "components_quiz_checklists",
+  "info": {
+    "displayName": "Checklist"
+  },
+  "options": {},
+  "attributes": {
+    "discription": {
+      "type": "text"
+    }
+  },
+  "config": {}
+}

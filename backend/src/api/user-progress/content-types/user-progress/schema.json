@@ -1,0 +1,70 @@
+{
+  "kind": "collectionType",
+  "collectionName": "user_progresses",
+  "info": {
+    "singularName": "user-progress",
+    "pluralName": "user-progresses",
+    "displayName": "User Progress"
+  },
+  "options": {
+    "draftAndPublish": true
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "progress_status": {
+      "type": "enumeration",
+      "required": true,
+      "description": "Not started, In progress, Completed, or Failed",
+      "enum": [
+        "Not_started",
+        "In_progress",
+        "Completed",
+        "Failed"
+      ]
+    },
+    "progress_percentage": {
+      "type": "integer",
+      "required": true,
+      "default": 0
+    },
+    "completed_modules": {
+      "type": "json",
+      "required": true
+    },
+    "started_at": {
+      "type": "datetime"
+    },
+    "completed_at": {
+      "type": "datetime"
+    },
+    "last_accessed_at": {
+      "type": "datetime",
+      "required": true,
+      "description": "Last time user opened this course"
+    },
+    "time_spent_minutes": {
+      "type": "integer",
+      "required": true,
+      "default": 0,
+      "description": "Total time spent on course (minutes)"
+    },
+    "certificate_issued": {
+      "type": "boolean",
+      "required": true,
+      "default": false
+    },
+    "certificate_url": {
+      "type": "string"
+    },
+    "course": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::course.course"
+    },
+    "user": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "plugin::users-permissions.user"
+    }
+  }
+}

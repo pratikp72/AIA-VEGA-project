@@ -1,0 +1,55 @@
+{
+  "kind": "collectionType",
+  "collectionName": "notifications",
+  "info": {
+    "singularName": "notification",
+    "pluralName": "notifications",
+    "displayName": "Notifications"
+  },
+  "options": {
+    "draftAndPublish": true
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "type": {
+      "type": "enumeration",
+      "required": true,
+      "description": "Type of notification",
+      "enum": [
+        "Course_assigned",
+        "Quiz_passed",
+        "Quiz_failed",
+        "Certificate_issued",
+        "Due_date_reminder"
+      ]
+    },
+    "title": {
+      "type": "string",
+      "required": true
+    },
+    "message": {
+      "type": "text",
+      "required": true
+    },
+    "link": {
+      "type": "string"
+    },
+    "is_read": {
+      "type": "boolean",
+      "required": true,
+      "default": false,
+      "description": "Has the user read this notification?"
+    },
+    "sent_via_email": {
+      "type": "boolean",
+      "required": true,
+      "default": false,
+      "description": "Was this notification sent by email?"
+    },
+    "user": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "plugin::users-permissions.user"
+    }
+  }
+}

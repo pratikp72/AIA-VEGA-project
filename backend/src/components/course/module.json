@@ -1,0 +1,84 @@
+{
+  "collectionName": "components_course_modules",
+  "info": {
+    "displayName": "Module"
+  },
+  "options": {},
+  "attributes": {
+    "title": {
+      "type": "string",
+      "required": true
+    },
+    "order": {
+      "type": "integer",
+      "required": true
+    },
+    "module_content_type": {
+      "type": "enumeration",
+      "enum": [
+        "Video",
+        "Pdf",
+        "Scorm",
+        "Text"
+      ],
+      "required": true
+    },
+    "video_file": {
+      "type": "media",
+      "multiple": true,
+      "allowedTypes": [
+        "images",
+        "videos",
+        "files",
+        "audios"
+      ],
+      "conditions": {
+        "visible": {
+          "==": [
+            { "var": "module_content_type" },
+            "Video"
+          ]
+        }
+      }
+    },
+    "pdf_file": {
+      "type": "media",
+      "multiple": true,
+      "allowedTypes": [
+        "images",
+        "videos",
+        "files",
+        "audios"
+      ],
+      "conditions": {
+        "visible": {
+          "==": [
+            { "var": "module_content_type" },
+            "Pdf"
+          ]
+        }
+      }
+    },
+    "text_content": {
+      "type": "blocks",
+      "conditions": {
+        "visible": {
+          "==": [
+            { "var": "module_content_type" },
+            "Text"
+          ]
+        }
+      }
+    },
+    "duration_minutes": {
+      "type": "integer",
+      "required": true
+    },
+    "mark_as_read": {
+      "type": "boolean",
+      "required": true,
+      "default": false
+    }
+  },
+  "config": {}
+}

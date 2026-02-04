@@ -1,0 +1,105 @@
+{
+  "kind": "collectionType",
+  "collectionName": "course_assignments",
+  "info": {
+    "singularName": "course-assignment",
+    "pluralName": "course-assignments",
+    "displayName": "Course Assignments"
+  },
+  "options": {
+    "draftAndPublish": true
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "assignment_target_type": {
+      "type": "enumeration",
+      "required": true,
+      "description": "Assign to Department, Location, Role, or Individual",
+      "enum": [
+        "Department",
+        "Location",
+        "Role",
+        "Individual"
+      ]
+    },
+    "due_date": {
+      "type": "date",
+      "required": true
+    },
+    "is_active": {
+      "type": "boolean",
+      "required": true,
+      "default": true
+    },
+    "course": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::course.course"
+    },
+    "departments": {
+      "type": "relation",
+      "relation": "manyToMany",
+      "target": "api::department.department",
+      "conditions": {
+        "visible": {
+          "==": [
+            {
+              "var": "assignment_target_type"
+            },
+            "Department"
+          ]
+        }
+      }
+    },
+    "individual_user": {
+      "type": "relation",
+      "description": "Select employees to assign",
+      "relation": "manyToMany",
+      "target": "plugin::users-permissions.user",
+      "conditions": {
+        "visible": {
+          "==": [
+            {
+              "var": "assignment_target_type"
+            },
+            "Individual"
+          ]
+        }
+      }
+    },
+    "unit_locations": {
+      "type": "relation",
+      "relation": "manyToMany",
+      "target": "api::unit-location.unit-location",
+      "conditions": {
+        "visible": {
+          "==": [
+            {
+              "var": "assignment_target_type"
+            },
+            "Location"
+          ]
+        }
+      }
+    },
+    "role": {
+      "type": "enumeration",
+      "conditions": {
+        "visible": {
+          "==": [
+            {
+              "var": "assignment_target_type"
+            },
+            "Role"
+          ]
+        }
+      },
+      "required": true,
+      "enum": [
+        "Hr",
+        "LearningManager",
+        "Employee"
+      ]
+    }
+  }
+}

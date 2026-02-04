@@ -1,0 +1,50 @@
+{
+  "kind": "collectionType",
+  "collectionName": "quiz_submissions",
+  "info": {
+    "singularName": "quiz-submission",
+    "pluralName": "quiz-submissions",
+    "displayName": "Quiz Submissions"
+  },
+  "options": {
+    "draftAndPublish": true
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "answers": {
+      "type": "json",
+      "required": true
+    },
+    "score": {
+      "type": "integer",
+      "required": true
+    },
+    "passed": {
+      "type": "boolean",
+      "required": true
+    },
+    "time_taken_minutes": {
+      "type": "integer",
+      "description": "Time taken to complete quiz (minutes)"
+    },
+    "attempt_number": {
+      "type": "integer",
+      "required": true
+    },
+    "submitted_by": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "plugin::users-permissions.user"
+    },
+    "quiz": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::quizze.quizze"
+    },
+    "submitted_at": {
+      "type": "datetime",
+      "required": true,
+      "description": "Date and time when quiz was submitted"
+    }
+  }
+}

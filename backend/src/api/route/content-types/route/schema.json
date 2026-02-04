@@ -1,0 +1,62 @@
+{
+  "kind": "collectionType",
+  "collectionName": "routes",
+  "info": {
+    "singularName": "route",
+    "pluralName": "routes",
+    "displayName": "Routes"
+  },
+  "options": {
+    "draftAndPublish": true
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "route_name": {
+      "type": "string",
+      "required": true
+    },
+    "bus_number": {
+      "type": "string"
+    },
+    "route_map_image": {
+      "type": "media",
+      "multiple": false,
+      "allowedTypes": [
+        "images",
+        "files",
+        "videos",
+        "audios"
+      ]
+    },
+    "start_pickup": {
+      "type": "time"
+    },
+    "reached_at_company": {
+      "type": "time"
+    },
+    "bus_stops": {
+      "type": "json",
+      "required": true
+    },
+    "is_active": {
+      "type": "boolean",
+      "required": true,
+      "default": true
+    },
+    "unit_location": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::unit-location.unit-location"
+    },
+    "area": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::area.area"
+    },
+    "company": {
+      "type": "relation",
+      "relation": "manyToMany",
+      "target": "api::company.company"
+    }
+  }
+}

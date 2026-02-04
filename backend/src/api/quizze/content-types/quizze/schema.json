@@ -1,0 +1,58 @@
+{
+  "kind": "collectionType",
+  "collectionName": "quizzes",
+  "info": {
+    "singularName": "quizze",
+    "pluralName": "quizzes",
+    "displayName": "Quizzes"
+  },
+  "options": {
+    "draftAndPublish": true
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "title": {
+      "type": "string",
+      "required": true
+    },
+    "max_attempts": {
+      "type": "integer",
+      "required": true
+    },
+    "is_active": {
+      "type": "boolean",
+      "required": true,
+      "default": true
+    },
+    "completion_time": {
+      "type": "integer",
+      "required": true
+    },
+    "reattempt_after": {
+      "type": "integer",
+      "required": true,
+      "default": 24
+    },
+    "course": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::course.course"
+    },
+    "questions": {
+      "type": "component",
+      "component": "quiz.question",
+      "repeatable": true,
+      "required": true
+    },
+    "quiz_instruction": {
+      "type": "component",
+      "component": "quiz.quiz-instruction",
+      "repeatable": true
+    },
+    "quiz_instruction_checklist": {
+      "type": "component",
+      "component": "quiz.checklist",
+      "repeatable": true
+    }
+  }
+}

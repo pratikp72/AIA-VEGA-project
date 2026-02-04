@@ -1,0 +1,92 @@
+import { useState, useEffect, useCallback } from 'react';
+import { useSelector } from 'react-redux';
+
+const getBaseUrl = () => window.strapi?.backendURL || 'http://localhost:1337';
+
+const getToken = (state) => state?.admin_app?.token;
+
+export function useAnalytics() {
+  const token = useSelector(getToken);
+  const baseUrl = getBaseUrl();
+
+  const fetchApi = useCallback(
+    async (path, params = {}) => {
+      const cleanParams = Object.fromEntries(
+        Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== '')
+      );
+      const qs = new URLSearchParams(cleanParams).toString();
+      const url = `${baseUrl}${path}${qs ? `?${qs}` : ''}`;
+      const res = await fetch(url, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) throw new Error(`API error: ${res.status}`);
+      return res.json();
+    },
+    [baseUrl, token]
+  );
+
+  const exportLearningEmployeeTable = useCallback(
+    async (params = {}) => {
+      const cleanParams = Object.fromEntries(
+        Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== '')
+      );
+      const qs = new URLSearchParams(cleanParams).toString();
+      const url = `${baseUrl}/api/analytics/learning/employee-table/export${qs ? `?${qs}` : ''}`;
+      const res = await fetch(url, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) throw new Error(`Export failed: ${res.status}`);
+      const blob = await res.blob();
+      const downloadUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = downloadUrl;
+      a.download = 'employee-learning-summary.csv';
+      a.click();
+      URL.revokeObjectURL(downloadUrl);
+    },
+    [baseUrl, token]
+  );
+
+  return {
+    fetchLearningGlobal: (params) => fetchApi('/api/analytics/learning/global', params),
+    fetchLearningPersonal: (params) => fetchApi('/api/analytics/learning/personal', params),
+    fetchLearningEmployeeTable: (params) => fetchApi('/api/analytics/learning/employee-table', params),
+    exportLearningEmployeeTable,
+    fetchOverallGlobal: (params) => fetchApi('/api/analytics/overall/global', params),
+    fetchOverallPersonal: (params) => fetchApi('/api/analytics/overall/personal', params),
+    fetchEmployees: (params) => fetchApi('/api/analytics/employees', params),
+    fetchDepartments: () => fetchApi('/api/analytics/departments'),
+    fetchUnitLocations: () => fetchApi('/api/analytics/unit-locations'),
+    fetchActivityTimeByTypeAndDay: (params) => fetchApi('/api/analytics/activity/time-by-type-and-day', params),
+    fetchActivityLog: (params) => fetchApi('/api/analytics/activity/log', params),
+  };
+}
+
+export function useAnalyticsData(fetcher, params, enabled = true) {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    if (!enabled) {
+      setLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    fetcher(params)
+      .then((res) => {
+        if (!cancelled) setData(res);
+      })
+      .catch((err) => {
+        if (!cancelled) setError(err.message);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [JSON.stringify(params), enabled]);
+
+  return { data, loading, error };
+}

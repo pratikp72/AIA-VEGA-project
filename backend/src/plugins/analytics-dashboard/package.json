@@ -1,0 +1,11 @@
+{
+  "name": "analytics-dashboard",
+  "version": "1.0.0",
+  "private": true,
+  "strapi": {
+    "name": "analytics-dashboard",
+    "displayName": "Analytics Dashboard",
+    "description": "Custom analytics API endpoints for Learning & Overall dashboards (global + personal views).",
+    "kind": "plugin"
+  }
+}

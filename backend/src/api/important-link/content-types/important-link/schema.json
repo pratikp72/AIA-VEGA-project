@@ -1,0 +1,42 @@
+{
+  "kind": "collectionType",
+  "collectionName": "important_links",
+  "info": {
+    "singularName": "important-link",
+    "pluralName": "important-links",
+    "displayName": "Important Links"
+  },
+  "options": {
+    "draftAndPublish": true
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "title": {
+      "type": "string",
+      "required": true
+    },
+    "url": {
+      "type": "string",
+      "required": true,
+      "unique": false
+    },
+    "is_active": {
+      "type": "boolean",
+      "required": true,
+      "default": true
+    },
+    "company": {
+      "type": "relation",
+      "relation": "manyToMany",
+      "target": "api::company.company"
+    },
+    "icon": {
+      "type": "media",
+      "multiple": false,
+      "required": true,
+      "allowedTypes": [
+        "images"
+      ]
+    }
+  }
+}

@@ -1,0 +1,89 @@
+{
+  "kind": "collectionType",
+  "collectionName": "events",
+  "info": {
+    "singularName": "event",
+    "pluralName": "events",
+    "displayName": "Events"
+  },
+  "options": {
+    "draftAndPublish": true
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "title": {
+      "type": "string",
+      "required": true
+    },
+    "description": {
+      "type": "richtext",
+      "required": true
+    },
+    "start_date": {
+      "type": "datetime",
+      "required": true
+    },
+    "end_date": {
+      "type": "datetime",
+      "required": true
+    },
+    "event_location": {
+      "type": "text",
+      "required": true
+    },
+    "is_active": {
+      "type": "boolean",
+      "required": true,
+      "default": true
+    },
+    "is_featured": {
+      "type": "boolean",
+      "required": true,
+      "default": false
+    },
+    "company": {
+      "type": "relation",
+      "relation": "manyToMany",
+      "target": "api::company.company"
+    },
+    "event_created_for": {
+      "type": "enumeration",
+      "required": true,
+      "enum": [
+        "All",
+        "department"
+      ]
+    },
+    "department": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::department.department",
+      "conditions": {
+        "visible": {
+          "==": [
+            {
+              "var": "event_created_for"
+            },
+            "department"
+          ]
+        }
+      }
+    },
+    "event_type": {
+      "type": "enumeration",
+      "required": true,
+      "enum": [
+        "Training session",
+        "Conference",
+        "Workshop"
+      ]
+    },
+    "event_image": {
+      "type": "media",
+      "multiple": false,
+      "allowedTypes": [
+        "images"
+      ]
+    }
+  }
+}

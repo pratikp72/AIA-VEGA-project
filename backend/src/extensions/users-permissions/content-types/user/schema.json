@@ -1,0 +1,256 @@
+{
+  "kind": "collectionType",
+  "collectionName": "up_users",
+  "info": {
+    "name": "user",
+    "description": "",
+    "singularName": "user",
+    "pluralName": "users",
+    "displayName": "User"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "username": {
+      "type": "string",
+      "minLength": 3,
+      "unique": true,
+      "configurable": false,
+      "required": true
+    },
+    "email": {
+      "type": "email",
+      "minLength": 6,
+      "configurable": false,
+      "required": true
+    },
+    "provider": {
+      "type": "string",
+      "configurable": false
+    },
+    "password": {
+      "type": "password",
+      "minLength": 6,
+      "configurable": false,
+      "private": true,
+      "searchable": false
+    },
+    "resetPasswordToken": {
+      "type": "string",
+      "configurable": false,
+      "private": true,
+      "searchable": false
+    },
+    "confirmationToken": {
+      "type": "string",
+      "configurable": false,
+      "private": true,
+      "searchable": false
+    },
+    "confirmed": {
+      "type": "boolean",
+      "default": false,
+      "configurable": false
+    },
+    "blocked": {
+      "type": "boolean",
+      "default": false,
+      "configurable": false
+    },
+    "role": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "plugin::users-permissions.role",
+      "inversedBy": "users",
+      "configurable": false
+    },
+    "employee_name": {
+      "type": "string",
+      "required": true,
+      "description": "Full name of the employee"
+    },
+    "joining_date": {
+      "type": "date",
+      "required": true,
+      "description": "Date of joining the company"
+    },
+    "date_of_birth": {
+      "type": "date",
+      "required": true,
+      "description": "Employee date of birth"
+    },
+    "contact_no": {
+      "type": "string",
+      "required": true,
+      "description": "Phone or contact number"
+    },
+    "department": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::department.department"
+    },
+    "designation": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::designation.designation"
+    },
+    "company": {
+      "type": "enumeration",
+      "required": true,
+      "enum": [
+        "AIA",
+        "Vega"
+      ]
+    },
+    "branch": {
+      "type": "string",
+      "conditions": {
+        "visible": {
+          "==": [
+            {
+              "var": "company"
+            },
+            "AIA"
+          ]
+        }
+      },
+      "required": true
+    },
+    "photograph": {
+      "type": "media",
+      "description": "Employee photo",
+      "conditions": {
+        "visible": {
+          "==": [
+            {
+              "var": "company"
+            },
+            "AIA"
+          ]
+        }
+      },
+      "multiple": false,
+      "required": true,
+      "allowedTypes": [
+        "images",
+        "files",
+        "videos",
+        "audios"
+      ]
+    },
+    "age": {
+      "type": "integer",
+      "conditions": {
+        "visible": {
+          "==": [
+            {
+              "var": "company"
+            },
+            "Vega"
+          ]
+        }
+      },
+      "required": true
+    },
+    "working_location": {
+      "type": "string",
+      "description": "Office or work location",
+      "conditions": {
+        "visible": {
+          "==": [
+            {
+              "var": "company"
+            },
+            "Vega"
+          ]
+        }
+      },
+      "required": true
+    },
+    "exit_date": {
+      "type": "date",
+      "description": "Last working date or resignation date",
+      "conditions": {
+        "visible": {
+          "==": [
+            {
+              "var": "company"
+            },
+            "AIA"
+          ]
+        }
+      },
+      "required": false
+    },
+    "employment_type": {
+      "type": "string",
+      "description": "e.g. Full-time, Part-time, Contract",
+      "conditions": {
+        "visible": {
+          "==": [
+            {
+              "var": "company"
+            },
+            "Vega"
+          ]
+        }
+      },
+      "required": true
+    },
+    "ext": {
+      "type": "integer",
+      "description": "Phone extension number",
+      "conditions": {
+        "visible": {
+          "==": [
+            {
+              "var": "company"
+            },
+            "AIA"
+          ]
+        }
+      },
+      "required": true
+    },
+    "is_active": {
+      "type": "boolean",
+      "required": true,
+      "default": true
+    },
+    "emp_code": {
+      "type": "string",
+      "description": "Employee code or ID",
+      "conditions": {
+        "visible": {
+          "==": [
+            {
+              "var": "company"
+            },
+            "AIA"
+          ]
+        }
+      },
+      "required": true
+    },
+    "emp_id": {
+      "type": "string",
+      "description": "Employee ID",
+      "conditions": {
+        "visible": {
+          "==": [
+            {
+              "var": "company"
+            },
+            "Vega"
+          ]
+        }
+      },
+      "required": true
+    },
+    "description": {
+      "type": "text"
+    }
+  }
+}

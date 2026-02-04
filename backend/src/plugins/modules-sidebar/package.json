@@ -1,0 +1,12 @@
+{
+  "name": "modules-sidebar",
+  "version": "1.0.0",
+  "private": true,
+  "strapi": {
+    "name": "modules-sidebar",
+    "displayName": "Modules Sidebar",
+    "description": "Custom admin sidebar entry that groups business modules and links into Content Manager.",
+    "kind": "plugin"
+  }
+}
+

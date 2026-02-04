@@ -1,0 +1,147 @@
+{
+  "kind": "collectionType",
+  "collectionName": "form_templates",
+  "info": {
+    "singularName": "form-template",
+    "pluralName": "form-templates",
+    "displayName": "Form Templates"
+  },
+  "options": {
+    "draftAndPublish": true
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "title": {
+      "type": "string",
+      "required": true
+    },
+    "form_type": {
+      "type": "enumeration",
+      "required": true,
+      "enum": [
+        "PDF",
+        "URL",
+        "Excel",
+        "Word"
+      ]
+    },
+    "form_pdf": {
+      "type": "media",
+      "conditions": {
+        "visible": {
+          "==": [
+            {
+              "var": "form_type"
+            },
+            "PDF"
+          ]
+        }
+      },
+      "multiple": false,
+      "required": true,
+      "allowedTypes": [
+        "images",
+        "files",
+        "videos",
+        "audios"
+      ]
+    },
+    "form_excel": {
+      "type": "media",
+      "conditions": {
+        "visible": {
+          "==": [
+            {
+              "var": "form_type"
+            },
+            "Excel"
+          ]
+        }
+      },
+      "multiple": false,
+      "allowedTypes": [
+        "files"
+      ]
+    },
+    "form_word": {
+      "type": "media",
+      "conditions": {
+        "visible": {
+          "==": [
+            {
+              "var": "form_type"
+            },
+            "Word"
+          ]
+        }
+      },
+      "multiple": false,
+      "allowedTypes": [
+        "files"
+      ]
+    },
+    "is_downloadable": {
+      "type": "boolean",
+      "conditions": {
+        "visible": {
+          "or": [
+            {
+              "==": [
+                {
+                  "var": "form_type"
+                },
+                "PDF"
+              ]
+            },
+            {
+              "==": [
+                {
+                  "var": "form_type"
+                },
+                "Excel"
+              ]
+            },
+            {
+              "==": [
+                {
+                  "var": "form_type"
+                },
+                "Word"
+              ]
+            }
+          ]
+        }
+      },
+      "required": true,
+      "default": false
+    },
+    "form_url": {
+      "type": "string",
+      "conditions": {
+        "visible": {
+          "==": [
+            {
+              "var": "form_type"
+            },
+            "URL"
+          ]
+        }
+      },
+      "required": true
+    },
+    "is_active": {
+      "type": "boolean",
+      "required": true,
+      "default": true
+    },
+    "company": {
+      "type": "relation",
+      "relation": "manyToMany",
+      "target": "api::company.company"
+    },
+    "description": {
+      "type": "text",
+      "required": true
+    }
+  }
+}
