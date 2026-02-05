@@ -1,0 +1,33 @@
+{
+  "collectionName": "components_feedback_form_questions",
+  "info": {
+    "displayName": "Question"
+  },
+  "options": {},
+  "attributes": {
+    "question_id": {
+      "type": "string",
+      "required": true
+    },
+    "qestion": {
+      "type": "string",
+      "required": true
+    },
+    "answer_type": {
+      "type": "enumeration",
+      "required": true,
+      "enum": [
+        "Rating",
+        "Text",
+        "AgreeOrDisagree",
+        "YesNo"
+      ]
+    },
+    "mandatory": {
+      "type": "boolean",
+      "required": true,
+      "default": true
+    }
+  },
+  "config": {}
+}

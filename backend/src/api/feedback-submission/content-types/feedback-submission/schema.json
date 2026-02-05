@@ -1,0 +1,36 @@
+{
+  "kind": "collectionType",
+  "collectionName": "feedback_submissions",
+  "info": {
+    "singularName": "feedback-submission",
+    "pluralName": "feedback-submissions",
+    "displayName": "Feedback Submission"
+  },
+  "options": {
+    "draftAndPublish": true
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "course": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::course.course"
+    },
+    "feedback_question": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::feedback-question.feedback-question"
+    },
+    "users_permissions_user": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "plugin::users-permissions.user"
+    },
+    "answers": {
+      "type": "component",
+      "component": "feedback-form.answer",
+      "repeatable": true,
+      "required": true
+    }
+  }
+}

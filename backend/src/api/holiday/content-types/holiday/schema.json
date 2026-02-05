@@ -54,21 +54,6 @@
         }
       }
     },
-    "area": {
-      "type": "relation",
-      "relation": "manyToOne",
-      "target": "api::area.area",
-      "conditions": {
-        "visible": {
-          "==": [
-            {
-              "var": "holiday_for"
-            },
-            "Area"
-          ]
-        }
-      }
-    },
     "company": {
       "type": "relation",
       "relation": "manyToMany",

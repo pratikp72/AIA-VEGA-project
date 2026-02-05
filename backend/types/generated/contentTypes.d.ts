@@ -478,36 +478,6 @@ export interface ApiActivityLogActivityLog extends Struct.CollectionTypeSchema {
   };
 }
 
-export interface ApiAreaArea extends Struct.CollectionTypeSchema {
-  collectionName: 'areas';
-  info: {
-    displayName: 'Area';
-    pluralName: 'areas';
-    singularName: 'area';
-  };
-  options: {
-    draftAndPublish: true;
-  };
-  attributes: {
-    active: Schema.Attribute.Boolean &
-      Schema.Attribute.Required &
-      Schema.Attribute.DefaultTo<true>;
-    city: Schema.Attribute.Relation<'manyToOne', 'api::city.city'>;
-    company: Schema.Attribute.Relation<'manyToMany', 'api::company.company'>;
-    createdAt: Schema.Attribute.DateTime;
-    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
-      Schema.Attribute.Private;
-    locale: Schema.Attribute.String & Schema.Attribute.Private;
-    localizations: Schema.Attribute.Relation<'oneToMany', 'api::area.area'> &
-      Schema.Attribute.Private;
-    name: Schema.Attribute.String & Schema.Attribute.Required;
-    publishedAt: Schema.Attribute.DateTime;
-    updatedAt: Schema.Attribute.DateTime;
-    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
-      Schema.Attribute.Private;
-  };
-}
-
 export interface ApiCityCity extends Struct.CollectionTypeSchema {
   collectionName: 'cities';
   info: {
@@ -684,6 +654,10 @@ export interface ApiCourseCourse extends Struct.CollectionTypeSchema {
       ['Mandatory', 'Orientation', 'Other']
     > &
       Schema.Attribute.Required;
+    course_flow_type: Schema.Attribute.Enumeration<
+      ['course_test_feedback', 'course_test', 'course_feedback', 'course_only']
+    > &
+      Schema.Attribute.Required;
     createdAt: Schema.Attribute.DateTime;
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
@@ -794,6 +768,76 @@ export interface ApiEventEvent extends Struct.CollectionTypeSchema {
   };
 }
 
+export interface ApiFeedbackQuestionFeedbackQuestion
+  extends Struct.CollectionTypeSchema {
+  collectionName: 'feedback_questions';
+  info: {
+    displayName: 'Feedback Question';
+    pluralName: 'feedback-questions';
+    singularName: 'feedback-question';
+  };
+  options: {
+    draftAndPublish: true;
+  };
+  attributes: {
+    course: Schema.Attribute.Relation<'manyToOne', 'api::course.course'>;
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::feedback-question.feedback-question'
+    > &
+      Schema.Attribute.Private;
+    publishedAt: Schema.Attribute.DateTime;
+    questions: Schema.Attribute.Component<'feedback-form.question', true> &
+      Schema.Attribute.Required;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+  };
+}
+
+export interface ApiFeedbackSubmissionFeedbackSubmission
+  extends Struct.CollectionTypeSchema {
+  collectionName: 'feedback_submissions';
+  info: {
+    displayName: 'Feedback Submission';
+    pluralName: 'feedback-submissions';
+    singularName: 'feedback-submission';
+  };
+  options: {
+    draftAndPublish: true;
+  };
+  attributes: {
+    answers: Schema.Attribute.Component<'feedback-form.answer', true> &
+      Schema.Attribute.Required;
+    course: Schema.Attribute.Relation<'manyToOne', 'api::course.course'>;
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    feedback_question: Schema.Attribute.Relation<
+      'manyToOne',
+      'api::feedback-question.feedback-question'
+    >;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::feedback-submission.feedback-submission'
+    > &
+      Schema.Attribute.Private;
+    publishedAt: Schema.Attribute.DateTime;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    users_permissions_user: Schema.Attribute.Relation<
+      'manyToOne',
+      'plugin::users-permissions.user'
+    >;
+  };
+}
+
 export interface ApiFormTemplateFormTemplate
   extends Struct.CollectionTypeSchema {
   collectionName: 'form_templates';
@@ -889,7 +933,6 @@ export interface ApiHolidayHoliday extends Struct.CollectionTypeSchema {
     active: Schema.Attribute.Boolean &
       Schema.Attribute.Required &
       Schema.Attribute.DefaultTo<true>;
-    area: Schema.Attribute.Relation<'manyToOne', 'api::area.area'>;
     city: Schema.Attribute.Relation<'manyToOne', 'api::city.city'>;
     company: Schema.Attribute.Relation<'manyToMany', 'api::company.company'>;
     createdAt: Schema.Attribute.DateTime;
@@ -1138,6 +1181,45 @@ export interface ApiNotificationNotification
   };
 }
 
+export interface ApiQuizReattemptRequestQuizReattemptRequest
+  extends Struct.CollectionTypeSchema {
+  collectionName: 'quiz_reattempt_requests';
+  info: {
+    displayName: 'Quiz Reattempt Requests';
+    pluralName: 'quiz-reattempt-requests';
+    singularName: 'quiz-reattempt-request';
+  };
+  options: {
+    draftAndPublish: true;
+  };
+  attributes: {
+    course: Schema.Attribute.Relation<'manyToOne', 'api::course.course'>;
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::quiz-reattempt-request.quiz-reattempt-request'
+    > &
+      Schema.Attribute.Private;
+    publishedAt: Schema.Attribute.DateTime;
+    quiz: Schema.Attribute.Relation<'manyToOne', 'api::quizze.quizze'>;
+    request_status: Schema.Attribute.Enumeration<
+      ['Pending', 'Approved', 'Rejected']
+    > &
+      Schema.Attribute.Required;
+    requested_for_attempt: Schema.Attribute.Integer & Schema.Attribute.Required;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    users_permissions_user: Schema.Attribute.Relation<
+      'manyToOne',
+      'plugin::users-permissions.user'
+    >;
+  };
+}
+
 export interface ApiQuizSubmissionQuizSubmission
   extends Struct.CollectionTypeSchema {
   collectionName: 'quiz_submissions';
@@ -1220,43 +1302,6 @@ export interface ApiQuizzeQuizze extends Struct.CollectionTypeSchema {
   };
 }
 
-export interface ApiRouteRoute extends Struct.CollectionTypeSchema {
-  collectionName: 'routes';
-  info: {
-    displayName: 'Routes';
-    pluralName: 'routes';
-    singularName: 'route';
-  };
-  options: {
-    draftAndPublish: true;
-  };
-  attributes: {
-    active: Schema.Attribute.Boolean &
-      Schema.Attribute.Required &
-      Schema.Attribute.DefaultTo<true>;
-    area: Schema.Attribute.Relation<'manyToOne', 'api::area.area'>;
-    bus_number: Schema.Attribute.String;
-    bus_stops: Schema.Attribute.Component<'routes.bus-route', true> &
-      Schema.Attribute.Required;
-    company: Schema.Attribute.Relation<'manyToMany', 'api::company.company'>;
-    createdAt: Schema.Attribute.DateTime;
-    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
-      Schema.Attribute.Private;
-    locale: Schema.Attribute.String & Schema.Attribute.Private;
-    localizations: Schema.Attribute.Relation<'oneToMany', 'api::route.route'> &
-      Schema.Attribute.Private;
-    publishedAt: Schema.Attribute.DateTime;
-    route_name: Schema.Attribute.String & Schema.Attribute.Required;
-    unit_location: Schema.Attribute.Relation<
-      'manyToOne',
-      'api::unit-location.unit-location'
-    >;
-    updatedAt: Schema.Attribute.DateTime;
-    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
-      Schema.Attribute.Private;
-  };
-}
-
 export interface ApiTownhallTownhall extends Struct.CollectionTypeSchema {
   collectionName: 'townhalls';
   info: {
@@ -1314,7 +1359,9 @@ export interface ApiUnitLocationUnitLocation
       Schema.Attribute.DefaultTo<true>;
     address: Schema.Attribute.Text & Schema.Attribute.Required;
     alternative_contact: Schema.Attribute.String;
-    area: Schema.Attribute.Relation<'manyToOne', 'api::area.area'>;
+    bus_routes: Schema.Attribute.Component<'routes.bus-route', true> &
+      Schema.Attribute.Required;
+    city: Schema.Attribute.Relation<'manyToOne', 'api::city.city'>;
     company: Schema.Attribute.Relation<'manyToMany', 'api::company.company'>;
     contact: Schema.Attribute.String & Schema.Attribute.Required;
     createdAt: Schema.Attribute.DateTime;
@@ -1324,8 +1371,7 @@ export interface ApiUnitLocationUnitLocation
       'images' | 'files' | 'videos' | 'audios',
       true
     >;
-    is_factory_location: Schema.Attribute.Boolean & Schema.Attribute.Required;
-    is_office_location: Schema.Attribute.Boolean & Schema.Attribute.Required;
+    factory_location: Schema.Attribute.Boolean & Schema.Attribute.Required;
     locale: Schema.Attribute.String & Schema.Attribute.Private;
     localizations: Schema.Attribute.Relation<
       'oneToMany',
@@ -1336,6 +1382,8 @@ export interface ApiUnitLocationUnitLocation
       'images' | 'files' | 'videos' | 'audios'
     >;
     name: Schema.Attribute.String & Schema.Attribute.Required;
+    note: Schema.Attribute.Blocks;
+    office_location: Schema.Attribute.Boolean & Schema.Attribute.Required;
     publishedAt: Schema.Attribute.DateTime;
     updatedAt: Schema.Attribute.DateTime;
     updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
@@ -1931,7 +1979,6 @@ declare module '@strapi/strapi' {
       'admin::transfer-token-permission': AdminTransferTokenPermission;
       'admin::user': AdminUser;
       'api::activity-log.activity-log': ApiActivityLogActivityLog;
-      'api::area.area': ApiAreaArea;
       'api::city.city': ApiCityCity;
       'api::company-policy.company-policy': ApiCompanyPolicyCompanyPolicy;
       'api::company.company': ApiCompanyCompany;
@@ -1939,6 +1986,8 @@ declare module '@strapi/strapi' {
       'api::course.course': ApiCourseCourse;
       'api::department.department': ApiDepartmentDepartment;
       'api::event.event': ApiEventEvent;
+      'api::feedback-question.feedback-question': ApiFeedbackQuestionFeedbackQuestion;
+      'api::feedback-submission.feedback-submission': ApiFeedbackSubmissionFeedbackSubmission;
       'api::form-template.form-template': ApiFormTemplateFormTemplate;
       'api::gallery-item.gallery-item': ApiGalleryItemGalleryItem;
       'api::holiday.holiday': ApiHolidayHoliday;
@@ -1947,9 +1996,9 @@ declare module '@strapi/strapi' {
       'api::news-category.news-category': ApiNewsCategoryNewsCategory;
       'api::news.news': ApiNewsNews;
       'api::notification.notification': ApiNotificationNotification;
+      'api::quiz-reattempt-request.quiz-reattempt-request': ApiQuizReattemptRequestQuizReattemptRequest;
       'api::quiz-submission.quiz-submission': ApiQuizSubmissionQuizSubmission;
       'api::quizze.quizze': ApiQuizzeQuizze;
-      'api::route.route': ApiRouteRoute;
       'api::townhall.townhall': ApiTownhallTownhall;
       'api::unit-location.unit-location': ApiUnitLocationUnitLocation;
       'api::user-progress.user-progress': ApiUserProgressUserProgress;

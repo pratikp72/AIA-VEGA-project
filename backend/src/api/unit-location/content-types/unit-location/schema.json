@@ -51,23 +51,32 @@
       "required": true,
       "default": true
     },
-    "area": {
-      "type": "relation",
-      "relation": "manyToOne",
-      "target": "api::area.area"
-    },
     "company": {
       "type": "relation",
       "relation": "manyToMany",
       "target": "api::company.company"
     },
-    "is_office_location": {
+    "office_location": {
       "type": "boolean",
       "required": true
     },
-    "is_factory_location": {
+    "factory_location": {
       "type": "boolean",
       "required": true
+    },
+    "bus_routes": {
+      "type": "component",
+      "component": "routes.bus-route",
+      "repeatable": true,
+      "required": true
+    },
+    "note": {
+      "type": "blocks"
+    },
+    "city": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::city.city"
     }
   }
 }

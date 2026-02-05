@@ -28,6 +28,40 @@ export interface CourseModule extends Struct.ComponentSchema {
   };
 }
 
+export interface FeedbackFormAnswer extends Struct.ComponentSchema {
+  collectionName: 'components_feedback_form_answers';
+  info: {
+    displayName: 'Answer';
+  };
+  attributes: {
+    answer: Schema.Attribute.String & Schema.Attribute.Required;
+    answer_type: Schema.Attribute.Enumeration<
+      ['Rating', 'Text', 'AgreeOrDisagree', 'YesOrNo']
+    > &
+      Schema.Attribute.Required;
+    question: Schema.Attribute.String & Schema.Attribute.Required;
+    question_id: Schema.Attribute.String & Schema.Attribute.Required;
+  };
+}
+
+export interface FeedbackFormQuestion extends Struct.ComponentSchema {
+  collectionName: 'components_feedback_form_questions';
+  info: {
+    displayName: 'Question';
+  };
+  attributes: {
+    answer_type: Schema.Attribute.Enumeration<
+      ['Rating', 'Text', 'AgreeOrDisagree', 'YesNo']
+    > &
+      Schema.Attribute.Required;
+    mandatory: Schema.Attribute.Boolean &
+      Schema.Attribute.Required &
+      Schema.Attribute.DefaultTo<true>;
+    qestion: Schema.Attribute.String & Schema.Attribute.Required;
+    question_id: Schema.Attribute.String & Schema.Attribute.Required;
+  };
+}
+
 export interface QuizChecklist extends Struct.ComponentSchema {
   collectionName: 'components_quiz_checklists';
   info: {
@@ -83,8 +117,20 @@ export interface RoutesBusRoute extends Struct.ComponentSchema {
     displayName: 'Bus route';
   };
   attributes: {
-    bus_sifts: Schema.Attribute.Component<'routes.sift', true>;
-    bus_stop_name: Schema.Attribute.String & Schema.Attribute.Required;
+    route_name: Schema.Attribute.String & Schema.Attribute.Required;
+    route_stops: Schema.Attribute.Component<'routes.bus-stop', true>;
+  };
+}
+
+export interface RoutesBusStop extends Struct.ComponentSchema {
+  collectionName: 'components_routes_bus_stops';
+  info: {
+    displayName: 'Bus stop';
+  };
+  attributes: {
+    bus_sifts: Schema.Attribute.Component<'routes.sift', true> &
+      Schema.Attribute.Required;
+    stop_name: Schema.Attribute.String & Schema.Attribute.Required;
   };
 }
 
@@ -99,83 +145,19 @@ export interface RoutesSift extends Struct.ComponentSchema {
   };
 }
 
-export interface SharedMedia extends Struct.ComponentSchema {
-  collectionName: 'components_shared_media';
-  info: {
-    displayName: 'Media';
-    icon: 'file-video';
-  };
-  attributes: {
-    file: Schema.Attribute.Media<'images' | 'files' | 'videos'>;
-  };
-}
-
-export interface SharedQuote extends Struct.ComponentSchema {
-  collectionName: 'components_shared_quotes';
-  info: {
-    displayName: 'Quote';
-    icon: 'indent';
-  };
-  attributes: {
-    body: Schema.Attribute.Text;
-    title: Schema.Attribute.String;
-  };
-}
-
-export interface SharedRichText extends Struct.ComponentSchema {
-  collectionName: 'components_shared_rich_texts';
-  info: {
-    description: '';
-    displayName: 'Rich text';
-    icon: 'align-justify';
-  };
-  attributes: {
-    body: Schema.Attribute.RichText;
-  };
-}
-
-export interface SharedSeo extends Struct.ComponentSchema {
-  collectionName: 'components_shared_seos';
-  info: {
-    description: '';
-    displayName: 'Seo';
-    icon: 'allergies';
-    name: 'Seo';
-  };
-  attributes: {
-    metaDescription: Schema.Attribute.Text & Schema.Attribute.Required;
-    metaTitle: Schema.Attribute.String & Schema.Attribute.Required;
-    shareImage: Schema.Attribute.Media<'images'>;
-  };
-}
-
-export interface SharedSlider extends Struct.ComponentSchema {
-  collectionName: 'components_shared_sliders';
-  info: {
-    description: '';
-    displayName: 'Slider';
-    icon: 'address-book';
-  };
-  attributes: {
-    files: Schema.Attribute.Media<'images', true>;
-  };
-}
-
 declare module '@strapi/strapi' {
   export module Public {
     export interface ComponentSchemas {
       'course.module': CourseModule;
+      'feedback-form.answer': FeedbackFormAnswer;
+      'feedback-form.question': FeedbackFormQuestion;
       'quiz.checklist': QuizChecklist;
       'quiz.options': QuizOptions;
       'quiz.question': QuizQuestion;
       'quiz.quiz-instruction': QuizQuizInstruction;
       'routes.bus-route': RoutesBusRoute;
+      'routes.bus-stop': RoutesBusStop;
       'routes.sift': RoutesSift;
-      'shared.media': SharedMedia;
-      'shared.quote': SharedQuote;
-      'shared.rich-text': SharedRichText;
-      'shared.seo': SharedSeo;
-      'shared.slider': SharedSlider;
     }
   }
 }

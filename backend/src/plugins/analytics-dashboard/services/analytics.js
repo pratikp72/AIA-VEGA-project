@@ -6,6 +6,63 @@
 
 module.exports = ({ strapi }) => ({
   /**
+   * Load full course records by id/documentId so title and course_category (enum) are available for personal view
+   */
+  async loadCoursesForProgress(progressesOrRecords) {
+    if (!progressesOrRecords?.length) return {};
+    const byId = {};
+    const byDocId = {};
+    progressesOrRecords.forEach((p) => {
+      const c = p.course;
+      const numId = c?.id ?? p.course_id ?? p.courseId ?? p.course;
+      const docId = c?.documentId ?? c?.document_id ?? p.course_documentId;
+      if (numId != null) {
+        if (typeof numId === 'number' || (typeof numId === 'string' && /^\d+$/.test(numId))) byId[numId] = true;
+        else if (typeof numId === 'string' && numId.length > 10) byDocId[numId] = true;
+      }
+      if (docId != null && String(docId).length > 5) byDocId[docId] = true;
+    });
+    const numericIds = [...new Set(Object.keys(byId).map(Number).filter((n) => !Number.isNaN(n)))];
+    const docIds = [...new Set(Object.keys(byDocId))];
+    const courseById = {};
+    const courseByDocId = {};
+    try {
+      if (numericIds.length > 0) {
+        const byNum = await strapi.db.query('api::course.course').findMany({
+          where: { id: { $in: numericIds } },
+        });
+        (byNum || []).forEach((c) => {
+          courseById[c.id] = c;
+          if (c.documentId) courseByDocId[c.documentId] = c;
+          if (c.document_id) courseByDocId[c.document_id] = c;
+        });
+      }
+      if (docIds.length > 0) {
+        try {
+          const byDoc = await strapi.db.query('api::course.course').findMany({
+            where: { documentId: { $in: docIds } },
+          });
+          (byDoc || []).forEach((c) => {
+            courseById[c.id] = c;
+            courseByDocId[c.documentId || c.document_id] = c;
+          });
+        } catch (docE) {
+          const byDocIdCol = await strapi.db.query('api::course.course').findMany({
+            where: { document_id: { $in: docIds } },
+          });
+          (byDocIdCol || []).forEach((c) => {
+            courseById[c.id] = c;
+            courseByDocId[c.documentId || c.document_id] = c;
+          });
+        }
+      }
+    } catch (e) {
+      strapi.log.warn('loadCoursesForProgress failed:', e?.message);
+    }
+    return { courseById, courseByDocId };
+  },
+
+  /**
    * Build base filters from query params
    */
   buildFilters(params) {
@@ -18,11 +75,13 @@ module.exports = ({ strapi }) => ({
       if (params.dateTo) filters.last_accessed_at.$lte = params.dateTo;
     }
 
-    // Merge user filters (department + company)
-    if (params.department || params.company) {
+    // Only apply user filters when meaningful (avoid "All Companies" / "All" filtering out everything)
+    const department = params.department && String(params.department).trim() && String(params.department) !== 'all';
+    const company = params.company && String(params.company).trim() && String(params.company).toLowerCase() !== 'all companies' && String(params.company).toLowerCase() !== 'all';
+    if (department || company) {
       filters.user = {};
-      if (params.department) filters.user.department = { id: params.department };
-      if (params.company) filters.user.company = params.company;
+      if (department) filters.user.department = { id: params.department };
+      if (company) filters.user.company = params.company;
     }
 
     if (params.courseCategory) {
@@ -43,65 +102,109 @@ module.exports = ({ strapi }) => ({
       departmentDistribution: [],
       monthlyCompletions: [],
     });
-
-    const filters = this.buildFilters(params);
-
-    let progresses = [];
     try {
-      // Strapi 5 Document Service: use limit/start (not pagination object)
+    let progresses = [];
+    // 1) Prefer Document Service (published records) so dashboards show seeded/published data
+    try {
       progresses = await strapi.documents('api::user-progress.user-progress').findMany({
-        filters,
         status: 'published',
         populate: ['user', 'course', 'course.course_category'],
         limit: 5000,
         start: 0,
       });
       if (!Array.isArray(progresses)) progresses = [];
-    } catch (e) {
-      strapi.log.error('Learning global: user-progress findMany failed:', e?.message || e);
-      return emptyResponse();
+    } catch (e2) {
+      strapi.log.warn('Learning global: document findMany failed:', e2?.message || String(e2));
+    }
+    // 2) Fallback to db.query if Document Service returned nothing (e.g. no draft/publish)
+    if (progresses.length === 0) {
+      try {
+        const where = {};
+        if (params.dateFrom || params.dateTo) {
+          where.last_accessed_at = {};
+          if (params.dateFrom) where.last_accessed_at.$gte = params.dateFrom;
+          if (params.dateTo) where.last_accessed_at.$lte = params.dateTo;
+        }
+        const raw = await strapi.db.query('api::user-progress.user-progress').findMany({
+          where: Object.keys(where).length > 0 ? where : undefined,
+          limit: 5000,
+          populate: { course: true, user: true },
+        });
+        if (Array.isArray(raw) && raw.length > 0) {
+          const courseIds = [...new Set(raw.map((r) => {
+            const c = r.course;
+            if (c && typeof c === 'object' && (c.id != null || c.documentId)) return c.id ?? c.documentId;
+            return r.course_id ?? r.courseId;
+          }).filter(Boolean))];
+          const userIdsRaw = [...new Set(raw.map((r) => {
+            const u = r.user;
+            if (u && typeof u === 'object' && u.id != null) return u.id;
+            return r.user_id ?? r.userId;
+          }).filter(Boolean))];
+          const numericCourseIds = courseIds.filter((x) => typeof x === 'number' || (typeof x === 'string' && /^\d+$/.test(x)));
+          const [courses, users] = await Promise.all([
+            numericCourseIds.length > 0 ? strapi.db.query('api::course.course').findMany({ where: { id: { $in: numericCourseIds.map(Number) } } }) : [],
+            userIdsRaw.length > 0 ? strapi.db.query('plugin::users-permissions.user').findMany({ where: { id: { $in: userIdsRaw } }, populate: ['department'] }) : [],
+          ]);
+          const courseById = {};
+          (courses || []).forEach((c) => { courseById[c.id] = c; });
+          const userById = {};
+          (users || []).forEach((u) => { userById[u.id] = u; });
+          progresses = raw.map((r) => {
+            const uid = r.user_id ?? r.userId ?? r.user?.id;
+            const cid = r.course_id ?? r.courseId ?? r.course?.id ?? r.course?.documentId;
+            const course = (cid != null && courseById[cid]) ? courseById[cid] : (r.course && typeof r.course === 'object' && (r.course.title != null || r.course.id != null) ? r.course : null);
+            const cat = course?.course_category ?? course?.courseCategory;
+            return {
+              ...r,
+              user: userById[uid] || r.user || null,
+              user_id: uid,
+              course: course ? { ...course, course_category: cat } : null,
+            };
+          });
+        }
+      } catch (e) {
+        strapi.log.warn('Learning global: db.query failed:', e?.message);
+      }
+    }
+    // Apply filters in memory (date, company, department) so we don't over-filter
+    const wantCompany = params.company && String(params.company).trim() && !/^all\s*companies?$/i.test(String(params.company));
+    const wantDept = params.department && String(params.department).trim() && String(params.department).toLowerCase() !== 'all';
+    const wantDateFrom = params.dateFrom;
+    const wantDateTo = params.dateTo;
+    if (wantCompany || wantDept || wantDateFrom || wantDateTo) {
+      progresses = progresses.filter((p) => {
+        if (wantDateFrom && p.last_accessed_at && p.last_accessed_at < wantDateFrom) return false;
+        if (wantDateTo && p.last_accessed_at && p.last_accessed_at > wantDateTo) return false;
+        if (wantCompany) {
+          const userCompany = p.user?.company;
+          if (userCompany !== wantCompany) return false;
+        }
+        if (wantDept) {
+          const deptId = p.user?.department?.id ?? p.user?.department;
+          const deptName = p.user?.department?.name;
+          if (deptId != params.department && deptName != params.department) return false;
+        }
+        return true;
+      });
     }
 
-    // Build userId -> department name map (user.department may not populate via Document Service for plugin::users-permissions)
-    // Strapi 5 Document Service returns relations with documentId (string); support both id and documentId for query
-    const userIds = [...new Set(progresses.map((p) => p.user?.documentId ?? p.user?.id).filter(Boolean))];
+    // Build userId -> department name map (use numeric id only to avoid 500 if documentId column missing)
+    const numericUserIds = [...new Set(progresses.map((p) => p.user?.id ?? p.user_id ?? p.userId).filter((x) => x != null && (typeof x === 'number' || /^\d+$/.test(String(x)))))].map(Number);
     const departmentByUserId = {};
-    if (userIds.length > 0) {
-      const numericIds = userIds.filter((x) => typeof x === 'number' || (typeof x === 'string' && /^\d+$/.test(x)));
-      const documentIds = userIds.filter((x) => typeof x === 'string' && x.length > 10 && !/^\d+$/.test(x));
-      const where =
-        numericIds.length > 0 && documentIds.length > 0
-          ? { $or: [{ id: { $in: numericIds.map(Number) } }, { documentId: { $in: documentIds } }] }
-          : documentIds.length > 0
-            ? { documentId: { $in: documentIds } }
-            : { id: { $in: numericIds.map(Number) } };
-      let users = [];
+    if (numericUserIds.length > 0) {
       try {
-        users = (await strapi.db.query('plugin::users-permissions.user').findMany({
-          where,
+        const users = (await strapi.db.query('plugin::users-permissions.user').findMany({
+          where: { id: { $in: numericUserIds } },
           populate: ['department'],
         })) || [];
+        users.forEach((u) => {
+          const deptName = u.department?.name;
+          if (deptName && u.id != null) departmentByUserId[u.id] = deptName;
+        });
       } catch (e) {
         strapi.log.warn('Learning global: user/department lookup failed:', e?.message);
-        // Fallback: if documentId not supported (e.g. plugin not migrated), retry with id only
-        if (numericIds.length > 0) {
-          try {
-            users = (await strapi.db.query('plugin::users-permissions.user').findMany({
-              where: { id: { $in: numericIds.map(Number) } },
-              populate: ['department'],
-            })) || [];
-          } catch (e2) {
-            strapi.log.warn('Learning global: fallback user lookup failed:', e2?.message);
-          }
-        }
       }
-      users.forEach((u) => {
-        const deptName = u.department?.name;
-        if (deptName) {
-          if (u.id != null) departmentByUserId[u.id] = deptName;
-          if (u.documentId != null) departmentByUserId[u.documentId] = deptName;
-        }
-      });
     }
 
     // Aggregate by status
@@ -117,15 +220,12 @@ module.exports = ({ strapi }) => ({
       totalTimeSpent += p.time_spent_minutes || 0;
       if (p.certificate_issued) certificatesIssued++;
 
-      if (p.course?.course_category?.name) {
-        categoryCounts[p.course.course_category.name] = (categoryCounts[p.course.course_category.name] || 0) + 1;
-      }
+      const catName = p.course?.course_category?.name ?? p.course?.course_category ?? p.course?.courseCategory ?? 'Other';
+      categoryCounts[catName] = (categoryCounts[catName] || 0) + 1;
 
-      const userId = p.user?.id ?? p.user?.documentId;
-      const deptName = p.user?.department?.name ?? (userId ? departmentByUserId[userId] : null);
-      if (deptName) {
-        departmentCounts[deptName] = (departmentCounts[deptName] || 0) + 1;
-      }
+      const userId = p.user?.id ?? p.user_id ?? p.userId;
+      const deptName = (p.user?.department?.name ?? (userId != null ? departmentByUserId[userId] : null)) || 'Unassigned';
+      departmentCounts[deptName] = (departmentCounts[deptName] || 0) + 1;
 
       if (p.completed_at && p.progress_status === 'Completed') {
         const month = p.completed_at.slice(0, 7);
@@ -152,6 +252,10 @@ module.exports = ({ strapi }) => ({
         .sort(([a], [b]) => a.localeCompare(b))
         .map(([month, value]) => ({ month, value })),
     };
+    } catch (err) {
+      strapi.log.error('Learning global error:', err?.message || err);
+      return emptyResponse();
+    }
   },
 
   /**
@@ -168,25 +272,146 @@ module.exports = ({ strapi }) => ({
       courseProgress: [],
       monthlyCompletions: [],
     });
-
-    const filters = this.buildFilters(params);
+    try {
     const isDocumentId = typeof userId === 'string' && userId.length > 10 && !/^\d+$/.test(userId);
-    filters.user = isDocumentId ? { documentId: userId } : { id: userId };
+    let numericUserId = typeof userId === 'number' ? userId : (typeof userId === 'string' && /^\d+$/.test(userId) ? parseInt(userId, 10) : null);
+    if (isDocumentId && !numericUserId) {
+      try {
+        let u = await strapi.db.query('plugin::users-permissions.user').findOne({
+          where: { documentId: userId },
+          select: ['id'],
+        });
+        if (!u?.id) {
+          u = await strapi.db.query('plugin::users-permissions.user').findOne({
+            where: { document_id: userId },
+            select: ['id'],
+          });
+        }
+        if (u?.id != null) numericUserId = u.id;
+      } catch (e) {
+        strapi.log.warn('Learning personal: resolve documentId failed:', e?.message);
+      }
+    }
 
     let progresses = [];
-    try {
-      progresses = await strapi.documents('api::user-progress.user-progress').findMany({
-        filters,
-        status: 'published',
-        populate: ['course', 'course.course_category'],
-        limit: 500,
-        start: 0,
-      });
-      if (!Array.isArray(progresses)) progresses = [];
-    } catch (e) {
-      strapi.log.error('Learning personal: user-progress findMany failed:', e?.message || e);
-      return emptyResponse();
+    // 1) Prefer Document Service with user filter (so we only fetch this user's progress)
+    if (numericUserId != null) {
+      try {
+        const filtered = await strapi.documents('api::user-progress.user-progress').findMany({
+          status: 'published',
+          filters: { user: { id: numericUserId } },
+          populate: ['user', 'course', 'course.course_category'],
+          limit: 500,
+          start: 0,
+        });
+        if (Array.isArray(filtered) && filtered.length > 0) progresses = filtered;
+      } catch (e2) {
+        strapi.log.warn('Learning personal: document findMany (with user filter) failed:', e2?.message || String(e2));
+      }
     }
+    // 1b) Fallback: fetch all published and filter in memory (if filtered call failed or returned 0)
+    if (progresses.length === 0) {
+      try {
+        let allProgress = await strapi.documents('api::user-progress.user-progress').findMany({
+          status: 'published',
+          populate: ['user', 'course', 'course.course_category'],
+          limit: 5000,
+          start: 0,
+        });
+        if (!Array.isArray(allProgress)) allProgress = [];
+        progresses = allProgress.filter((p) => {
+          const u = p.user;
+          if (!u) return false;
+          if (numericUserId != null && (u.id === numericUserId || u.id === Number(numericUserId))) return true;
+          if (typeof userId === 'string' && (u.documentId === userId || u.document_id === userId)) return true;
+          return false;
+        });
+      } catch (e2) {
+        strapi.log.warn('Learning personal: document findMany (all) failed:', e2?.message || String(e2));
+      }
+    }
+    // 2) Fallback to db.query (try user_id then user) with course populated
+    if (progresses.length === 0 && numericUserId != null) {
+      for (const userKey of ['user_id', 'user']) {
+        try {
+          const where = { [userKey]: userKey === 'user' ? { id: numericUserId } : numericUserId };
+          if (params.dateFrom || params.dateTo) {
+            where.last_accessed_at = {};
+            if (params.dateFrom) where.last_accessed_at.$gte = params.dateFrom;
+            if (params.dateTo) where.last_accessed_at.$lte = params.dateTo;
+          }
+          const raw = await strapi.db.query('api::user-progress.user-progress').findMany({
+            where,
+            limit: 500,
+            populate: { course: true },
+          });
+          if (Array.isArray(raw) && raw.length > 0) {
+            const courseIds = [...new Set(raw.map((r) => {
+              const c = r.course;
+              if (c && typeof c === 'object' && (c.id != null || c.documentId)) return c.id ?? c.documentId;
+              return r.course_id ?? r.courseId ?? r.course;
+            }).filter(Boolean))];
+            const numericCourseIds = courseIds.filter((x) => typeof x === 'number' || (typeof x === 'string' && /^\d+$/.test(x)));
+            const docCourseIds = courseIds.filter((x) => typeof x === 'string' && x.length > 10);
+            const courses = [];
+            if (numericCourseIds.length > 0) {
+              const byId = await strapi.db.query('api::course.course').findMany({ where: { id: { $in: numericCourseIds.map(Number) } } });
+              courses.push(...(byId || []));
+            }
+            if (docCourseIds.length > 0) {
+              try {
+                const byDoc = await strapi.db.query('api::course.course').findMany({ where: { documentId: { $in: docCourseIds } } });
+                courses.push(...(byDoc || []));
+              } catch (_) {
+                const byDoc = await strapi.db.query('api::course.course').findMany({ where: { document_id: { $in: docCourseIds } } });
+                courses.push(...(byDoc || []));
+              }
+            }
+            const courseById = {};
+            const courseByDocId = {};
+            courses.forEach((c) => {
+              courseById[c.id] = c;
+              if (c.documentId) courseByDocId[c.documentId] = c;
+              if (c.document_id) courseByDocId[c.document_id] = c;
+            });
+            progresses = raw.map((r) => {
+              const c = r.course;
+              const cid = (c && typeof c === 'object') ? (c.id ?? c.documentId ?? c.document_id) : (r.course_id ?? r.courseId ?? r.course);
+              const course = (cid != null && courseById[cid]) || (cid != null && courseByDocId[cid])
+                ? (courseById[cid] || courseByDocId[cid])
+                : (c && typeof c === 'object' && (c.title != null || c.id != null) ? c : null);
+              const cat = course?.course_category ?? course?.courseCategory;
+              return {
+                ...r,
+                course: course ? { ...course, course_category: cat } : null,
+              };
+            });
+            break;
+          }
+        } catch (e) {
+          strapi.log.warn('Learning personal: db.query failed (userKey=' + userKey + '):', e?.message || String(e));
+        }
+      }
+    }
+    // Apply date filter in memory
+    if (params.dateFrom || params.dateTo) {
+      progresses = progresses.filter((p) => {
+        const at = p.last_accessed_at;
+        if (!at) return true;
+        if (params.dateFrom && at < params.dateFrom) return false;
+        if (params.dateTo && at > params.dateTo) return false;
+        return true;
+      });
+    }
+
+    // Ensure course title and category are loaded (document service may return relation as stub)
+    const { courseById, courseByDocId } = await this.loadCoursesForProgress(progresses);
+    progresses = progresses.map((p) => {
+      const cid = p.course?.id ?? p.course_id ?? p.courseId ?? (typeof p.course === 'number' || (typeof p.course === 'string' && /^\d+$/.test(p.course)) ? p.course : null);
+      const cdocId = p.course?.documentId ?? p.course?.document_id ?? (typeof p.course === 'string' && p.course.length > 10 ? p.course : null);
+      const fullCourse = (cid != null && courseById[cid]) || (cdocId != null && courseByDocId[cdocId]) || (p.course && typeof p.course === 'object' && (p.course.title != null || p.course.id != null) ? p.course : null);
+      return { ...p, course: fullCourse || p.course };
+    });
 
     const statusCounts = { Not_started: 0, In_progress: 0, Completed: 0, Failed: 0 };
     let totalTimeSpent = 0;
@@ -199,18 +424,20 @@ module.exports = ({ strapi }) => ({
       statusCounts[p.progress_status] = (statusCounts[p.progress_status] || 0) + 1;
       totalTimeSpent += p.time_spent_minutes || 0;
 
-      if (p.course?.course_category?.name) {
-        categoryCounts[p.course.course_category.name] = (categoryCounts[p.course.course_category.name] || 0) + 1;
-      }
+      // course_category on course is an enum (Mandatory/Orientation/Other), not a relation
+      const catNamePersonal = p.course?.course_category ?? p.course?.courseCategory ?? 'Other';
+      categoryCounts[catNamePersonal] = (categoryCounts[catNamePersonal] || 0) + 1;
 
+      const courseId = p.course?.id ?? p.course_id ?? p.courseId ?? p.course?.documentId;
       courseProgress.push({
-        courseTitle: p.course?.title || 'Unknown',
-        courseCategory: p.course?.course_category?.name || '—',
+        courseId: courseId != null ? String(courseId) : null,
+        courseTitle: p.course?.title ?? 'Unknown',
+        courseCategory: catNamePersonal,
         status: p.progress_status,
-        percentage: p.progress_percentage || 0,
-        timeSpentMinutes: p.time_spent_minutes || 0,
+        percentage: p.progress_percentage ?? 0,
+        timeSpentMinutes: p.time_spent_minutes ?? 0,
         completedAt: p.completed_at,
-        certificateIssued: p.certificate_issued,
+        certificateIssued: p.certificate_issued ?? false,
       });
 
       if (p.completed_at && p.progress_status === 'Completed') {
@@ -230,7 +457,7 @@ module.exports = ({ strapi }) => ({
       } catch (e) {
         strapi.log.warn('Learning personal: user lookup failed:', e?.message);
       }
-      const deptName = u?.department?.name || 'Unknown';
+      const deptName = u?.department?.name || 'Unassigned';
       departmentCounts[deptName] = progresses.length;
     }
 
@@ -254,6 +481,10 @@ module.exports = ({ strapi }) => ({
         .sort(([a], [b]) => a.localeCompare(b))
         .map(([month, value]) => ({ month, value })),
     };
+    } catch (err) {
+      strapi.log.error('Learning personal error:', err?.message || err);
+      return emptyResponse();
+    }
   },
 
   /**
@@ -267,42 +498,132 @@ module.exports = ({ strapi }) => ({
       };
     }
 
+    let numericUserId = typeof userId === 'number' ? userId : (typeof userId === 'string' && /^\d+$/.test(userId) ? parseInt(userId, 10) : null);
     const isDocumentId = typeof userId === 'string' && userId.length > 10 && !/^\d+$/.test(userId);
-    const filters = { user: isDocumentId ? { documentId: userId } : { id: userId } };
-    if (params.dateFrom || params.dateTo) {
-      filters.last_updated = {};
-      if (params.dateFrom) filters.last_updated.$gte = params.dateFrom;
-      if (params.dateTo) filters.last_updated.$lte = params.dateTo;
+    if (isDocumentId && !numericUserId) {
+      try {
+        const u = await strapi.db.query('plugin::users-permissions.user').findOne({
+          where: { documentId: userId },
+          select: ['id'],
+        });
+        if (u?.id != null) numericUserId = u.id;
+      } catch (e) {
+        strapi.log.warn('Module video: resolve documentId failed:', e?.message);
+      }
     }
 
     let records = [];
-    try {
-      records = await strapi.documents('api::module-video-progress.module-video-progress').findMany({
-        filters,
-        status: 'published',
-        populate: ['course'],
-        limit: 1000,
-        start: 0,
-      });
-    } catch (e) {
-      strapi.log.warn('Module video progress fetch failed (table may not exist yet):', e.message);
-      return {
-        moduleVideoKpis: { watchedFully: 0, skippedToEnd: 0, inProgress: 0, notStarted: 0 },
-        moduleVideoProgress: [],
-      };
+    // 1) Document Service with user filter
+    if (numericUserId != null) {
+      try {
+        const filters = { user: { id: numericUserId } };
+        if (params.dateFrom || params.dateTo) {
+          filters.last_updated = {};
+          if (params.dateFrom) filters.last_updated.$gte = params.dateFrom;
+          if (params.dateTo) filters.last_updated.$lte = params.dateTo;
+        }
+        const docRecords = await strapi.documents('api::module-video-progress.module-video-progress').findMany({
+          status: 'published',
+          filters,
+          populate: ['course'],
+          limit: 1000,
+          start: 0,
+        });
+        if (Array.isArray(docRecords) && docRecords.length > 0) records = docRecords;
+      } catch (e2) {
+        strapi.log.warn('Module video progress document findMany failed:', e2?.message || String(e2));
+      }
     }
+    // 2) Fallback: db.query (try user_id then user) with course populated
+    if (records.length === 0 && numericUserId != null) {
+      for (const userKey of ['user_id', 'user']) {
+        try {
+          const where = { [userKey]: userKey === 'user' ? { id: numericUserId } : numericUserId };
+          if (params.dateFrom || params.dateTo) {
+            where.last_updated = {};
+            if (params.dateFrom) where.last_updated.$gte = params.dateFrom;
+            if (params.dateTo) where.last_updated.$lte = params.dateTo;
+          }
+          const raw = await strapi.db.query('api::module-video-progress.module-video-progress').findMany({
+            where,
+            limit: 1000,
+            populate: { course: true },
+          });
+          if (Array.isArray(raw) && raw.length > 0) {
+            const courseIds = [...new Set(raw.map((r) => {
+              const c = r.course;
+              if (c && typeof c === 'object' && (c.id != null || c.documentId)) return c.id ?? c.documentId;
+              return r.course_id ?? r.courseId ?? r.course;
+            }).filter(Boolean))];
+            const numericCourseIds = courseIds.filter((x) => typeof x === 'number' || (typeof x === 'string' && /^\d+$/.test(x)));
+            const docCourseIds = courseIds.filter((x) => typeof x === 'string' && x.length > 10);
+            const courses = [];
+            if (numericCourseIds.length > 0) {
+              const byId = await strapi.db.query('api::course.course').findMany({ where: { id: { $in: numericCourseIds.map(Number) } } });
+              courses.push(...(byId || []));
+            }
+            if (docCourseIds.length > 0) {
+              try {
+                const byDoc = await strapi.db.query('api::course.course').findMany({ where: { documentId: { $in: docCourseIds } } });
+                courses.push(...(byDoc || []));
+              } catch (_) {
+                const byDoc = await strapi.db.query('api::course.course').findMany({ where: { document_id: { $in: docCourseIds } } });
+                courses.push(...(byDoc || []));
+              }
+            }
+            const courseById = {};
+            const courseByDocId = {};
+            courses.forEach((c) => {
+              courseById[c.id] = c;
+              if (c.documentId) courseByDocId[c.documentId] = c;
+              if (c.document_id) courseByDocId[c.document_id] = c;
+            });
+            records = raw.map((r) => {
+              const c = r.course;
+              const cid = (c && typeof c === 'object') ? (c.id ?? c.documentId ?? c.document_id) : (r.course_id ?? r.courseId ?? r.course);
+              const course = (cid != null && courseById[cid]) || (cid != null && courseByDocId[cid])
+                ? (courseById[cid] || courseByDocId[cid])
+                : (c && typeof c === 'object' && (c.title != null || c.id != null) ? c : null);
+              return {
+                ...r,
+                course,
+                video_completion_type: r.video_completion_type ?? r.videoCompletionType,
+                time_watched_seconds: r.time_watched_seconds ?? r.timeWatchedSeconds ?? 0,
+                video_duration_seconds: r.video_duration_seconds ?? r.videoDurationSeconds,
+                module_title: r.module_title ?? r.moduleTitle,
+                module_index: r.module_index ?? r.moduleIndex,
+              };
+            });
+            break;
+          }
+        } catch (e) {
+          strapi.log.warn('Module video progress db.query failed (userKey=' + userKey + '):', e?.message || String(e));
+        }
+      }
+    }
+
+    // Ensure course title is loaded for module video progress (avoid "Unknown" in personal view)
+    const { courseById, courseByDocId } = await this.loadCoursesForProgress(records);
+    const recordsWithCourse = records.map((r) => {
+      const cid = r.course?.id ?? r.course_id ?? r.courseId;
+      const cdocId = r.course?.documentId ?? r.course?.document_id;
+      const fullCourse = (cid != null && courseById[cid]) || (cdocId != null && courseByDocId[cdocId]) || r.course;
+      return { ...r, course: fullCourse || r.course };
+    });
 
     const kpis = { watchedFully: 0, skippedToEnd: 0, inProgress: 0, notStarted: 0 };
     const typeToKpi = { full_watch: 'watchedFully', skipped_to_end: 'skippedToEnd', in_progress: 'inProgress', not_started: 'notStarted' };
-    const progress = (records || []).map((r) => {
-      const type = r.video_completion_type || 'not_started';
+    const progress = (recordsWithCourse || []).map((r) => {
+      const type = r.video_completion_type ?? r.videoCompletionType ?? 'not_started';
       const kpiKey = typeToKpi[type];
       if (kpiKey) kpis[kpiKey] += 1;
-      const courseTitle = r.course?.title || 'Unknown';
-      const moduleTitle = r.module_title || (r.module_index != null ? `Module ${r.module_index + 1}` : 'Unknown');
-      const timeWat = r.time_watched_seconds != null ? r.time_watched_seconds : 0;
-      const duration = r.video_duration_seconds != null ? r.video_duration_seconds : 0;
+      const courseId = r.course?.id ?? r.course_id ?? r.courseId ?? r.course?.documentId;
+      const courseTitle = r.course?.title ?? 'Unknown';
+      const moduleTitle = r.module_title ?? r.moduleTitle ?? (r.module_index != null ? `Module ${(r.module_index ?? r.moduleIndex) + 1}` : 'Unknown');
+      const timeWat = r.time_watched_seconds != null ? r.time_watched_seconds : (r.timeWatchedSeconds ?? 0);
+      const duration = r.video_duration_seconds != null ? r.video_duration_seconds : (r.videoDurationSeconds ?? 0);
       return {
+        courseId: courseId != null ? String(courseId) : null,
         courseTitle,
         moduleTitle,
         videoCompletionType: type,
@@ -326,32 +647,59 @@ module.exports = ({ strapi }) => ({
    * QUIZ ANALYTICS - Global
    */
   async getQuizGlobal(params = {}) {
-    const filters = {};
-
-    if (params.userId) {
-      const uid = params.userId;
-      const isDocumentId = typeof uid === 'string' && uid.length > 10 && !/^\d+$/.test(uid);
-      filters.submitted_by = isDocumentId ? { documentId: uid } : { id: uid };
-    }
-    if (params.dateFrom || params.dateTo) {
-      filters.submitted_at = {};
-      if (params.dateFrom) filters.submitted_at.$gte = params.dateFrom;
-      if (params.dateTo) filters.submitted_at.$lte = params.dateTo;
-    }
-
     let submissions = [];
+    // 1) Prefer Document Service (published) so quiz stats show seeded data
     try {
       submissions = await strapi.documents('api::quiz-submission.quiz-submission').findMany({
-        filters,
         status: 'published',
-        populate: ['quiz'],
+        populate: ['quiz', 'submitted_by'],
         limit: 5000,
         start: 0,
       });
       if (!Array.isArray(submissions)) submissions = [];
-    } catch (e) {
-      strapi.log.error('Quiz global: quiz-submission findMany failed:', e?.message || e);
-      return { passRate: 0, avgScore: 0, totalAttempts: 0, passed: 0, failed: 0 };
+    } catch (e2) {
+      strapi.log.warn('Quiz document findMany failed:', e2?.message || e2);
+    }
+    // 2) Fallback to db.query if Document Service returned nothing
+    if (submissions.length === 0) {
+      try {
+        const where = {};
+        if (params.userId) {
+          const uid = params.userId;
+          const numericId = typeof uid === 'number' ? uid : (typeof uid === 'string' && /^\d+$/.test(uid) ? parseInt(uid, 10) : null);
+          if (numericId != null) where.submitted_by_id = numericId;
+        }
+        if (params.dateFrom || params.dateTo) {
+          where.submitted_at = {};
+          if (params.dateFrom) where.submitted_at.$gte = params.dateFrom;
+          if (params.dateTo) where.submitted_at.$lte = params.dateTo;
+        }
+        const raw = await strapi.db.query('api::quiz-submission.quiz-submission').findMany({
+          where: Object.keys(where).length > 0 ? where : undefined,
+          limit: 5000,
+        });
+        if (Array.isArray(raw) && raw.length > 0) submissions = raw;
+      } catch (e) {
+        strapi.log.warn('Quiz db.query failed:', e?.message);
+      }
+    }
+    // Filter in memory by userId and date when params provided
+    if (params.userId || params.dateFrom || params.dateTo) {
+      const numericUserId = params.userId != null && (typeof params.userId === 'number' || /^\d+$/.test(String(params.userId)))
+        ? Number(params.userId)
+        : null;
+      const isDocId = typeof params.userId === 'string' && params.userId.length > 10 && !/^\d+$/.test(params.userId);
+      submissions = submissions.filter((s) => {
+        if (params.userId != null) {
+          const subBy = s.submitted_by ?? s;
+          const matchId = numericUserId != null && (subBy.id === numericUserId || subBy.id === params.userId);
+          const matchDocId = isDocId && (subBy.documentId === params.userId || subBy.document_id === params.userId);
+          if (!matchId && !matchDocId) return false;
+        }
+        if (params.dateFrom && (s.submitted_at || s.submittedAt) < params.dateFrom) return false;
+        if (params.dateTo && (s.submitted_at || s.submittedAt) > params.dateTo) return false;
+        return true;
+      });
     }
 
     const passed = submissions.filter((s) => s.passed).length;
@@ -379,6 +727,16 @@ module.exports = ({ strapi }) => ({
    * OVERALL ANALYTICS - Global
    */
   async getOverallGlobal(params = {}) {
+    const emptyOverall = () => ({
+      kpis: { totalUsers: 0, totalActiveUsers: 0, totalHolidays: 0, totalNews: 0, totalEvents: 0, totalTownhalls: 0 },
+      holidayByMonth: [],
+      employeesByCompany: [],
+      activeUsersByCompany: [],
+      newsByCategory: [],
+      eventsByType: [],
+      townhallByContentType: [],
+    });
+    try {
     const filters = {};
 
     if (params.dateFrom || params.dateTo) {
@@ -387,29 +745,47 @@ module.exports = ({ strapi }) => ({
       if (params.dateTo) filters.publishedAt.$lte = params.dateTo;
     }
 
-    if (params.company) filters.company = { name: params.company };
+    // Only filter by company when it's a real value (not "All Companies" / empty)
+    const companyFilter = params.company && String(params.company).trim() && !/^all\s*companies?$/i.test(String(params.company));
+    if (companyFilter) filters.company = { name: params.company };
 
     // Count users (all non-blocked)
     const totalUsersWhere = { blocked: { $eq: false } };
-    if (params.company) totalUsersWhere.company = params.company;
-    const totalUsers = await strapi.db.query('plugin::users-permissions.user').count({
-      where: totalUsersWhere,
-    });
+    if (companyFilter) totalUsersWhere.company = params.company;
+    let totalUsers = 0;
+    try {
+      totalUsers = await strapi.db.query('plugin::users-permissions.user').count({
+        where: totalUsersWhere,
+      });
+    } catch (e) {
+      strapi.log.warn('Overall global: totalUsers count failed:', e?.message);
+    }
 
     // Count active users (non-blocked + active); user schema uses "active" not "is_active"
+    let totalActiveUsers = 0;
     const activeUsersCountWhere = { blocked: { $eq: false }, active: { $eq: true } };
-    if (params.company) activeUsersCountWhere.company = params.company;
-    const totalActiveUsers = await strapi.db.query('plugin::users-permissions.user').count({
-      where: activeUsersCountWhere,
-    });
+    if (companyFilter) activeUsersCountWhere.company = params.company;
+    try {
+      totalActiveUsers = await strapi.db.query('plugin::users-permissions.user').count({
+        where: activeUsersCountWhere,
+      });
+    } catch (e) {
+      strapi.log.warn('Overall global: totalActiveUsers count failed:', e?.message);
+    }
 
     // Active users by company (for company-wise breakdown)
+    let activeUsers = [];
     const activeUsersWhere = { blocked: { $eq: false }, active: { $eq: true } };
-    if (params.company) activeUsersWhere.company = params.company;
-    const activeUsers = await strapi.db.query('plugin::users-permissions.user').findMany({
-      where: activeUsersWhere,
-      select: ['company'],
-    });
+    if (companyFilter) activeUsersWhere.company = params.company;
+    try {
+      activeUsers = await strapi.db.query('plugin::users-permissions.user').findMany({
+        where: activeUsersWhere,
+        select: ['company'],
+      }) || [];
+    } catch (e) {
+      strapi.log.warn('Overall global: activeUsers findMany failed:', e?.message);
+    }
+    if (!Array.isArray(activeUsers)) activeUsers = [];
     const activeUsersByCompany = {};
     activeUsers.forEach((u) => {
       const company = u.company || 'Unassigned';
@@ -419,12 +795,18 @@ module.exports = ({ strapi }) => ({
     // Holidays - by month (holiday has unit_location; news/event do not)
     const holidayFilters = { ...filters };
     if (params.unitLocation) holidayFilters.unit_location = { id: params.unitLocation };
-    const holidays = await strapi.documents('api::holiday.holiday').findMany({
-      filters: holidayFilters,
-      status: 'published',
-      pagination: { limit: 1000 },
-    });
-    const totalHolidays = holidays.length;
+    let holidays = [];
+    try {
+      holidays = await strapi.documents('api::holiday.holiday').findMany({
+        filters: holidayFilters,
+        status: 'published',
+        limit: 1000,
+        start: 0,
+      });
+    } catch (e) {
+      strapi.log.warn('Overall global: holidays findMany failed:', e?.message);
+    }
+    const totalHolidays = Array.isArray(holidays) ? holidays.length : 0;
     const holidayByMonth = {};
     const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     holidays.forEach((h) => {
@@ -436,12 +818,18 @@ module.exports = ({ strapi }) => ({
     });
 
     // Employees by company (all non-blocked)
+    let users = [];
     const employeesWhere = { blocked: { $eq: false } };
-    if (params.company) employeesWhere.company = params.company;
-    const users = await strapi.db.query('plugin::users-permissions.user').findMany({
-      where: employeesWhere,
-      select: ['company'],
-    });
+    if (companyFilter) employeesWhere.company = params.company;
+    try {
+      users = await strapi.db.query('plugin::users-permissions.user').findMany({
+        where: employeesWhere,
+        select: ['company'],
+      }) || [];
+    } catch (e) {
+      strapi.log.warn('Overall global: users findMany failed:', e?.message);
+    }
+    if (!Array.isArray(users)) users = [];
     const employeesByCompany = {};
     users.forEach((u) => {
       const company = u.company || 'Unassigned';
@@ -449,12 +837,19 @@ module.exports = ({ strapi }) => ({
     });
 
     // News
-    const newsItems = await strapi.documents('api::news.news').findMany({
-      filters,
-      status: 'published',
-      populate: ['news_category'],
-      pagination: { limit: 1000 },
-    });
+    let newsItems = [];
+    try {
+      newsItems = await strapi.documents('api::news.news').findMany({
+        filters,
+        status: 'published',
+        populate: ['news_category'],
+        limit: 1000,
+        start: 0,
+      });
+    } catch (e) {
+      strapi.log.warn('Overall global: news findMany failed:', e?.message);
+    }
+    if (!Array.isArray(newsItems)) newsItems = [];
     const newsByCategory = {};
     newsItems.forEach((n) => {
       const cat = n.news_category?.name || 'Uncategorized';
@@ -462,11 +857,18 @@ module.exports = ({ strapi }) => ({
     });
 
     // Events
-    const events = await strapi.documents('api::event.event').findMany({
-      filters,
-      status: 'published',
-      pagination: { limit: 500 },
-    });
+    let events = [];
+    try {
+      events = await strapi.documents('api::event.event').findMany({
+        filters,
+        status: 'published',
+        limit: 500,
+        start: 0,
+      });
+    } catch (e) {
+      strapi.log.warn('Overall global: events findMany failed:', e?.message);
+    }
+    if (!Array.isArray(events)) events = [];
     const eventsByType = {};
     events.forEach((e) => {
       const t = e.event_type || 'Other';
@@ -480,11 +882,18 @@ module.exports = ({ strapi }) => ({
       if (params.dateFrom) townhallFilters.publishedAt.$gte = params.dateFrom;
       if (params.dateTo) townhallFilters.publishedAt.$lte = params.dateTo;
     }
-    const townhalls = await strapi.documents('api::townhall.townhall').findMany({
-      filters: townhallFilters,
-      status: 'published',
-      pagination: { limit: 500 },
-    });
+    let townhalls = [];
+    try {
+      townhalls = await strapi.documents('api::townhall.townhall').findMany({
+        filters: townhallFilters,
+        status: 'published',
+        limit: 500,
+        start: 0,
+      });
+    } catch (e) {
+      strapi.log.warn('Overall global: townhalls findMany failed:', e?.message);
+    }
+    if (!Array.isArray(townhalls)) townhalls = [];
     const townhallByContentType = {};
     townhalls.forEach((t) => {
       const type = t.meeting_content_type || 'Other';
@@ -520,6 +929,10 @@ module.exports = ({ strapi }) => ({
       eventsByType: Object.entries(eventsByType).map(([name, value]) => ({ name, value })),
       townhallByContentType: Object.entries(townhallByContentType).map(([name, value]) => ({ name, value })),
     };
+    } catch (err) {
+      strapi.log.error('Overall global error:', err?.message || err);
+      return emptyOverall();
+    }
   },
 
   /**
@@ -528,6 +941,12 @@ module.exports = ({ strapi }) => ({
   async getOverallPersonal(userId, params = {}) {
     if (!userId) return null;
 
+    const emptyOverallPersonal = () => ({
+      kpis: { totalHolidays: 0 },
+      holidayByMonth: [],
+      employeesByCompany: [],
+    });
+    try {
     const filters = {};
     if (params.dateFrom || params.dateTo) {
       filters.publishedAt = {};
@@ -536,12 +955,18 @@ module.exports = ({ strapi }) => ({
     }
     if (params.company) filters.company = { name: params.company };
 
-    const holidays = await strapi.documents('api::holiday.holiday').findMany({
-      filters,
-      status: 'published',
-      pagination: { limit: 500 },
-    });
-
+    let holidays = [];
+    try {
+      holidays = await strapi.documents('api::holiday.holiday').findMany({
+        filters,
+        status: 'published',
+        limit: 500,
+        start: 0,
+      });
+    } catch (e) {
+      strapi.log.warn('Overall personal: holidays findMany failed:', e?.message);
+    }
+    if (!Array.isArray(holidays)) holidays = [];
     const totalHolidays = holidays.length;
     const holidayByMonth = {};
     const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -554,10 +979,15 @@ module.exports = ({ strapi }) => ({
     });
 
     // Personal view: show 100% of employee's company in Employees by Company donut
-    const targetUser = await strapi.db.query('plugin::users-permissions.user').findOne({
-      where: { id: userId, blocked: { $eq: false } },
-      select: ['company'],
-    });
+    let targetUser = null;
+    try {
+      targetUser = await strapi.db.query('plugin::users-permissions.user').findOne({
+        where: { id: userId, blocked: { $eq: false } },
+        select: ['company'],
+      });
+    } catch (e) {
+      strapi.log.warn('Overall personal: targetUser findOne failed:', e?.message);
+    }
     const employeesByCompany = {};
     if (targetUser?.company) {
       employeesByCompany[targetUser.company] = 1;
@@ -581,6 +1011,10 @@ module.exports = ({ strapi }) => ({
         .map(([name, value]) => ({ name, value })),
       employeesByCompany: Object.entries(employeesByCompany).map(([name, value]) => ({ name, value })),
     };
+    } catch (err) {
+      strapi.log.error('Overall personal error:', err?.message || err);
+      return emptyOverallPersonal();
+    }
   },
 
   /**
@@ -948,61 +1382,92 @@ module.exports = ({ strapi }) => ({
   },
 
   /**
-   * Get employee list for filter dropdown
+   * Get employee list for filter dropdown and personal view search
    */
   async getEmployeesList(params = {}) {
     const where = { blocked: { $eq: false } };
-    if (params.company) where.company = params.company;
-    if (params.department) where.department = { id: params.department };
+    // Only filter by company/department when meaningful (not "All Companies" / empty)
+    const companyVal = params.company && String(params.company).trim() && !/^all\s*companies?$/i.test(String(params.company));
+    const deptVal = params.department && String(params.department).trim() && String(params.department).toLowerCase() !== 'all';
+    if (companyVal) where.company = params.company;
+    if (deptVal) where.department = { id: params.department };
 
-    // Search by ID or email (for personal view) (for personal view)
+    // Search by ID, email, or employee_name (for personal view)
     if (params.search && String(params.search).trim()) {
       const search = String(params.search).trim();
       const numericId = parseInt(search, 10);
       if (!Number.isNaN(numericId) && String(numericId) === search) {
         where.id = numericId;
       } else {
-        where.email = { $containsi: search };
+        // Search by email first (most common); fallback to employee_name via $or if supported
+        where.$or = [
+          { email: { $containsi: search } },
+          { employee_name: { $containsi: search } },
+        ];
       }
     }
 
-    const users = await strapi.db.query('plugin::users-permissions.user').findMany({
-      where,
-      populate: ['department', 'designation'],
-      orderBy: { employee_name: 'asc' },
-      limit: params.search ? 1 : 500,
-    });
+    try {
+      // designation is a string on user schema, not a relation - do not populate
+      const users = await strapi.db.query('plugin::users-permissions.user').findMany({
+        where,
+        populate: ['department'],
+        orderBy: { employee_name: 'ASC' },
+        limit: params.search ? 20 : 500,
+      });
 
-    return users.map((u) => ({
-      id: u.id,
-      employee_name: u.employee_name || u.username || u.email,
-      email: u.email,
-      department: u.department?.name,
-      designation: u.designation?.title,
-      company: u.company,
-    }));
+      const list = Array.isArray(users) ? users : [];
+      return list.map((u) => ({
+        id: u.id,
+        documentId: u.documentId ?? u.document_id ?? null,
+        employee_name: u.employee_name || u.username || u.email || '—',
+        email: u.email || '—',
+        department: u.department?.name ?? '—',
+        designation: typeof u.designation === 'string' ? u.designation : (u.designation?.title ?? '—'),
+        company: u.company ?? '—',
+      }));
+    } catch (e) {
+      strapi.log.error('getEmployeesList error:', e?.message || e);
+      return [];
+    }
   },
 
   /**
    * Get department list for filter dropdown
    */
   async getDepartmentsList() {
-    const departments = await strapi.documents('api::department.department').findMany({
-      sort: [{ name: 'asc' }],
-      pagination: { limit: 200 },
-    });
-    return departments.map((d) => ({ id: d.id, name: d.name }));
+    try {
+      const departments = await strapi.documents('api::department.department').findMany({
+        status: 'published',
+        sort: [{ name: 'asc' }],
+        limit: 200,
+        start: 0,
+      });
+      const list = Array.isArray(departments) ? departments : [];
+      return list.map((d) => ({ id: d.id ?? d.documentId, documentId: d.documentId, name: d.name }));
+    } catch (e) {
+      strapi.log.error('getDepartmentsList error:', e?.message || e);
+      return [];
+    }
   },
 
   /**
    * Get unit location list for filter dropdown (Overall dashboard)
    */
   async getUnitLocationsList() {
-    const locations = await strapi.documents('api::unit-location.unit-location').findMany({
-      sort: [{ name: 'asc' }],
-      pagination: { limit: 200 },
-    });
-    return locations.map((l) => ({ id: l.id, name: l.name }));
+    try {
+      const locations = await strapi.documents('api::unit-location.unit-location').findMany({
+        status: 'published',
+        sort: [{ name: 'asc' }],
+        limit: 200,
+        start: 0,
+      });
+      const list = Array.isArray(locations) ? locations : [];
+      return list.map((l) => ({ id: l.id ?? l.documentId, documentId: l.documentId, name: l.name }));
+    } catch (e) {
+      strapi.log.error('getUnitLocationsList error:', e?.message || e);
+      return [];
+    }
   },
 
   /**

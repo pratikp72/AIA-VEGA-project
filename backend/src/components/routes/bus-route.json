@@ -5,13 +5,13 @@
   },
   "options": {},
   "attributes": {
-    "bus_stop_name": {
+    "route_name": {
       "type": "string",
       "required": true
     },
-    "bus_sifts": {
+    "route_stops": {
       "type": "component",
-      "component": "routes.sift",
+      "component": "routes.bus-stop",
       "repeatable": true
     }
   },

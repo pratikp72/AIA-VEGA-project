@@ -39,6 +39,58 @@ export default function LearningAnalyticsPage() {
   const [exporting, setExporting] = useState(false);
   const searchTimeoutRef = useRef(null);
 
+  const handleExportPersonal = useCallback(() => {
+    if (!data || !employeeDetail) return;
+    const rows = [];
+    const quote = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    // Employee detail
+    rows.push('Employee Detail');
+    rows.push(['Employee ID', 'Name', 'Email', 'Company', 'Department'].map(quote).join(','));
+    rows.push([
+      quote(employeeDetail.id ?? employeeId ?? ''),
+      quote(employeeDetail.username ?? employeeDetail.name ?? ''),
+      quote(employeeDetail.email ?? ''),
+      quote(employeeDetail.company ?? ''),
+      quote(employeeDetail.department ?? ''),
+    ].join(','));
+    rows.push(''); // blank line
+    // Course progress
+    rows.push('My Course Detail');
+    rows.push(['Course', 'Category', 'Status', 'Progress %', 'Time (min)', 'Completed At', 'Certificate'].map(quote).join(','));
+    (data.courseProgress || []).forEach((c) => {
+      rows.push([
+        quote(c.courseTitle ?? ''),
+        quote(c.courseCategory ?? ''),
+        quote(c.status ?? ''),
+        quote(c.percentage ?? ''),
+        quote(c.timeSpentMinutes ?? ''),
+        quote(c.completedAt ?? ''),
+        quote(c.certificateIssued ? 'Yes' : 'No'),
+      ].join(','));
+    });
+    rows.push('');
+    // Module video detail
+    rows.push('Module Video Detail');
+    rows.push(['Course', 'Module Title', 'Completion Type', 'Time Watched (min)', 'Video Duration (min)'].map(quote).join(','));
+    (data.moduleVideoProgress || []).forEach((m) => {
+      rows.push([
+        quote(m.courseTitle ?? ''),
+        quote(m.moduleTitle ?? ''),
+        quote(m.videoCompletionType ?? ''),
+        quote(m.timeWatchedMinutes ?? ''),
+        quote(m.videoDurationMinutes ?? ''),
+      ].join(','));
+    });
+
+    const blob = new Blob([rows.join('\n')], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `learning-personal-${employeeDetail.id ?? employeeId ?? 'user'}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [data, employeeDetail, employeeId]);
+
   useEffect(() => {
     if (viewMode !== 'table') return;
     if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
@@ -100,11 +152,14 @@ export default function LearningAnalyticsPage() {
     }
   }, [viewMode, employeeId]);
 
-  // Default selected course for module video table to first enrolled course
+  // Default selected course for module video table to first enrolled course (use courseId when available)
   useEffect(() => {
     if (!data?.courseProgress?.length || viewMode !== 'personal') return;
-    if (selectedCourseForModules === '' || !data.courseProgress.some((c) => c.courseTitle === selectedCourseForModules)) {
-      setSelectedCourseForModules(data.courseProgress[0].courseTitle);
+    const first = data.courseProgress[0];
+    const firstValue = first.courseId != null ? first.courseId : first.courseTitle;
+    const matches = (c) => (c.courseId != null && c.courseId === selectedCourseForModules) || (c.courseTitle === selectedCourseForModules);
+    if (selectedCourseForModules === '' || !data.courseProgress.some(matches)) {
+      setSelectedCourseForModules(firstValue);
     }
   }, [data, viewMode, selectedCourseForModules]);
 
@@ -294,89 +349,129 @@ export default function LearningAnalyticsPage() {
                 </Flex>
               )}
 
-              {/* Charts Row 1 */}
-              <Flex gap={4} marginBottom={6} wrap="wrap">
-                <Box style={{ flex: '1 1 300px', minWidth: 280 }}>
-                  <DonutChart
-                    data={data.statusDistribution}
-                    title="Course Status Distribution"
-                    height={260}
-                  />
-                </Box>
-                <Box style={{ flex: '1 1 400px', minWidth: 320 }}>
-                  <AreaChart
-                    data={data.monthlyCompletions}
-                    title="Completion Trend Over Time"
-                    nameKey="month"
-                    dataKey="value"
-                    height={260}
-                  />
-                </Box>
-              </Flex>
+              {/* Global view only: Status Distribution, Completion Trend, Category, Department */}
+              {!isPersonal && (
+                <>
+                  <Flex gap={4} marginBottom={6} wrap="wrap">
+                    <Box style={{ flex: '1 1 300px', minWidth: 280 }}>
+                      <DonutChart
+                        data={data.statusDistribution}
+                        title="Course Status Distribution"
+                        height={260}
+                      />
+                    </Box>
+                    <Box style={{ flex: '1 1 400px', minWidth: 320 }}>
+                      <AreaChart
+                        data={data.monthlyCompletions}
+                        title="Completion Trend Over Time"
+                        nameKey="month"
+                        dataKey="value"
+                        height={260}
+                      />
+                    </Box>
+                  </Flex>
+                  <Flex gap={4} marginBottom={6} wrap="wrap">
+                    <Box style={{ flex: '1 1 350px', minWidth: 280 }}>
+                      <BarChart
+                        data={data.categoryDistribution}
+                        title="Courses by Category"
+                        nameKey="name"
+                        dataKey="value"
+                        height={260}
+                      />
+                    </Box>
+                    <Box style={{ flex: '1 1 350px', minWidth: 280 }}>
+                      <BarChart
+                        data={data.departmentDistribution}
+                        title="Course Progress by Department"
+                        nameKey="name"
+                        dataKey="value"
+                        height={260}
+                      />
+                    </Box>
+                  </Flex>
+                </>
+              )}
 
-              {/* Charts Row 2 */}
-              <Flex gap={4} marginBottom={6} wrap="wrap">
-                <Box style={{ flex: '1 1 350px', minWidth: 280 }}>
-                  <BarChart
-                    data={data.categoryDistribution}
-                    title="Courses by Category"
-                    nameKey="name"
-                    dataKey="value"
-                    height={260}
-                  />
-                </Box>
-                <Box style={{ flex: '1 1 350px', minWidth: 280 }}>
-                  <BarChart
-                    data={data.departmentDistribution}
-                    title="Course Progress by Department"
-                    nameKey="name"
-                    dataKey="value"
-                    height={260}
-                  />
-                </Box>
-              </Flex>
+              {/* Personal view: Course by category + Completion trend over time – always show so layout is visible */}
+              {isPersonal && (
+                <>
+                  <Flex gap={4} marginBottom={6} wrap="wrap">
+                    <Box style={{ flex: '1 1 350px', minWidth: 280 }}>
+                      <BarChart
+                        data={Array.isArray(data?.categoryDistribution) ? data.categoryDistribution : []}
+                        title="Courses by Category"
+                        nameKey="name"
+                        dataKey="value"
+                        height={260}
+                      />
+                    </Box>
+                    <Box style={{ flex: '1 1 400px', minWidth: 320 }}>
+                      <AreaChart
+                        data={Array.isArray(data?.monthlyCompletions) ? data.monthlyCompletions : []}
+                        title="Completion Trend Over Time"
+                        nameKey="month"
+                        dataKey="value"
+                        height={260}
+                      />
+                    </Box>
+                  </Flex>
 
-              {/* Module video completion – horizontal bar chart (Personal only) – dedicated row so it’s always visible */}
-              {/* Course Progress Table (Personal only) */}
-              {isPersonal && data.courseProgress && data.courseProgress.length > 0 && (() => {
-                const total = data.courseProgress.length;
-                const start = (courseProgressPage - 1) * courseProgressPageSize;
-                const paginatedData = data.courseProgress.slice(start, start + courseProgressPageSize);
-                return (
-                  <Box marginBottom={6}>
-                    <DataTable
-                      data={paginatedData}
-                      title="My Course Progress"
-                      fontSize="16px"
-                      pagination={{
-                        page: courseProgressPage,
-                        pageSize: courseProgressPageSize,
-                        total,
-                        onPageChange: setCourseProgressPage,
-                        onPageSizeChange: (v) => {
-                          setCourseProgressPageSize(Number(v));
-                          setCourseProgressPage(1);
-                        },
-                      }}
-                      columns={[
-                        { key: 'courseTitle', label: 'Course' },
-                        { key: 'courseCategory', label: 'Category' },
-                        { key: 'status', label: 'Status' },
-                        { key: 'percentage', label: 'Progress %', render: (v) => `${v}%` },
-                        { key: 'timeSpentMinutes', label: 'Time (min)' },
-                        {
-                          key: 'certificateIssued',
-                          label: 'Certificate',
-                          render: (v) => (v ? 'Yes' : 'No'),
-                        },
-                      ]}
-                    />
-                  </Box>
-                );
-              })()}
+                  {/* Course Progress Table (Personal) – show table or placeholder */}
+                  {data?.courseProgress && data.courseProgress.length > 0 ? (() => {
+                    const total = data.courseProgress.length;
+                    const start = (courseProgressPage - 1) * courseProgressPageSize;
+                    const paginatedData = data.courseProgress.slice(start, start + courseProgressPageSize);
+                    return (
+                      <Box marginBottom={6}>
+                        <Flex justifyContent="flex-end" marginBottom={3}>
+                          <Button
+                            variant="secondary"
+                            size="S"
+                            onClick={handleExportPersonal}
+                            disabled={!data?.courseProgress?.length}
+                          >
+                            Download
+                          </Button>
+                        </Flex>
+                        <DataTable
+                          data={paginatedData}
+                          title="My Course Progress"
+                          fontSize="16px"
+                          pagination={{
+                            page: courseProgressPage,
+                            pageSize: courseProgressPageSize,
+                            total,
+                            onPageChange: setCourseProgressPage,
+                            onPageSizeChange: (v) => {
+                              setCourseProgressPageSize(Number(v));
+                              setCourseProgressPage(1);
+                            },
+                          }}
+                          columns={[
+                            { key: 'courseTitle', label: 'Course' },
+                            { key: 'courseCategory', label: 'Category' },
+                            { key: 'status', label: 'Status' },
+                            { key: 'percentage', label: 'Progress %', render: (v) => `${v}%` },
+                            { key: 'timeSpentMinutes', label: 'Time (min)' },
+                            {
+                              key: 'certificateIssued',
+                              label: 'Certificate',
+                              render: (v) => (v ? 'Yes' : 'No'),
+                            },
+                          ]}
+                        />
+                      </Box>
+                    );
+                  })() : (
+                    <Box marginBottom={6} padding={6} background="neutral100" hasRadius>
+                      <Typography variant="sigma" textColor="neutral600" fontWeight="semiBold" style={{ marginBottom: 8 }}>My Course Progress</Typography>
+                      <Typography textColor="neutral600">No course progress data for this employee yet.</Typography>
+                    </Box>
+                  )}
 
-              {/* Module video details by course (Personal only) – course dropdown + table */}
-              {isPersonal && data.courseProgress && data.courseProgress.length > 0 && (
+                  {/* Module video details by course (Personal) – course dropdown + table or placeholder */}
+                  {data?.courseProgress && data.courseProgress.length > 0 ? (
                 <Box marginBottom={6}>
                   <Flex justifyContent="space-between" alignItems="center" marginBottom={4} wrap="wrap" gap={2}>
                     <Typography variant="sigma" textColor="neutral600" fontWeight="semiBold">
@@ -398,17 +493,27 @@ export default function LearningAnalyticsPage() {
                           minWidth: 200,
                         }}
                       >
-                        {data.courseProgress.map((c) => (
-                          <option key={c.courseTitle} value={c.courseTitle}>
-                            {c.courseTitle}
-                          </option>
-                        ))}
+                        {data.courseProgress.map((c) => {
+                          const value = c.courseId != null ? c.courseId : c.courseTitle;
+                          return (
+                            <option key={value} value={value}>
+                              {c.courseTitle}
+                            </option>
+                          );
+                        })}
                       </select>
                     </Flex>
                   </Flex>
                   {selectedCourseForModules ? (() => {
                     const moduleVideoProgress = data.moduleVideoProgress || [];
-                    const rows = moduleVideoProgress.filter((p) => p.courseTitle === selectedCourseForModules);
+                    const rows = moduleVideoProgress.filter((p) =>
+                      (p.courseId != null && p.courseId === selectedCourseForModules) ||
+                      (p.courseId == null && p.courseTitle === selectedCourseForModules)
+                    );
+                    const selectedCourseLabel = data.courseProgress?.find((c) => {
+                      const v = c.courseId != null ? c.courseId : c.courseTitle;
+                      return v === selectedCourseForModules;
+                    })?.courseTitle || selectedCourseForModules;
                     const formatCompletionType = (v) => {
                       if (!v) return '—';
                       const labels = { full_watch: 'Watched fully', skipped_to_end: 'Skipped to end', in_progress: 'In progress', not_started: 'Not started' };
@@ -433,7 +538,7 @@ export default function LearningAnalyticsPage() {
                               (moduleVideoPage - 1) * moduleVideoPageSize,
                               (moduleVideoPage - 1) * moduleVideoPageSize + moduleVideoPageSize
                             )}
-                            title={`Modules: ${selectedCourseForModules}`}
+                            title={`Modules: ${selectedCourseLabel}`}
                             fontSize="16px"
                             pagination={{
                               page: moduleVideoPage,
@@ -473,7 +578,7 @@ export default function LearningAnalyticsPage() {
                               { name: 'In progress', value: counts.in_progress },
                               { name: 'Not started', value: counts.not_started },
                             ]}
-                            title={`Module video completion for ${selectedCourseForModules}`}
+                            title={`Module video completion for ${selectedCourseLabel}`}
                             nameKey="name"
                             dataKey="value"
                             height={220}
@@ -489,7 +594,15 @@ export default function LearningAnalyticsPage() {
                     </Box>
                   )}
                 </Box>
+              ) : (
+                <Box marginBottom={6} padding={6} background="neutral100" hasRadius>
+                  <Typography variant="sigma" textColor="neutral600" fontWeight="semiBold" style={{ marginBottom: 8 }}>Module video details</Typography>
+                  <Typography textColor="neutral600">No course progress – complete a course to see module details.</Typography>
+                </Box>
               )}
+                </>
+              )}
+
             </>
           )}
 

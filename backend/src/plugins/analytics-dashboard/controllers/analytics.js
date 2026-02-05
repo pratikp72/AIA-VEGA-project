@@ -28,63 +28,69 @@ module.exports = ({ strapi }) => {
 
   return {
     async learningGlobal(ctx) {
+      const emptyLearning = () => ({
+        kpis: { totalAssignments: 0, completionRate: 0, avgTimeSpentMinutes: 0, certificatesIssued: 0 },
+        statusDistribution: [],
+        categoryDistribution: [],
+        departmentDistribution: [],
+        monthlyCompletions: [],
+        quiz: { passRate: 0, avgScore: 0, totalAttempts: 0, passed: 0, failed: 0 },
+      });
       try {
         const params = getQueryParams(ctx);
         const service = getAnalyticsService();
-        const data = await service.getLearningGlobal(params);
-
-        // Include quiz data (don't 500 if quiz fails)
+        const data = await service.getLearningGlobal(params) || emptyLearning();
         try {
           data.quiz = await service.getQuizGlobal(params);
         } catch (quizError) {
-          strapi.log.warn('Analytics learningGlobal: quiz data failed:', quizError?.message);
           data.quiz = { passRate: 0, avgScore: 0, totalAttempts: 0, passed: 0, failed: 0 };
         }
-
         ctx.body = data;
       } catch (error) {
-        strapi.log.error('Analytics learningGlobal error:', error);
-        ctx.throw(500, error.message);
+        strapi.log.error('Analytics learningGlobal error:', error?.message || error);
+        ctx.body = emptyLearning();
+        ctx.status = 200;
       }
     },
 
     async learningPersonal(ctx) {
+      const emptyLearningPersonal = () => ({
+        kpis: { totalCourses: 0, completionRate: 0, avgTimeSpentMinutes: 0, certificatesEarned: 0 },
+        statusDistribution: [],
+        categoryDistribution: [],
+        departmentDistribution: [],
+        courseProgress: [],
+        monthlyCompletions: [],
+        quiz: { passRate: 0, avgScore: 0, totalAttempts: 0, passed: 0, failed: 0 },
+        moduleVideoKpis: { watchedFully: 0, skippedToEnd: 0, inProgress: 0, notStarted: 0 },
+        moduleVideoProgress: [],
+      });
       try {
         const params = getQueryParams(ctx);
         const userId = params.userId;
-
         if (!userId) {
           return ctx.badRequest('userId is required for personal analytics');
         }
-
         const service = getAnalyticsService();
-        const data = await service.getLearningPersonal(userId, params);
-
-        if (!data) {
-          return ctx.notFound('No learning data found for this user');
-        }
-
+        const data = await service.getLearningPersonal(userId, params) || emptyLearningPersonal();
         try {
           data.quiz = await service.getQuizPersonal(userId, params);
-        } catch (quizError) {
-          strapi.log.warn('Analytics learningPersonal: quiz failed:', quizError?.message);
+        } catch (_) {
           data.quiz = { passRate: 0, avgScore: 0, totalAttempts: 0, passed: 0, failed: 0 };
         }
-
         try {
           const moduleVideoData = await service.getLearningPersonalModuleVideoProgress(userId, params);
-          data.moduleVideoKpis = moduleVideoData.moduleVideoKpis;
-          data.moduleVideoProgress = moduleVideoData.moduleVideoProgress;
-        } catch (moduleError) {
-          strapi.log.warn('Analytics learningPersonal: module video progress failed:', moduleError?.message);
+          data.moduleVideoKpis = moduleVideoData?.moduleVideoKpis || {};
+          data.moduleVideoProgress = moduleVideoData?.moduleVideoProgress || [];
+        } catch (_) {
           data.moduleVideoKpis = { watchedFully: 0, skippedToEnd: 0, inProgress: 0, notStarted: 0 };
           data.moduleVideoProgress = [];
         }
-
         ctx.body = data;
       } catch (error) {
-        strapi.log.error('Analytics learningPersonal error:', error);
-        ctx.throw(500, error.message);
+        strapi.log.error('Analytics learningPersonal error:', error?.message || error);
+        ctx.body = emptyLearningPersonal();
+        ctx.status = 200;
       }
     },
 
@@ -93,11 +99,11 @@ module.exports = ({ strapi }) => {
         const params = getQueryParams(ctx);
         const service = getAnalyticsService();
         const data = await service.getLearningEmployeeTable(params);
-        ctx.body = data;
+        ctx.body = data || { rows: [], total: 0, page: 1, pageSize: 10 };
       } catch (error) {
-        strapi.log.error('Analytics learningEmployeeTable error:', error);
-        const msg = error?.message || 'Failed to load employee table';
-        ctx.throw(500, msg);
+        strapi.log.error('Analytics learningEmployeeTable error:', error?.message || error);
+        ctx.body = { rows: [], total: 0, page: 1, pageSize: 10 };
+        ctx.status = 200;
       }
     },
 
@@ -111,43 +117,54 @@ module.exports = ({ strapi }) => {
         ctx.body = csv;
       } catch (error) {
         strapi.log.error('Analytics learningEmployeeTableExport error:', error);
-        const msg = error?.message || 'Failed to export employee table';
-        ctx.throw(500, msg);
+        ctx.set('Content-Type', 'text/csv; charset=utf-8');
+        ctx.set('Content-Disposition', 'attachment; filename="employee-learning-summary.csv"');
+        ctx.body = 'No data available';
+        ctx.status = 200;
       }
     },
 
     async overallGlobal(ctx) {
+      const emptyOverall = () => ({
+        kpis: { totalUsers: 0, totalActiveUsers: 0, totalHolidays: 0, totalNews: 0, totalEvents: 0, totalTownhalls: 0 },
+        holidayByMonth: [],
+        employeesByCompany: [],
+        activeUsersByCompany: [],
+        newsByCategory: [],
+        eventsByType: [],
+        townhallByContentType: [],
+      });
       try {
         const params = getQueryParams(ctx);
         const service = getAnalyticsService();
-        const data = await service.getOverallGlobal(params);
+        const data = await service.getOverallGlobal(params) || emptyOverall();
         ctx.body = data;
       } catch (error) {
-        strapi.log.error('Analytics overallGlobal error:', error);
-        ctx.throw(500, error.message);
+        strapi.log.error('Analytics overallGlobal error:', error?.message || error);
+        ctx.body = emptyOverall();
+        ctx.status = 200;
       }
     },
 
     async overallPersonal(ctx) {
+      const emptyOverallPersonal = () => ({
+        kpis: { totalHolidays: 0 },
+        holidayByMonth: [],
+        employeesByCompany: [],
+      });
       try {
         const params = getQueryParams(ctx);
         const userId = params.userId;
-
         if (!userId) {
           return ctx.badRequest('userId is required for personal analytics');
         }
-
         const service = getAnalyticsService();
-        const data = await service.getOverallPersonal(userId, params);
-
-        if (!data) {
-          return ctx.notFound('No overall data found for this user');
-        }
-
+        const data = await service.getOverallPersonal(userId, params) || emptyOverallPersonal();
         ctx.body = data;
       } catch (error) {
-        strapi.log.error('Analytics overallPersonal error:', error);
-        ctx.throw(500, error.message);
+        strapi.log.error('Analytics overallPersonal error:', error?.message || error);
+        ctx.body = emptyOverallPersonal();
+        ctx.status = 200;
       }
     },
 
@@ -156,10 +173,11 @@ module.exports = ({ strapi }) => {
         const params = getQueryParams(ctx);
         const service = getAnalyticsService();
         const data = await service.getEmployeesList(params);
-        ctx.body = data;
+        ctx.body = data || [];
       } catch (error) {
-        strapi.log.error('Analytics employeesList error:', error);
-        ctx.throw(500, error.message);
+        strapi.log.error('Analytics employeesList error:', error?.message || error);
+        ctx.body = [];
+        ctx.status = 200;
       }
     },
 
@@ -167,10 +185,11 @@ module.exports = ({ strapi }) => {
       try {
         const service = getAnalyticsService();
         const data = await service.getDepartmentsList();
-        ctx.body = data;
+        ctx.body = data || [];
       } catch (error) {
-        strapi.log.error('Analytics departmentsList error:', error);
-        ctx.throw(500, error.message);
+        strapi.log.error('Analytics departmentsList error:', error?.message || error);
+        ctx.body = [];
+        ctx.status = 200;
       }
     },
 
@@ -178,10 +197,11 @@ module.exports = ({ strapi }) => {
       try {
         const service = getAnalyticsService();
         const data = await service.getUnitLocationsList();
-        ctx.body = data;
+        ctx.body = data || [];
       } catch (error) {
-        strapi.log.error('Analytics unitLocationsList error:', error);
-        ctx.throw(500, error.message);
+        strapi.log.error('Analytics unitLocationsList error:', error?.message || error);
+        ctx.body = [];
+        ctx.status = 200;
       }
     },
 
@@ -190,10 +210,11 @@ module.exports = ({ strapi }) => {
         const params = getQueryParams(ctx);
         const service = getAnalyticsService();
         const data = await service.getActivityTimeByTypeAndDay(params);
-        ctx.body = data;
+        ctx.body = data || [];
       } catch (error) {
-        strapi.log.error('Analytics activityTimeByTypeAndDay error:', error);
-        ctx.throw(500, error.message);
+        strapi.log.error('Analytics activityTimeByTypeAndDay error:', error?.message || error);
+        ctx.body = [];
+        ctx.status = 200;
       }
     },
 
@@ -202,10 +223,11 @@ module.exports = ({ strapi }) => {
         const params = getQueryParams(ctx);
         const service = getAnalyticsService();
         const data = await service.getActivityLog(params);
-        ctx.body = data;
+        ctx.body = data || { rows: [], total: 0 };
       } catch (error) {
-        strapi.log.error('Analytics activityLog error:', error);
-        ctx.throw(500, error.message);
+        strapi.log.error('Analytics activityLog error:', error?.message || error);
+        ctx.body = { rows: [], total: 0 };
+        ctx.status = 200;
       }
     },
 
@@ -246,7 +268,8 @@ module.exports = ({ strapi }) => {
         ctx.status = 201;
       } catch (error) {
         strapi.log.error('Analytics activityTrack error:', error);
-        ctx.throw(500, error.message);
+        ctx.body = { success: false, error: error?.message || 'Activity log failed' };
+        ctx.status = 200;
       }
     },
   };

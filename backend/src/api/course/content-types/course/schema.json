@@ -67,6 +67,16 @@
       "component": "course.module",
       "repeatable": true,
       "required": true
+    },
+    "course_flow_type": {
+      "type": "enumeration",
+      "required": true,
+      "enum": [
+        "course_test_feedback",
+        "course_test",
+        "course_feedback",
+        "course_only"
+      ]
     }
   }
 }
