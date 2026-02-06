@@ -14,19 +14,16 @@
     "user": {
       "type": "relation",
       "relation": "manyToOne",
-      "target": "plugin::users-permissions.user",
-      "required": true
+      "target": "plugin::users-permissions.user"
     },
     "company": {
       "type": "relation",
       "relation": "manyToMany",
-      "target": "api::company.company",
-      "required": false
+      "target": "api::company.company"
     },
     "activity_type": {
       "type": "enumeration",
       "required": true,
-      "description": "Type of activity performed",
       "enum": [
         "News_Reading",
         "Event_Info",
@@ -37,18 +34,20 @@
     },
     "activity_description": {
       "type": "string",
-      "required": true,
-      "description": "Brief description of the activity"
-    },
-    "duration_seconds": {
-      "type": "integer",
-      "required": true,
-      "default": 0
+      "required": true
     },
     "timestamp": {
       "type": "datetime",
-      "required": true,
-      "description": "Date and time when activity occurred"
+      "required": true
+    },
+    "activity_duration": {
+      "type": "customField",
+      "customField": "global::number-range",
+      "options": {
+        "required": true,
+        "positiveOnly": true,
+        "max": "1"
+      }
     }
   }
 }

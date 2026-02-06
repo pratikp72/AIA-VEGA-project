@@ -35,11 +35,9 @@
         }
       },
       "multiple": true,
+      "required": true,
       "allowedTypes": [
-        "images",
-        "videos",
-        "files",
-        "audios"
+        "videos"
       ]
     },
     "pdf_file": {
@@ -55,11 +53,9 @@
         }
       },
       "multiple": true,
+      "required": true,
       "allowedTypes": [
-        "images",
-        "videos",
-        "files",
-        "audios"
+        "files"
       ]
     },
     "text_content": {
@@ -75,14 +71,18 @@
         }
       }
     },
-    "duration_minutes": {
-      "type": "integer",
-      "required": true
-    },
     "mark_as_read": {
       "type": "boolean",
       "required": true,
       "default": false
+    },
+    "module_duration_min": {
+      "type": "customField",
+      "customField": "global::number-range",
+      "options": {
+        "required": true,
+        "positiveOnly": true
+      }
     }
   },
   "config": {}

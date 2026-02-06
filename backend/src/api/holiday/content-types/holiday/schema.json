@@ -54,21 +54,6 @@
         }
       }
     },
-    "company": {
-      "type": "relation",
-      "relation": "manyToMany",
-      "target": "api::company.company",
-      "conditions": {
-        "visible": {
-          "==": [
-            {
-              "var": "holiday_for"
-            },
-            "Company"
-          ]
-        }
-      }
-    },
     "departments": {
       "type": "relation",
       "relation": "manyToMany",
@@ -90,11 +75,15 @@
       "enum": [
         "All",
         "Unit_location",
-        "Area",
         "City",
-        "Department",
-        "Company"
+        "Department"
       ]
+    },
+    "companies": {
+      "type": "relation",
+      "relation": "manyToMany",
+      "target": "api::company.company",
+      "mappedBy": "holidays"
     }
   }
 }

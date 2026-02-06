@@ -82,11 +82,6 @@
       "type": "string",
       "required": true
     },
-    "department": {
-      "type": "relation",
-      "relation": "manyToOne",
-      "target": "api::department.department"
-    },
     "company": {
       "type": "enumeration",
       "required": true,
@@ -237,6 +232,10 @@
       "type": "text"
     },
     "designation": {
+      "type": "string",
+      "required": true
+    },
+    "department": {
       "type": "string",
       "required": true
     }

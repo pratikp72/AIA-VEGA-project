@@ -45,6 +45,65 @@ export default {
       },
     });
 
+    // Custom field: number/integer with min, max, integerOnly, positiveOnly (configurable in Content-Type Builder)
+    app.customFields.register({
+      name: 'number-range',
+      type: 'integer',
+      intlLabel: {
+        id: 'app.custom-fields.number-range.label',
+        defaultMessage: 'Number (range / integer / positive)',
+      },
+      intlDescription: {
+        id: 'app.custom-fields.number-range.description',
+        defaultMessage: 'Integer with optional min/max. Configure in Base settings when adding the field.',
+      },
+      components: {
+        Input: async () => import('./components/NumberRangeInput').then((m) => ({ default: m.default })),
+      },
+      options: {
+        base: [
+          {
+            sectionTitle: {
+              id: 'app.custom-fields.number-range.section',
+              defaultMessage: 'Number range',
+            },
+            items: [
+              {
+                intlLabel: { id: 'app.custom-fields.number-range.required', defaultMessage: 'Required' },
+                name: 'options.required',
+                type: 'checkbox',
+                description: 'Field must have a value.',
+              },
+              {
+                intlLabel: { id: 'app.custom-fields.number-range.positiveOnly', defaultMessage: 'Positive only (no negative)' },
+                name: 'options.positiveOnly',
+                type: 'checkbox',
+                value: true,
+              },
+              {
+                intlLabel: { id: 'app.custom-fields.number-range.integerOnly', defaultMessage: 'Integer only (no decimals)' },
+                name: 'options.integerOnly',
+                type: 'checkbox',
+                value: true,
+              },
+              {
+                intlLabel: { id: 'app.custom-fields.number-range.min', defaultMessage: 'Minimum value' },
+                name: 'options.min',
+                type: 'text',
+                description: 'Leave empty for no minimum. Example: 0',
+              },
+              {
+                intlLabel: { id: 'app.custom-fields.number-range.max', defaultMessage: 'Maximum value' },
+                name: 'options.max',
+                type: 'text',
+                description: 'Leave empty for no maximum. Example: 100',
+              },
+            ],
+          },
+        ],
+      },
+    });
+
     /**
      * Add "All Modules" as the parent menu section
      * This creates a collapsible group in the sidebar

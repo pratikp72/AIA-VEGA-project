@@ -16,11 +16,6 @@
       "relation": "manyToOne",
       "target": "api::course.course"
     },
-    "feedback_question": {
-      "type": "relation",
-      "relation": "manyToOne",
-      "target": "api::feedback-question.feedback-question"
-    },
     "users_permissions_user": {
       "type": "relation",
       "relation": "manyToOne",

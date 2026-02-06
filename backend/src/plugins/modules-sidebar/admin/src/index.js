@@ -18,8 +18,8 @@ import pluginPkg from '../../package.json';
 import { PLUGIN_ID } from './pluginId';
 
 // Icon components must be React components (NOT strings).
-// Use an available icon from @strapi/icons
-import { PuzzlePiece } from '@strapi/icons';
+// Use an available icon from @strapi/icons (Refresh may not exist in all versions)
+import { PuzzlePiece, Question } from '@strapi/icons';
 
 const name = pluginPkg.strapi.name;
 
@@ -3016,6 +3016,22 @@ export default {
        */
       // Import the JSX page entry (Vite needs .jsx for JSX parsing)
       Component: () => import('./pages/AllModules/index.jsx'),
+    });
+
+    /**
+     * Quiz Reattempt Requests – list with Approve/Reject buttons per entry (LM Admin).
+     */
+    app.addMenuLink({
+      to: `plugins/${PLUGIN_ID}/quiz-reattempt-requests`,
+      icon: Question,
+      intlLabel: {
+        id: `${PLUGIN_ID}.menu.quiz-reattempt-requests`,
+        defaultMessage: 'Quiz Reattempt Requests',
+      },
+      permissions: [
+        { action: `plugin::${PLUGIN_ID}.read`, subject: null },
+      ],
+      Component: () => import('./pages/QuizReattemptRequests/index.jsx'),
     });
 
     // No need to manually add routes here: `addMenuLink` already mounts the route via `Component`.

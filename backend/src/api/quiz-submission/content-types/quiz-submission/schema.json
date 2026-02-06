@@ -24,8 +24,7 @@
       "required": true
     },
     "time_taken_minutes": {
-      "type": "integer",
-      "description": "Time taken to complete quiz (minutes)"
+      "type": "integer"
     },
     "attempt_number": {
       "type": "integer",
@@ -36,15 +35,14 @@
       "relation": "manyToOne",
       "target": "plugin::users-permissions.user"
     },
-    "quiz": {
-      "type": "relation",
-      "relation": "manyToOne",
-      "target": "api::quizze.quizze"
-    },
     "submitted_at": {
       "type": "datetime",
-      "required": true,
-      "description": "Date and time when quiz was submitted"
+      "required": true
+    },
+    "course": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::course.course"
     }
   }
 }

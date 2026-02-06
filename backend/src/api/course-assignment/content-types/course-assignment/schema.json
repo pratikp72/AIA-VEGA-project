@@ -99,6 +99,12 @@
         "LearningManager",
         "Employee"
       ]
+    },
+    "companies": {
+      "type": "relation",
+      "relation": "manyToMany",
+      "target": "api::company.company",
+      "mappedBy": "course_assignments"
     }
   }
 }

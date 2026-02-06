@@ -1,0 +1,40 @@
+{
+  "collectionName": "components_quiz_quizzes",
+  "info": {
+    "displayName": "Quiz"
+  },
+  "options": {},
+  "attributes": {
+    "title": {
+      "type": "string",
+      "required": true
+    },
+    "quiz_questions": {
+      "type": "component",
+      "component": "quiz.question",
+      "repeatable": true,
+      "required": true
+    },
+    "quiz_instruction": {
+      "type": "component",
+      "component": "quiz.quiz-instruction",
+      "repeatable": true,
+      "required": true
+    },
+    "quiz_instruction_checklist": {
+      "type": "component",
+      "component": "quiz.checklist",
+      "repeatable": true,
+      "required": true
+    },
+    "max_attempt": {
+      "type": "customField",
+      "customField": "global::number-range"
+    },
+    "completion_time": {
+      "type": "customField",
+      "customField": "global::number-range"
+    }
+  },
+  "config": {}
+}

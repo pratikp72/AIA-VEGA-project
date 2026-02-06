@@ -6,7 +6,6 @@ export interface CourseModule extends Struct.ComponentSchema {
     displayName: 'Module';
   };
   attributes: {
-    duration_minutes: Schema.Attribute.Integer & Schema.Attribute.Required;
     mark_as_read: Schema.Attribute.Boolean &
       Schema.Attribute.Required &
       Schema.Attribute.DefaultTo<false>;
@@ -14,17 +13,20 @@ export interface CourseModule extends Struct.ComponentSchema {
       ['Video', 'Pdf', 'Text']
     > &
       Schema.Attribute.Required;
+    module_duration_min: Schema.Attribute.Integer &
+      Schema.Attribute.CustomField<
+        'global::number-range',
+        {
+          positiveOnly: true;
+          required: true;
+        }
+      >;
     order: Schema.Attribute.Integer & Schema.Attribute.Required;
-    pdf_file: Schema.Attribute.Media<
-      'images' | 'videos' | 'files' | 'audios',
-      true
-    >;
+    pdf_file: Schema.Attribute.Media<'files', true> & Schema.Attribute.Required;
     text_content: Schema.Attribute.Blocks;
     title: Schema.Attribute.String & Schema.Attribute.Required;
-    video_file: Schema.Attribute.Media<
-      'images' | 'videos' | 'files' | 'audios',
-      true
-    >;
+    video_file: Schema.Attribute.Media<'videos', true> &
+      Schema.Attribute.Required;
   };
 }
 
@@ -40,7 +42,9 @@ export interface FeedbackFormAnswer extends Struct.ComponentSchema {
     > &
       Schema.Attribute.Required;
     question: Schema.Attribute.String & Schema.Attribute.Required;
-    question_id: Schema.Attribute.String & Schema.Attribute.Required;
+    question_id: Schema.Attribute.String &
+      Schema.Attribute.Required &
+      Schema.Attribute.Unique;
   };
 }
 
@@ -58,7 +62,9 @@ export interface FeedbackFormQuestion extends Struct.ComponentSchema {
       Schema.Attribute.Required &
       Schema.Attribute.DefaultTo<true>;
     qestion: Schema.Attribute.String & Schema.Attribute.Required;
-    question_id: Schema.Attribute.String & Schema.Attribute.Required;
+    question_id: Schema.Attribute.String &
+      Schema.Attribute.Required &
+      Schema.Attribute.Unique;
   };
 }
 
@@ -91,12 +97,45 @@ export interface QuizQuestion extends Struct.ComponentSchema {
   attributes: {
     options: Schema.Attribute.Component<'quiz.options', true>;
     order: Schema.Attribute.Integer;
-    points: Schema.Attribute.Integer & Schema.Attribute.DefaultTo<1>;
+    point: Schema.Attribute.Integer &
+      Schema.Attribute.CustomField<
+        'global::number-range',
+        {
+          min: '1';
+          positiveOnly: true;
+        }
+      >;
     question_text: Schema.Attribute.Text & Schema.Attribute.Required;
     question_type: Schema.Attribute.Enumeration<
-      ['Multiple_choice', 'True_false', 'Multiple_select']
+      ['Multiple_choice', 'Multiple_select']
     > &
       Schema.Attribute.Required;
+  };
+}
+
+export interface QuizQuiz extends Struct.ComponentSchema {
+  collectionName: 'components_quiz_quizzes';
+  info: {
+    displayName: 'Quiz';
+  };
+  attributes: {
+    completion_time: Schema.Attribute.Integer &
+      Schema.Attribute.CustomField<'global::number-range'>;
+    max_attempt: Schema.Attribute.Integer &
+      Schema.Attribute.CustomField<'global::number-range'>;
+    quiz_instruction: Schema.Attribute.Component<
+      'quiz.quiz-instruction',
+      true
+    > &
+      Schema.Attribute.Required;
+    quiz_instruction_checklist: Schema.Attribute.Component<
+      'quiz.checklist',
+      true
+    > &
+      Schema.Attribute.Required;
+    quiz_questions: Schema.Attribute.Component<'quiz.question', true> &
+      Schema.Attribute.Required;
+    title: Schema.Attribute.String & Schema.Attribute.Required;
   };
 }
 
@@ -154,6 +193,7 @@ declare module '@strapi/strapi' {
       'quiz.checklist': QuizChecklist;
       'quiz.options': QuizOptions;
       'quiz.question': QuizQuestion;
+      'quiz.quiz': QuizQuiz;
       'quiz.quiz-instruction': QuizQuizInstruction;
       'routes.bus-route': RoutesBusRoute;
       'routes.bus-stop': RoutesBusStop;

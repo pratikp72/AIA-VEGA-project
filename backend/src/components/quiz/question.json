@@ -11,24 +11,27 @@
     },
     "question_type": {
       "type": "enumeration",
+      "required": true,
       "enum": [
         "Multiple_choice",
-        "True_false",
         "Multiple_select"
-      ],
-      "required": true
+      ]
     },
     "order": {
       "type": "integer"
     },
-    "points": {
-      "type": "integer",
-      "default": 1
-    },
     "options": {
       "type": "component",
-      "repeatable": true,
-      "component": "quiz.options"
+      "component": "quiz.options",
+      "repeatable": true
+    },
+    "point": {
+      "type": "customField",
+      "customField": "global::number-range",
+      "options": {
+        "positiveOnly": true,
+        "min": "1"
+      }
     }
   },
   "config": {}

@@ -1,4 +1,5 @@
 module.exports = [
+  'global::ensure-department-after-user',
   'strapi::logger',
   'strapi::errors',
   'strapi::security',

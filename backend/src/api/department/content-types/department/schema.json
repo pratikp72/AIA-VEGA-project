@@ -15,21 +15,11 @@
       "type": "string",
       "required": true
     },
-    "active": {
-      "type": "boolean",
-      "required": true,
-      "default": true
-    },
     "company": {
       "type": "relation",
-      "relation": "manyToMany",
-      "target": "api::company.company"
-    },
-    "unit_locations": {
-      "type": "relation",
-      "relation": "manyToMany",
-      "target": "api::unit-location.unit-location",
-      "description": "Office locations under this department"
+      "relation": "manyToOne",
+      "target": "api::company.company",
+      "required": true
     }
   }
 }

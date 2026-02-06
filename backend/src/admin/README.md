@@ -113,6 +113,38 @@ See [Strapi Icons Documentation](https://strapi.io/documentation/developer-docs/
 2. Check browser console for errors
 3. Ensure Content Manager plugin is enabled
 
+## Custom Fields
+
+### Number range (integer / min / max / positive only)
+
+Custom field **`global::number-range`** provides a number input with optional constraints.
+
+**When adding the field in Content-Type Builder:** open **Base settings** (or the field’s settings). You’ll see:
+
+- **Positive only (no negative)** – checkbox (default on)
+- **Integer only (no decimals)** – checkbox (default on)
+- **Minimum value** – text (e.g. `0`); leave empty for no minimum
+- **Maximum value** – text (e.g. `100`); leave empty for no maximum
+
+If you don’t set any options, the field **defaults to positive only** (no negative numbers).
+
+**Optional – set in schema** instead of Builder:
+
+```json
+"my_field": {
+  "type": "customField",
+  "customField": "global::number-range",
+  "pluginOptions": {
+    "customField": {
+      "integerOnly": true,
+      "positiveOnly": true,
+      "min": 0,
+      "max": 100
+    }
+  }
+}
+```
+
 ## Notes
 
 - This plugin does NOT modify Strapi core or node_modules

@@ -1004,7 +1004,8 @@ const AllModulesPage = () => {
               {/* 6. Quiz Management - driven by admin permissions */}
               {(canSee('api::quizze.quizze') ||
                 canSee('api::quiz-submission.quiz-submission') ||
-                canSee('api::user-progress.user-progress')) && (
+                canSee('api::user-progress.user-progress') ||
+                canSee('api::quiz-reattempt-request.quiz-reattempt-request')) && (
                 <Section title="Quiz Management" icon={Question}>
                   {/* NOTE: Real UID is api::quizze.quizze; keeping label as "Quizzes" */}
                   {canSee('api::quizze.quizze') && (
@@ -1023,6 +1024,12 @@ const AllModulesPage = () => {
                     <AdminLink
                       label="User Progress"
                       to="/content-manager/collection-types/api::user-progress.user-progress"
+                    />
+                  )}
+                  {canSee('api::quiz-reattempt-request.quiz-reattempt-request') && (
+                    <AdminLink
+                      label="Quiz Reattempt Requests"
+                      to="/plugins/modules-sidebar/quiz-reattempt-requests"
                     />
                   )}
                 </Section>

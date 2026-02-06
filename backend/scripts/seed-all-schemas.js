@@ -4,8 +4,9 @@
  * Seed data focused on dashboard analytics (filters, charts, date ranges).
  * Re-running with --reset clears analytics data first so entries are not duplicated.
  *
- * Run:  npm run seed:all          (append seed data; re-run = more duplicates)
- *       npm run seed:all:reset    (clear analytics then seed; re-run = same count, no duplicates)
+ * Run:  npm run seed:all     (delete all seeded content, then add fresh data)
+ *       npm run seed:clear   (only remove all seeded data)
+ *       npm run seed:reseed  (only add seed data; does not delete)
  *
  * Analytics dates are spread from 2024-06-01 to 2025-02-04. In dashboard filters use:
  *   Date From: 2024-06-01   Date To: 2025-02-04   to see all data; narrow the range to test filters.
@@ -30,7 +31,8 @@ function isoDateOnly(daysFromStart) {
   return dateInRange(daysFromStart).slice(0, 10);
 }
 
-const RESET_ANALYTICS = process.env.RESET_ANALYTICS === '1' || process.argv.includes('--reset');
+const SEED_CLEAR_ONLY = process.argv.includes('--clear');
+const SEED_ADD_ONLY = process.argv.includes('--add');
 
 // --- Helpers (reuse pattern from seed.js) ---
 function getFileSizeInBytes(filePath) {
@@ -89,6 +91,9 @@ async function createAndPublish(uid, data) {
 // Delete in dependency order (children first) so re-seed does not grow counts (e.g. 90 after 6 runs)
 async function resetSeedData() {
   const uids = [
+    'api::feedback-submission.feedback-submission',
+    'api::feedback-question.feedback-question',
+    'api::quiz-reattempt-request.quiz-reattempt-request',
     'api::module-video-progress.module-video-progress',
     'api::quiz-submission.quiz-submission',
     'api::user-progress.user-progress',
@@ -99,7 +104,6 @@ async function resetSeedData() {
     'api::course.course',
     'api::gallery-item.gallery-item',
     'api::form-template.form-template',
-    'api::route.route',
     'api::townhall.townhall',
     'api::holiday.holiday',
     'api::company-policy.company-policy',
@@ -109,7 +113,6 @@ async function resetSeedData() {
     'api::news-category.news-category',
     'api::unit-location.unit-location',
     'api::department.department',
-    'api::area.area',
     'api::city.city',
     'api::company.company',
   ];
@@ -124,9 +127,17 @@ async function resetSeedData() {
 }
 
 async function run() {
-  if (RESET_ANALYTICS) {
-    console.log('Resetting all seed data (so each run gives same counts, no growth)...');
+  if (SEED_CLEAR_ONLY) {
+    console.log('Removing all seeded data...');
     await resetSeedData();
+    console.log('Done. Run npm run seed:reseed to add data.');
+    return;
+  }
+  if (!SEED_ADD_ONLY) {
+    console.log('Resetting all seeded content (delete then add fresh data)...');
+    await resetSeedData();
+  } else {
+    console.log('Adding seed data (no delete)...');
   }
 
   const totalDays = Math.max(1, Math.floor((ANALYTICS_DATE_END - ANALYTICS_DATE_START) / 86400000));
@@ -187,37 +198,33 @@ async function run() {
   }
   console.log('Cities:', cityIds.length);
 
-  // --- 3. Area (COUNT) ---
-  const areaIds = [];
-  for (let i = 0; i < COUNT; i++) {
-    const doc = await createAndPublish('api::area.area', {
-      name: `Area ${i + 1}`,
-      active: true,
-      city: cityIds[i] ? { connect: [{ documentId: cityIds[i] }] } : undefined,
-      company: connectCompany(i),
-    });
-    if (doc?.documentId) areaIds.push(doc.documentId);
-  }
-  console.log('Areas:', areaIds.length);
-
-  // --- 4. Unit-location (COUNT) ---
+  // --- 3. Unit-location (COUNT) - uses city (no Area API in this project) ---
+  const minimalBusRoute = {
+    route_name: 'Seed Route 1',
+    route_stops: [{ stop_name: 'Stop 1', bus_sifts: [{ sift_name: 'Shift 1', sift_time: '08:00:00' }] }],
+  };
   const unitLocationIds = [];
   for (let i = 0; i < COUNT; i++) {
-    const doc = await createAndPublish('api::unit-location.unit-location', {
-      name: `Location ${i + 1}`,
-      address: `${i + 1} Industrial Area`,
-      contact: `+91 98765${String(i).padStart(5, '0')}`,
-      active: true,
-      is_office_location: i % 2 === 0,
-      is_factory_location: i % 2 === 1,
-      area: areaIds[i] ? { connect: [{ documentId: areaIds[i] }] } : undefined,
-      company: connectCompany(i),
-    });
-    if (doc?.documentId) unitLocationIds.push(doc.documentId);
+    try {
+      const doc = await createAndPublish('api::unit-location.unit-location', {
+        name: `Location ${i + 1}`,
+        address: `${i + 1} Industrial Area`,
+        contact: `+91 98765${String(i).padStart(5, '0')}`,
+        active: true,
+        office_location: i % 2 === 0,
+        factory_location: i % 2 === 1,
+        city: cityIds[i] ? { connect: [{ documentId: cityIds[i] }] } : undefined,
+        company: connectCompany(i),
+        bus_routes: [minimalBusRoute],
+      });
+      if (doc?.documentId) unitLocationIds.push(doc.documentId);
+    } catch (e) {
+      console.warn('Unit-location create failed:', e?.message);
+    }
   }
   console.log('Unit locations:', unitLocationIds.length);
 
-  // --- 5. Department (COUNT) ---
+  // --- 4. Department (COUNT) ---
   const departmentIds = [];
   const departmentNumericIds = [];
   for (let i = 0; i < COUNT; i++) {
@@ -409,6 +416,7 @@ async function run() {
         active: true,
         passing_score: 60,
         course_category: ['Mandatory', 'Orientation', 'Other'][i % 3],
+        course_flow_type: ['course_test_feedback', 'course_test', 'course_feedback', 'course_only'][i % 4],
         modules: [minimalModule],
         company: connectCompany(i),
       });
@@ -418,6 +426,33 @@ async function run() {
     }
   }
   console.log('Courses:', courseIds.length);
+
+  // --- 14b. Feedback-question (COUNT) - analytics-centric: one per course, variety of answer types ---
+  const feedbackQuestionIds = [];
+  const answerTypes = ['Rating', 'Text', 'AgreeOrDisagree', 'YesNo'];
+  const minimalFeedbackQuestion = {
+    question_id: 'q1',
+    qestion: 'How would you rate this course?',
+    answer_type: 'Rating',
+    mandatory: true,
+  };
+  for (let i = 0; i < COUNT; i++) {
+    const courseId = courseIds[i] || courseIds[0];
+    if (!courseId) continue;
+    try {
+      const doc = await createAndPublish('api::feedback-question.feedback-question', {
+        course: { connect: [{ documentId: courseId }] },
+        questions: [
+          { ...minimalFeedbackQuestion, question_id: `q${i}-1`, qestion: `Feedback Q1 (Course ${i + 1})`, answer_type: answerTypes[i % 4] },
+          { question_id: `q${i}-2`, qestion: `Any additional comments?`, answer_type: 'Text', mandatory: false },
+        ],
+      });
+      if (doc?.documentId) feedbackQuestionIds.push(doc.documentId);
+    } catch (e) {
+      console.warn('Feedback-question create failed:', e?.message);
+    }
+  }
+  console.log('Feedback questions:', feedbackQuestionIds.length);
 
   // --- 15. Quizze (COUNT) - requires course, questions (component) ---
   const minimalQuestion = {
@@ -448,26 +483,57 @@ async function run() {
   }
   console.log('Quizzes:', quizzeIds.length);
 
-  // --- 16. Route (COUNT) - requires bus_stops component ---
-  const minimalBusStop = { bus_stop_name: `Stop ${1}` };
-  for (let i = 0; i < COUNT; i++) {
-    try {
-      await createAndPublish('api::route.route', {
-        route_name: `Route ${i + 1}`,
-        bus_number: `B${i + 1}`,
-        bus_stops: [minimalBusStop],
-        unit_location: unitLocationIds[i] ? { connect: [{ documentId: unitLocationIds[i] }] } : undefined,
-        area: areaIds[i] ? { connect: [{ documentId: areaIds[i] }] } : undefined,
-        company: connectCompany(i),
-        active: true,
-      });
-    } catch (e) {
-      console.warn('Route create failed:', e?.message);
+  // --- 15b. Feedback-submission (analytics-centric: multiple per user/course, spread for reporting) ---
+  let feedbackSubmissionCount = 0;
+  const answerTypesSubmission = ['Rating', 'Text', 'AgreeOrDisagree', 'YesOrNo'];
+  for (let uIdx = 0; uIdx < userIds.length; uIdx++) {
+    for (let fIdx = 0; fIdx < Math.min(feedbackQuestionIds.length, 10); fIdx++) {
+      const courseId = courseIds[fIdx] || courseIds[0];
+      const fqId = feedbackQuestionIds[fIdx] || feedbackQuestionIds[0];
+      if (!courseId || !fqId || userIds.length === 0) continue;
+      try {
+        await createAndPublish('api::feedback-submission.feedback-submission', {
+          course: { connect: [{ documentId: courseId }] },
+          feedback_question: { connect: [{ documentId: fqId }] },
+          users_permissions_user: connectUser(uIdx),
+          answers: [
+            { question_id: `q${fIdx}-1`, question: `Feedback Q1`, answer_type: answerTypesSubmission[(uIdx + fIdx) % 4], answer: (uIdx + fIdx) % 5 <= 2 ? '4' : 'Good' },
+            { question_id: `q${fIdx}-2`, question: `Comments`, answer_type: 'Text', answer: `Analytics seed feedback from user ${uIdx + 1} for course ${fIdx + 1}.` },
+          ],
+        });
+        feedbackSubmissionCount++;
+      } catch (e) {
+        console.warn('Feedback-submission create failed:', e?.message);
+      }
     }
   }
-  console.log('Routes:', COUNT);
+  console.log('Feedback submissions (analytics):', feedbackSubmissionCount);
 
-  // --- 17. Gallery-item (COUNT) - media_type Image + image required ---
+  // --- 15c. Quiz-reattempt-request (analytics-centric: Pending/Approved/Rejected spread, per user/quiz) ---
+  const requestStatuses = ['Pending', 'Approved', 'Rejected'];
+  let quizReattemptCount = 0;
+  for (let uIdx = 0; uIdx < userIds.length; uIdx++) {
+    for (let qIdx = 0; qIdx < Math.min(quizzeIds.length, 8); qIdx++) {
+      const quizId = quizzeIds[qIdx] || quizzeIds[0];
+      const courseId = courseIds[qIdx] || courseIds[0];
+      if (!quizId || !courseId || userIds.length === 0) continue;
+      try {
+        await createAndPublish('api::quiz-reattempt-request.quiz-reattempt-request', {
+          quiz: { connect: [{ documentId: quizId }] },
+          course: { connect: [{ documentId: courseId }] },
+          users_permissions_user: connectUser(uIdx),
+          request_status: requestStatuses[(uIdx + qIdx) % 3],
+          requested_for_attempt: (qIdx % 3) + 1,
+        });
+        quizReattemptCount++;
+      } catch (e) {
+        console.warn('Quiz-reattempt-request create failed:', e?.message);
+      }
+    }
+  }
+  console.log('Quiz reattempt requests (analytics):', quizReattemptCount);
+
+  // --- 16. Gallery-item (COUNT) - media_type Image + image required ---
   for (let i = 0; i < COUNT; i++) {
     const entry = {
       title: `Gallery ${i + 1}`,

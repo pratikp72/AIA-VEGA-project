@@ -48,6 +48,18 @@
     "company_type": {
       "type": "string",
       "required": true
+    },
+    "holidays": {
+      "type": "relation",
+      "relation": "manyToMany",
+      "target": "api::holiday.holiday",
+      "inversedBy": "companies"
+    },
+    "course_assignments": {
+      "type": "relation",
+      "relation": "manyToMany",
+      "target": "api::course-assignment.course-assignment",
+      "inversedBy": "companies"
     }
   }
 }

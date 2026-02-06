@@ -29,18 +29,10 @@
         "audios"
       ]
     },
-    "duration_hours": {
-      "type": "integer",
-      "required": true
-    },
     "active": {
       "type": "boolean",
       "required": true,
       "default": true
-    },
-    "passing_score": {
-      "type": "integer",
-      "required": true
     },
     "prerequisite_courses": {
       "type": "relation",
@@ -68,15 +60,31 @@
       "repeatable": true,
       "required": true
     },
-    "course_flow_type": {
-      "type": "enumeration",
-      "required": true,
-      "enum": [
-        "course_test_feedback",
-        "course_test",
-        "course_feedback",
-        "course_only"
-      ]
+    "quiz": {
+      "type": "component",
+      "component": "quiz.quiz",
+      "repeatable": true
+    },
+    "feedback_question": {
+      "type": "component",
+      "component": "feedback-form.question",
+      "repeatable": true
+    },
+    "course_duration_min": {
+      "type": "customField",
+      "customField": "global::number-range",
+      "options": {
+        "positiveOnly": true,
+        "required": true
+      }
+    },
+    "min_passing_score": {
+      "type": "customField",
+      "customField": "global::number-range",
+      "options": {
+        "positiveOnly": true,
+        "required": true
+      }
     }
   }
 }
