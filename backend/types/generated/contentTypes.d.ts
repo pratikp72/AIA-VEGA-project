@@ -673,6 +673,14 @@ export interface ApiCourseCourse extends Struct.CollectionTypeSchema {
           required: true;
         }
       >;
+    course_language: Schema.Attribute.JSON &
+      Schema.Attribute.CustomField<
+        'global::multi-select-dropdown',
+        {
+          optionsList: 'English\nHindi\nGujarati';
+          required: true;
+        }
+      >;
     createdAt: Schema.Attribute.DateTime;
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
@@ -1214,7 +1222,8 @@ export interface ApiQuizSubmissionQuizSubmission
     draftAndPublish: true;
   };
   attributes: {
-    answers: Schema.Attribute.JSON & Schema.Attribute.Required;
+    answers: Schema.Attribute.Component<'quiz.answer', true> &
+      Schema.Attribute.Required;
     attempt_number: Schema.Attribute.Integer & Schema.Attribute.Required;
     course: Schema.Attribute.Relation<'manyToOne', 'api::course.course'>;
     createdAt: Schema.Attribute.DateTime;

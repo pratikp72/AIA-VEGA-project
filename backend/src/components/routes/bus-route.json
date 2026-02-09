@@ -5,6 +5,11 @@
   },
   "options": {},
   "attributes": {
+    "route_id": {
+      "type": "string",
+      "required": true,
+      "unique": true
+    },
     "route_name": {
       "type": "string",
       "required": true

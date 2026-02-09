@@ -5,12 +5,22 @@
   },
   "options": {},
   "attributes": {
+    "module_id": {
+      "type": "string",
+      "required": true,
+      "unique": true
+    },
+    "language": {
+      "type": "enumeration",
+      "required": true,
+      "enum": [
+        "English",
+        "Hindi",
+        "Gujarati"
+      ]
+    },
     "title": {
       "type": "string",
-      "required": true
-    },
-    "order": {
-      "type": "integer",
       "required": true
     },
     "module_content_type": {

@@ -85,6 +85,14 @@
         "positiveOnly": true,
         "required": true
       }
+    },
+    "course_language": {
+      "type": "customField",
+      "customField": "global::multi-select-dropdown",
+      "options": {
+        "required": true,
+        "optionsList": "English\nHindi\nGujarati"
+      }
     }
   }
 }

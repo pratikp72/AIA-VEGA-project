@@ -20,6 +20,9 @@
  * - Role-based visibility is handled through permissions and menu hooks
  */
 
+import CourseLanguageSyncOnSelect from './components/CourseLanguageSyncOnSelect';
+import AutoFillComponentIds from './components/AutoFillComponentIds';
+
 export default {
   /**
    * Register function - runs when the admin panel initializes
@@ -42,6 +45,47 @@ export default {
       },
       components: {
         Input: async () => import('./components/DateFutureOnlyInput').then((m) => ({ default: m.default })),
+      },
+    });
+
+    // Custom field: multi-select dropdown with configurable options and required
+    app.customFields.register({
+      name: 'multi-select-dropdown',
+      type: 'json',
+      intlLabel: {
+        id: 'app.custom-fields.multi-select-dropdown.label',
+        defaultMessage: 'Multi-select dropdown',
+      },
+      intlDescription: {
+        id: 'app.custom-fields.multi-select-dropdown.description',
+        defaultMessage: 'Select multiple options. Configure options in Base settings when adding the field.',
+      },
+      components: {
+        Input: async () => import('./components/MultiSelectDropdownInput').then((m) => ({ default: m.default })),
+      },
+      options: {
+        base: [
+          {
+            sectionTitle: {
+              id: 'app.custom-fields.multi-select-dropdown.section',
+              defaultMessage: 'Dropdown options',
+            },
+            items: [
+              {
+                intlLabel: { id: 'app.custom-fields.multi-select-dropdown.required', defaultMessage: 'Required' },
+                name: 'options.required',
+                type: 'checkbox',
+                description: 'At least one option must be selected.',
+              },
+              {
+                intlLabel: { id: 'app.custom-fields.multi-select-dropdown.optionsList', defaultMessage: 'Dropdown options' },
+                name: 'options.optionsList',
+                type: 'textarea',
+                description: 'One option per line. Use "label:value" to show a different label (e.g. "Display Name:dn").',
+              },
+            ],
+          },
+        ],
       },
     });
 
@@ -103,6 +147,20 @@ export default {
         ],
       },
     });
+
+    // When Course language selection changes, sync modules/quiz/feedback_question in the form (on select, not on save)
+    const contentManager = app.getPlugin('content-manager');
+    if (contentManager && typeof contentManager.injectComponent === 'function') {
+      contentManager.injectComponent('editView', 'right-links', {
+        name: 'CourseLanguageSyncOnSelect',
+        Component: CourseLanguageSyncOnSelect,
+      });
+      // Fill component id fields (module_id, quiz_id, question_id, route_id, bus_stop_id) before save
+      contentManager.injectComponent('editView', 'right-links', {
+        name: 'AutoFillComponentIds',
+        Component: AutoFillComponentIds,
+      });
+    }
 
     /**
      * Add "All Modules" as the parent menu section

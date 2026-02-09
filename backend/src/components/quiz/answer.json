@@ -1,0 +1,33 @@
+{
+  "collectionName": "components_quiz_answers",
+  "info": {
+    "displayName": "Answer"
+  },
+  "options": {},
+  "attributes": {
+    "question_id": {
+      "type": "string",
+      "required": true
+    },
+    "question": {
+      "type": "string",
+      "required": true
+    },
+    "question_type": {
+      "type": "enumeration",
+      "required": true,
+      "enum": ["Multiple_choice", "Multiple_select"]
+    },
+    "answer": {
+      "type": "string",
+      "required": true
+    },
+    "point": {
+      "type": "integer"
+    },
+    "correct": {
+      "type": "boolean"
+    }
+  },
+  "config": {}
+}

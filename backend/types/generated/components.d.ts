@@ -6,6 +6,8 @@ export interface CourseModule extends Struct.ComponentSchema {
     displayName: 'Module';
   };
   attributes: {
+    language: Schema.Attribute.Enumeration<['English', 'Hindi', 'Gujarati']> &
+      Schema.Attribute.Required;
     mark_as_read: Schema.Attribute.Boolean &
       Schema.Attribute.Required &
       Schema.Attribute.DefaultTo<false>;
@@ -21,7 +23,9 @@ export interface CourseModule extends Struct.ComponentSchema {
           required: true;
         }
       >;
-    order: Schema.Attribute.Integer & Schema.Attribute.Required;
+    module_id: Schema.Attribute.String &
+      Schema.Attribute.Required &
+      Schema.Attribute.Unique;
     pdf_file: Schema.Attribute.Media<'files', true> & Schema.Attribute.Required;
     text_content: Schema.Attribute.Blocks;
     title: Schema.Attribute.String & Schema.Attribute.Required;
@@ -58,6 +62,8 @@ export interface FeedbackFormQuestion extends Struct.ComponentSchema {
       ['Rating', 'Text', 'AgreeOrDisagree', 'YesNo']
     > &
       Schema.Attribute.Required;
+    language: Schema.Attribute.Enumeration<['English', 'Hindi', 'Gujarati']> &
+      Schema.Attribute.Required;
     mandatory: Schema.Attribute.Boolean &
       Schema.Attribute.Required &
       Schema.Attribute.DefaultTo<true>;
@@ -65,6 +71,24 @@ export interface FeedbackFormQuestion extends Struct.ComponentSchema {
     question_id: Schema.Attribute.String &
       Schema.Attribute.Required &
       Schema.Attribute.Unique;
+  };
+}
+
+export interface QuizAnswer extends Struct.ComponentSchema {
+  collectionName: 'components_quiz_answers';
+  info: {
+    displayName: 'Answer';
+  };
+  attributes: {
+    answer: Schema.Attribute.String & Schema.Attribute.Required;
+    correct: Schema.Attribute.Boolean;
+    point: Schema.Attribute.Integer;
+    question: Schema.Attribute.String & Schema.Attribute.Required;
+    question_id: Schema.Attribute.String & Schema.Attribute.Required;
+    question_type: Schema.Attribute.Enumeration<
+      ['Multiple_choice', 'Multiple_select']
+    > &
+      Schema.Attribute.Required;
   };
 }
 
@@ -105,6 +129,7 @@ export interface QuizQuestion extends Struct.ComponentSchema {
           positiveOnly: true;
         }
       >;
+    question_id: Schema.Attribute.String & Schema.Attribute.Required;
     question_text: Schema.Attribute.Text & Schema.Attribute.Required;
     question_type: Schema.Attribute.Enumeration<
       ['Multiple_choice', 'Multiple_select']
@@ -121,8 +146,13 @@ export interface QuizQuiz extends Struct.ComponentSchema {
   attributes: {
     completion_time: Schema.Attribute.Integer &
       Schema.Attribute.CustomField<'global::number-range'>;
+    language: Schema.Attribute.Enumeration<['English', 'Hindi', 'Gujarati']> &
+      Schema.Attribute.Required;
     max_attempt: Schema.Attribute.Integer &
       Schema.Attribute.CustomField<'global::number-range'>;
+    quiz_id: Schema.Attribute.String &
+      Schema.Attribute.Required &
+      Schema.Attribute.Unique;
     quiz_instruction: Schema.Attribute.Component<
       'quiz.quiz-instruction',
       true
@@ -156,6 +186,9 @@ export interface RoutesBusRoute extends Struct.ComponentSchema {
     displayName: 'Bus route';
   };
   attributes: {
+    route_id: Schema.Attribute.String &
+      Schema.Attribute.Required &
+      Schema.Attribute.Unique;
     route_name: Schema.Attribute.String & Schema.Attribute.Required;
     route_stops: Schema.Attribute.Component<'routes.bus-stop', true>;
   };
@@ -169,6 +202,9 @@ export interface RoutesBusStop extends Struct.ComponentSchema {
   attributes: {
     bus_sifts: Schema.Attribute.Component<'routes.sift', true> &
       Schema.Attribute.Required;
+    bus_stop_id: Schema.Attribute.String &
+      Schema.Attribute.Required &
+      Schema.Attribute.Unique;
     stop_name: Schema.Attribute.String & Schema.Attribute.Required;
   };
 }
@@ -190,6 +226,7 @@ declare module '@strapi/strapi' {
       'course.module': CourseModule;
       'feedback-form.answer': FeedbackFormAnswer;
       'feedback-form.question': FeedbackFormQuestion;
+      'quiz.answer': QuizAnswer;
       'quiz.checklist': QuizChecklist;
       'quiz.options': QuizOptions;
       'quiz.question': QuizQuestion;

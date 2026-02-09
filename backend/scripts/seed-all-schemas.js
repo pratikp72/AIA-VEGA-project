@@ -628,13 +628,17 @@ async function run() {
       const passed = score >= 60;
       const dayOffset = (uIdx * 7 + qIdx * 5) % Math.max(1, totalDays);
       try {
+        const courseId = courseIds[qIdx] || courseIds[0];
         await createAndPublish('api::quiz-submission.quiz-submission', {
-          answers: {},
+          answers: [
+            { question_id: `q${qIdx}-1`, question: 'Sample question 1', question_type: 'Multiple_choice', answer: 'A', point: score > 70 ? 1 : 0, correct: score > 70 },
+            { question_id: `q${qIdx}-2`, question: 'Sample question 2', question_type: 'Multiple_select', answer: 'A,B', point: score > 70 ? 1 : 0, correct: score > 70 },
+          ],
           score,
           passed,
           attempt_number: (qIdx % 3) + 1,
           submitted_by: connectUser(uIdx),
-          quiz: { connect: [{ documentId: quizId }] },
+          course: courseId ? { connect: [{ documentId: courseId }] } : undefined,
           submitted_at: dateInRange(dayOffset),
         });
         quizSubmissionCount++;

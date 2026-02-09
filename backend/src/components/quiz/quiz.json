@@ -5,6 +5,20 @@
   },
   "options": {},
   "attributes": {
+    "quiz_id": {
+      "type": "string",
+      "required": true,
+      "unique": true
+    },
+    "language": {
+      "type": "enumeration",
+      "required": true,
+      "enum": [
+        "English",
+        "Hindi",
+        "Gujarati"
+      ]
+    },
     "title": {
       "type": "string",
       "required": true

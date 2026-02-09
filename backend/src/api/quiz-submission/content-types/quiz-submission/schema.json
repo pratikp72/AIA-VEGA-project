@@ -12,7 +12,9 @@
   "pluginOptions": {},
   "attributes": {
     "answers": {
-      "type": "json",
+      "type": "component",
+      "component": "quiz.answer",
+      "repeatable": true,
       "required": true
     },
     "score": {
