@@ -413,6 +413,24 @@ module.exports = ({ strapi }) => ({
       return { ...p, course: fullCourse || p.course };
     });
 
+    // Deduplicate by course: one row per course in "My Course" table (prefer Completed, then most recent last_accessed_at)
+    const courseKey = (p) => (p.course?.documentId ?? p.course?.document_id ?? p.course?.id ?? p.course_id ?? p.courseId ?? p.course ?? '').toString();
+    const statusOrder = { Completed: 0, In_progress: 1, Failed: 2, Not_started: 3 };
+    const byCourse = new Map();
+    progresses.forEach((p) => {
+      const key = courseKey(p);
+      if (!key) return;
+      const existing = byCourse.get(key);
+      const pStatus = statusOrder[p.progress_status] ?? 4;
+      const existingStatus = existing ? (statusOrder[existing.progress_status] ?? 4) : 4;
+      const pAt = p.last_accessed_at ? new Date(p.last_accessed_at).getTime() : 0;
+      const existingAt = existing && existing.last_accessed_at ? new Date(existing.last_accessed_at).getTime() : 0;
+      if (!existing || pStatus < existingStatus || (pStatus === existingStatus && pAt >= existingAt)) {
+        byCourse.set(key, p);
+      }
+    });
+    const progressesDedup = Array.from(byCourse.values());
+
     const statusCounts = { Not_started: 0, In_progress: 0, Completed: 0, Failed: 0 };
     let totalTimeSpent = 0;
     const courseProgress = [];
@@ -420,7 +438,7 @@ module.exports = ({ strapi }) => ({
     const categoryCounts = {};
     const departmentCounts = {};
 
-    progresses.forEach((p) => {
+    progressesDedup.forEach((p) => {
       statusCounts[p.progress_status] = (statusCounts[p.progress_status] || 0) + 1;
       totalTimeSpent += p.time_spent_minutes || 0;
 
@@ -428,7 +446,7 @@ module.exports = ({ strapi }) => ({
       const catNamePersonal = p.course?.course_category ?? p.course?.courseCategory ?? 'Other';
       categoryCounts[catNamePersonal] = (categoryCounts[catNamePersonal] || 0) + 1;
 
-      const courseId = p.course?.id ?? p.course_id ?? p.courseId ?? p.course?.documentId;
+      const courseId = p.course?.documentId ?? p.course?.document_id ?? p.course?.id ?? p.course_id ?? p.courseId;
       courseProgress.push({
         courseId: courseId != null ? String(courseId) : null,
         courseTitle: p.course?.title ?? 'Unknown',
@@ -446,7 +464,7 @@ module.exports = ({ strapi }) => ({
       }
     });
 
-    if (progresses.length > 0) {
+    if (progressesDedup.length > 0) {
       const userWhere = isDocumentId ? { documentId: userId } : { id: userId };
       let u = null;
       try {
@@ -458,10 +476,10 @@ module.exports = ({ strapi }) => ({
         strapi.log.warn('Learning personal: user lookup failed:', e?.message);
       }
       const deptName = u?.department?.name || 'Unassigned';
-      departmentCounts[deptName] = progresses.length;
+      departmentCounts[deptName] = progressesDedup.length;
     }
 
-    const total = progresses.length;
+    const total = progressesDedup.length;
     const completed = statusCounts.Completed;
     const completionRate = total > 0 ? Math.round((completed / total) * 100) : 0;
     const avgTimeSpent = total > 0 ? Math.round(totalTimeSpent / total) : 0;
@@ -471,7 +489,7 @@ module.exports = ({ strapi }) => ({
         totalCourses: total,
         completionRate,
         avgTimeSpentMinutes: avgTimeSpent,
-        certificatesEarned: progresses.filter((p) => p.certificate_issued).length,
+        certificatesEarned: progressesDedup.filter((p) => p.certificate_issued).length,
       },
       statusDistribution: Object.entries(statusCounts).map(([name, value]) => ({ name, value })),
       categoryDistribution: Object.entries(categoryCounts).map(([name, value]) => ({ name, value })),
@@ -617,7 +635,7 @@ module.exports = ({ strapi }) => ({
       const type = r.video_completion_type ?? r.videoCompletionType ?? 'not_started';
       const kpiKey = typeToKpi[type];
       if (kpiKey) kpis[kpiKey] += 1;
-      const courseId = r.course?.id ?? r.course_id ?? r.courseId ?? r.course?.documentId;
+      const courseId = r.course?.documentId ?? r.course?.document_id ?? r.course?.id ?? r.course_id ?? r.courseId;
       const courseTitle = r.course?.title ?? 'Unknown';
       const moduleTitle = r.module_title ?? r.moduleTitle ?? (r.module_index != null ? `Module ${(r.module_index ?? r.moduleIndex) + 1}` : 'Unknown');
       const timeWat = r.time_watched_seconds != null ? r.time_watched_seconds : (r.timeWatchedSeconds ?? 0);
