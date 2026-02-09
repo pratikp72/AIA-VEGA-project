@@ -90,9 +90,9 @@ async function createAndPublish(uid, data) {
 
 // Delete in dependency order (children first) so re-seed does not grow counts (e.g. 90 after 6 runs)
 async function resetSeedData() {
+  // Do not delete department – seed does not create department entries (analytics focus)
   const uids = [
     'api::feedback-submission.feedback-submission',
-    'api::feedback-question.feedback-question',
     'api::quiz-reattempt-request.quiz-reattempt-request',
     'api::module-video-progress.module-video-progress',
     'api::quiz-submission.quiz-submission',
@@ -100,7 +100,6 @@ async function resetSeedData() {
     'api::activity-log.activity-log',
     'api::notification.notification',
     'api::course-assignment.course-assignment',
-    'api::quizze.quizze',
     'api::course.course',
     'api::gallery-item.gallery-item',
     'api::form-template.form-template',
@@ -112,7 +111,6 @@ async function resetSeedData() {
     'api::news.news',
     'api::news-category.news-category',
     'api::unit-location.unit-location',
-    'api::department.department',
     'api::city.city',
     'api::company.company',
   ];
@@ -198,7 +196,7 @@ async function run() {
   }
   console.log('Cities:', cityIds.length);
 
-  // --- 3. Unit-location (COUNT) - uses city (no Area API in this project) ---
+  // --- 3. Unit-location (COUNT) - uses city; route_id/bus_stop_id auto-generated on save ---
   const minimalBusRoute = {
     route_name: 'Seed Route 1',
     route_stops: [{ stop_name: 'Stop 1', bus_sifts: [{ sift_name: 'Shift 1', sift_time: '08:00:00' }] }],
@@ -224,47 +222,9 @@ async function run() {
   }
   console.log('Unit locations:', unitLocationIds.length);
 
-  // --- 4. Department (COUNT) ---
-  const departmentIds = [];
-  const departmentNumericIds = [];
-  for (let i = 0; i < COUNT; i++) {
-    const doc = await createAndPublish('api::department.department', {
-      name: `Department ${i + 1}`,
-      active: true,
-      company: connectCompany(i),
-      unit_locations: unitLocationIds[i]
-        ? { connect: [{ documentId: unitLocationIds[i] }] }
-        : undefined,
-    });
-    if (doc?.documentId) departmentIds.push(doc.documentId);
-    if (doc?.id != null) departmentNumericIds.push(doc.id);
-  }
-  console.log('Departments:', departmentIds.length);
+  // --- 4. Department: not created (analytics focus; do not create department entries) ---
 
-  // Assign company (AIA/Vega) and department per user so dashboard filters/charts show variety
-  const companiesForFilter = ['AIA', 'Vega'];
-  if (userIds.length > 0 && departmentNumericIds.length > 0) {
-    for (let i = 0; i < users.length; i++) {
-      const u = users[i];
-      if (u.id == null) continue;
-      const deptIdx = i % departmentNumericIds.length;
-      const companyName = companiesForFilter[i % companiesForFilter.length];
-      try {
-        await strapi.db.query('plugin::users-permissions.user').update({
-          where: { id: u.id },
-          data: {
-            department: departmentNumericIds[deptIdx],
-            company: companyName,
-          },
-        });
-      } catch (e) {
-        console.warn('User company/department update failed:', e?.message);
-      }
-    }
-    console.log('Users assigned to company (AIA/Vega) and departments for analytics filters.');
-  }
-
-  // --- 6. News-category (COUNT) ---
+  // --- 5. News-category (COUNT) ---
   const newsCategoryIds = [];
   for (let i = 0; i < COUNT; i++) {
     const doc = await createAndPublish('api::news-category.news-category', {
@@ -276,7 +236,8 @@ async function run() {
   }
   console.log('News categories:', newsCategoryIds.length);
 
-  // --- 7. News (COUNT) - requires cover_image ---
+  // --- 7. News (COUNT) - description richtext, cover_image required, publish_date future ---
+  const futureDate = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
   for (let i = 0; i < COUNT; i++) {
     const entry = {
       title: `News Title ${i + 1}`,
@@ -287,7 +248,7 @@ async function run() {
         ? { connect: [{ documentId: newsCategoryIds[i] }] }
         : undefined,
       company: connectCompany(i),
-      publish_date: new Date(Date.now() + 86400000).toISOString().slice(0, 10),
+      publish_date: futureDate,
     };
     if (imageId) entry.cover_image = { connect: [{ id: imageId }] };
     try {
@@ -325,7 +286,7 @@ async function run() {
       date: d.toISOString().slice(0, 10),
       active: true,
       holiday_for: 'All',
-      company: connectCompany(i),
+      companies: connectCompany(i),
     });
   }
   console.log('Holidays:', COUNT);
@@ -398,26 +359,49 @@ async function run() {
   }
   console.log('Townhalls:', COUNT);
 
-  // --- 14. Course (COUNT) - requires modules (component), description (blocks) ---
+  // --- 14. Course (COUNT) - current schema: modules, quiz, feedback_question components; course_duration_min, min_passing_score, course_language ---
   const courseIds = [];
   const minimalModule = {
+    language: 'English',
     title: 'Module 1',
-    order: 1,
     module_content_type: 'Text',
-    duration_minutes: 10,
     mark_as_read: false,
+    module_duration_min: 10,
+    text_content: [{ type: 'paragraph', children: [{ type: 'text', text: 'Seed content.' }] }],
+  };
+  const minimalQuizQuestion = {
+    question_text: 'Sample question?',
+    question_type: 'Multiple_choice',
+    order: 1,
+    point: 1,
+    options: [{ option_key: 'A', option_label: 'Option A' }, { option_key: 'B', option_label: 'Option B' }],
+  };
+  const minimalQuiz = {
+    language: 'English',
+    title: 'Quiz 1',
+    quiz_questions: [minimalQuizQuestion],
+    quiz_instruction: [{ name: 'Instructions', description: 'Answer the question.' }],
+    quiz_instruction_checklist: [{ discription: 'Complete the quiz.' }],
+  };
+  const minimalFeedbackQuestion = {
+    language: 'English',
+    qestion: 'How would you rate this course?',
+    answer_type: 'Rating',
+    mandatory: true,
   };
   for (let i = 0; i < COUNT; i++) {
     try {
       const doc = await createAndPublish('api::course.course', {
         title: `Course ${i + 1}`,
         description: [{ type: 'paragraph', children: [{ type: 'text', text: `Course description ${i + 1}.` }] }],
-        duration_hours: (i % 5) + 1,
         active: true,
-        passing_score: 60,
         course_category: ['Mandatory', 'Orientation', 'Other'][i % 3],
-        course_flow_type: ['course_test_feedback', 'course_test', 'course_feedback', 'course_only'][i % 4],
-        modules: [minimalModule],
+        course_duration_min: 30 + (i % 5) * 10,
+        min_passing_score: 60,
+        course_language: ['English', 'Hindi', 'Gujarati'].slice(0, (i % 3) + 1),
+        modules: [{ ...minimalModule, title: `Course ${i + 1} - Module 1` }],
+        quiz: [minimalQuiz],
+        feedback_question: [minimalFeedbackQuestion],
         company: connectCompany(i),
       });
       if (doc?.documentId) courseIds.push(doc.documentId);
@@ -427,78 +411,20 @@ async function run() {
   }
   console.log('Courses:', courseIds.length);
 
-  // --- 14b. Feedback-question (COUNT) - analytics-centric: one per course, variety of answer types ---
-  const feedbackQuestionIds = [];
-  const answerTypes = ['Rating', 'Text', 'AgreeOrDisagree', 'YesNo'];
-  const minimalFeedbackQuestion = {
-    question_id: 'q1',
-    qestion: 'How would you rate this course?',
-    answer_type: 'Rating',
-    mandatory: true,
-  };
-  for (let i = 0; i < COUNT; i++) {
-    const courseId = courseIds[i] || courseIds[0];
-    if (!courseId) continue;
-    try {
-      const doc = await createAndPublish('api::feedback-question.feedback-question', {
-        course: { connect: [{ documentId: courseId }] },
-        questions: [
-          { ...minimalFeedbackQuestion, question_id: `q${i}-1`, qestion: `Feedback Q1 (Course ${i + 1})`, answer_type: answerTypes[i % 4] },
-          { question_id: `q${i}-2`, qestion: `Any additional comments?`, answer_type: 'Text', mandatory: false },
-        ],
-      });
-      if (doc?.documentId) feedbackQuestionIds.push(doc.documentId);
-    } catch (e) {
-      console.warn('Feedback-question create failed:', e?.message);
-    }
-  }
-  console.log('Feedback questions:', feedbackQuestionIds.length);
-
-  // --- 15. Quizze (COUNT) - requires course, questions (component) ---
-  const minimalQuestion = {
-    question_text: `Sample question ${1}`,
-    question_type: 'Multiple_choice',
-    order: 1,
-    points: 1,
-    options: [{ option_key: 'A', option_label: 'Option A' }],
-  };
-  const quizzeIds = [];
-  for (let i = 0; i < COUNT; i++) {
-    const courseId = courseIds[i] || courseIds[0];
-    if (!courseId) continue;
-    try {
-      const doc = await createAndPublish('api::quizze.quizze', {
-        title: `Quiz ${i + 1}`,
-        max_attempts: 3,
-        active: true,
-        completion_time: 15,
-        reattempts: 'One',
-        course: { connect: [{ documentId: courseId }] },
-        questions: [minimalQuestion],
-      });
-      if (doc?.documentId) quizzeIds.push(doc.documentId);
-    } catch (e) {
-      console.warn('Quizze create failed:', e?.message);
-    }
-  }
-  console.log('Quizzes:', quizzeIds.length);
-
-  // --- 15b. Feedback-submission (analytics-centric: multiple per user/course, spread for reporting) ---
+  // --- 14b. Feedback-submission (analytics: course + user + answers only; no feedback_question relation) ---
   let feedbackSubmissionCount = 0;
   const answerTypesSubmission = ['Rating', 'Text', 'AgreeOrDisagree', 'YesOrNo'];
   for (let uIdx = 0; uIdx < userIds.length; uIdx++) {
-    for (let fIdx = 0; fIdx < Math.min(feedbackQuestionIds.length, 10); fIdx++) {
+    for (let fIdx = 0; fIdx < Math.min(courseIds.length, 10); fIdx++) {
       const courseId = courseIds[fIdx] || courseIds[0];
-      const fqId = feedbackQuestionIds[fIdx] || feedbackQuestionIds[0];
-      if (!courseId || !fqId || userIds.length === 0) continue;
+      if (!courseId || userIds.length === 0) continue;
       try {
         await createAndPublish('api::feedback-submission.feedback-submission', {
           course: { connect: [{ documentId: courseId }] },
-          feedback_question: { connect: [{ documentId: fqId }] },
           users_permissions_user: connectUser(uIdx),
           answers: [
-            { question_id: `q${fIdx}-1`, question: `Feedback Q1`, answer_type: answerTypesSubmission[(uIdx + fIdx) % 4], answer: (uIdx + fIdx) % 5 <= 2 ? '4' : 'Good' },
-            { question_id: `q${fIdx}-2`, question: `Comments`, answer_type: 'Text', answer: `Analytics seed feedback from user ${uIdx + 1} for course ${fIdx + 1}.` },
+            { question_id: `fb-1`, question: 'How would you rate?', answer_type: answerTypesSubmission[(uIdx + fIdx) % 4], answer: (uIdx + fIdx) % 5 <= 2 ? '4' : 'Good' },
+            { question_id: `fb-2`, question: 'Comments', answer_type: 'Text', answer: `Analytics feedback user ${uIdx + 1} course ${fIdx + 1}.` },
           ],
         });
         feedbackSubmissionCount++;
@@ -509,21 +435,19 @@ async function run() {
   }
   console.log('Feedback submissions (analytics):', feedbackSubmissionCount);
 
-  // --- 15c. Quiz-reattempt-request (analytics-centric: Pending/Approved/Rejected spread, per user/quiz) ---
+  // --- 14c. Quiz-reattempt-request (analytics: course + user only; no quiz relation) ---
   const requestStatuses = ['Pending', 'Approved', 'Rejected'];
   let quizReattemptCount = 0;
   for (let uIdx = 0; uIdx < userIds.length; uIdx++) {
-    for (let qIdx = 0; qIdx < Math.min(quizzeIds.length, 8); qIdx++) {
-      const quizId = quizzeIds[qIdx] || quizzeIds[0];
-      const courseId = courseIds[qIdx] || courseIds[0];
-      if (!quizId || !courseId || userIds.length === 0) continue;
+    for (let cIdx = 0; cIdx < Math.min(courseIds.length, 8); cIdx++) {
+      const courseId = courseIds[cIdx] || courseIds[0];
+      if (!courseId || userIds.length === 0) continue;
       try {
         await createAndPublish('api::quiz-reattempt-request.quiz-reattempt-request', {
-          quiz: { connect: [{ documentId: quizId }] },
           course: { connect: [{ documentId: courseId }] },
           users_permissions_user: connectUser(uIdx),
-          request_status: requestStatuses[(uIdx + qIdx) % 3],
-          requested_for_attempt: (qIdx % 3) + 1,
+          request_status: requestStatuses[(uIdx + cIdx) % 3],
+          requested_for_attempt: (cIdx % 3) + 1,
         });
         quizReattemptCount++;
       } catch (e) {
@@ -574,7 +498,7 @@ async function run() {
   }
   console.log('Form templates:', COUNT);
 
-  // --- 19. Activity-log (analytics-centric: all types, dates spread for date filter & activity-type filter) ---
+  // --- 19. Activity-log (analytics: activity_duration required; no draftAndPublish) ---
   const actTypes = ['News_Reading', 'Event_Info', 'Townhall_Video', 'Townhall_PDF', 'Holiday_View'];
   let activityLogCount = 0;
   for (let i = 0; i < COUNT * 2; i++) {
@@ -587,7 +511,7 @@ async function run() {
           company: connectCompany(i),
           activity_type: actTypes[i % actTypes.length],
           activity_description: `Activity ${i + 1} (${actTypes[i % actTypes.length]})`,
-          duration_seconds: 30 + (i % 120),
+          activity_duration: 1,
           timestamp: dateInRange(dayOffset),
         },
       });
@@ -618,27 +542,26 @@ async function run() {
   }
   console.log('Course assignments (individual):', courseAssignmentCount);
 
-  // --- 21. Quiz-submission (analytics-centric: submitted_at spread for date filter) ---
+  // --- 21. Quiz-submission (analytics: repeatable quiz.answer; submitted_at spread for date filter) ---
   let quizSubmissionCount = 0;
   for (let uIdx = 0; uIdx < userIds.length; uIdx++) {
-    for (let qIdx = 0; qIdx < Math.min(quizzeIds.length, 8); qIdx++) {
-      const quizId = quizzeIds[qIdx] || quizzeIds[0];
-      if (!quizId) continue;
-      const score = 60 + (uIdx + qIdx) % 40;
+    for (let cIdx = 0; cIdx < Math.min(courseIds.length, 8); cIdx++) {
+      const courseId = courseIds[cIdx] || courseIds[0];
+      if (!courseId) continue;
+      const score = 60 + (uIdx + cIdx) % 40;
       const passed = score >= 60;
-      const dayOffset = (uIdx * 7 + qIdx * 5) % Math.max(1, totalDays);
+      const dayOffset = (uIdx * 7 + cIdx * 5) % Math.max(1, totalDays);
       try {
-        const courseId = courseIds[qIdx] || courseIds[0];
         await createAndPublish('api::quiz-submission.quiz-submission', {
           answers: [
-            { question_id: `q${qIdx}-1`, question: 'Sample question 1', question_type: 'Multiple_choice', answer: 'A', point: score > 70 ? 1 : 0, correct: score > 70 },
-            { question_id: `q${qIdx}-2`, question: 'Sample question 2', question_type: 'Multiple_select', answer: 'A,B', point: score > 70 ? 1 : 0, correct: score > 70 },
+            { question_id: `q-${cIdx}-1`, question: 'Sample question 1', question_type: 'Multiple_choice', answer: 'A', point: score > 70 ? 1 : 0, correct: score > 70 },
+            { question_id: `q-${cIdx}-2`, question: 'Sample question 2', question_type: 'Multiple_select', answer: 'A,B', point: score > 70 ? 1 : 0, correct: score > 70 },
           ],
           score,
           passed,
-          attempt_number: (qIdx % 3) + 1,
+          attempt_number: (cIdx % 3) + 1,
           submitted_by: connectUser(uIdx),
-          course: courseId ? { connect: [{ documentId: courseId }] } : undefined,
+          course: { connect: [{ documentId: courseId }] },
           submitted_at: dateInRange(dayOffset),
         });
         quizSubmissionCount++;
@@ -685,11 +608,12 @@ async function run() {
   }
   console.log('User progress (analytics):', userProgressCount);
 
-  // --- 23. Module-video-progress (analytics-centric: last_updated spread for date filter, time for charts) ---
+  // --- 23. Module-video-progress (same courses as user-progress so "Module video details" has data for every course in dropdown) ---
   const videoTypes = ['full_watch', 'skipped_to_end', 'in_progress', 'not_started'];
   let moduleVideoCount = 0;
+  const numCoursesForModuleVideo = Math.min(courseIds.length, 12);
   for (let uIdx = 0; uIdx < userIds.length; uIdx++) {
-    for (let cIdx = 0; cIdx < Math.min(courseIds.length, 8); cIdx++) {
+    for (let cIdx = 0; cIdx < numCoursesForModuleVideo; cIdx++) {
       const courseId = courseIds[cIdx];
       if (!courseId) continue;
       for (let mIdx = 0; mIdx < 3; mIdx++) {
