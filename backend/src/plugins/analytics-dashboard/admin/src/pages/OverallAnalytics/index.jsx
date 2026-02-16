@@ -20,7 +20,7 @@ export default function OverallAnalyticsPage() {
     fetchActivityTimeByTypeAndDay,
     fetchActivityLog,
   } = useAnalytics();
-  const [viewMode, setViewMode] = useState('global');
+  const [viewMode, setViewMode] = useState('activityTracking');
   const [dateFrom, setDateFrom] = useState(null);
   const [dateTo, setDateTo] = useState(null);
   const [department, setDepartment] = useState('');
@@ -108,9 +108,8 @@ export default function OverallAnalyticsPage() {
               ? 'Personal portal engagement'
               : isActivityTracking
                 ? 'Activity tracking across the portal'
-                : 'Global portal engagement'
+                : 'Content portal engagement'
           }
-          as="h2"
         />
         <Layouts.Content>
           <Box paddingLeft={8} paddingRight={8} paddingTop={6} paddingBottom={8}>
@@ -134,6 +133,8 @@ export default function OverallAnalyticsPage() {
               unitLocations={unitLocations}
               activityType={activityType}
               onActivityTypeChange={setActivityType}
+              search=""
+              onSearchChange={() => {}}
             >
             <EmployeeSearch value={employeeId} onChange={setEmployeeId} onEmployeeFound={setEmployeeDetail} />
             </Filters>
@@ -181,6 +182,7 @@ export default function OverallAnalyticsPage() {
                       },
                     ]}
                     title="Recent Activity Log"
+                    exportFileName="activity-log.xlsx"
                     pagination={{
                       page: activityLogData.page,
                       pageSize: activityLogData.pageSize,
@@ -201,19 +203,19 @@ export default function OverallAnalyticsPage() {
                 {/* KPIs */}
                 <Flex gap={4} marginBottom={6} wrap="wrap">
                   <Box style={{ flex: '1 1 200px', minWidth: 180 }}>
-                    <StatCard label="Total Users" value={kpis.totalUsers} colorIndex={0} />
+                    <StatCard label="Total Users" value={kpis.totalUsers} subtext="" colorIndex={0} />
                   </Box>
                   <Box style={{ flex: '1 1 200px', minWidth: 180 }}>
-                    <StatCard label="Holidays" value={kpis.totalHolidays} colorIndex={1} />
+                    <StatCard label="Holidays" value={kpis.totalHolidays} subtext="" colorIndex={1} />
                   </Box>
                   <Box style={{ flex: '1 1 200px', minWidth: 180 }}>
-                    <StatCard label="News Items" value={kpis.totalNews} colorIndex={2} />
+                    <StatCard label="News Items" value={kpis.totalNews} subtext="" colorIndex={2} />
                   </Box>
                   <Box style={{ flex: '1 1 200px', minWidth: 180 }}>
-                    <StatCard label="Events" value={kpis.totalEvents} colorIndex={3} />
+                    <StatCard label="Events" value={kpis.totalEvents} subtext="" colorIndex={3} />
                   </Box>
                   <Box style={{ flex: '1 1 200px', minWidth: 180 }}>
-                    <StatCard label="Townhalls" value={kpis.totalTownhalls} colorIndex={4} />
+                    <StatCard label="Townhalls" value={kpis.totalTownhalls} subtext="" colorIndex={4} />
                   </Box>
                 </Flex>
 

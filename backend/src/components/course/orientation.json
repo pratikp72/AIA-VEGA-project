@@ -1,0 +1,26 @@
+{
+  "collectionName": "components_course_orientations",
+  "info": {
+    "displayName": "Orientation"
+  },
+  "options": {},
+  "attributes": {
+    "orientation_flow": {
+      "type": "enumeration",
+      "required": true,
+      "enum": [
+        "Before Course Completion",
+        "After Course Completion"
+      ]
+    },
+    "trainer_name": {
+      "type": "string",
+      "required": true
+    },
+    "topics_to_cover": {
+      "type": "blocks",
+      "required": true
+    }
+  },
+  "config": {}
+}

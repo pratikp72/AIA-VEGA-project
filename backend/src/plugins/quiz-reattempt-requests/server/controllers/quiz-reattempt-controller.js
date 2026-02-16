@@ -1,0 +1,26 @@
+module.exports = ({ strapi }) => ({
+  async getRequests(ctx) {
+    try {
+      const data = await strapi.plugin('quiz-reattempt-requests').service('quizReattemptService').getAll();
+      ctx.body = { data };
+    } catch (error) {
+      ctx.throw(500, error);
+    }
+  },
+
+  async updateStatus(ctx) {
+    try {
+      const { id } = ctx.params;
+      const { request_status } = ctx.request.body.data || {};
+      
+      if (!request_status) {
+        return ctx.throw(400, 'request_status is required');
+      }
+
+      const updated = await strapi.plugin('quiz-reattempt-requests').service('quizReattemptService').updateStatus(id, request_status);
+      ctx.body = { data: updated };
+    } catch (error) {
+      ctx.throw(500, error);
+    }
+  },
+});

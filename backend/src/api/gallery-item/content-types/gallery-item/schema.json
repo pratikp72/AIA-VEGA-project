@@ -69,6 +69,18 @@
         "videos",
         "audios"
       ]
+    },
+    "description": {
+      "type": "string",
+      "required": true
+    },
+    "date": {
+      "type": "date",
+      "required": true
+    },
+    "location": {
+      "type": "string",
+      "required": true
     }
   }
 }

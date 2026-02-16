@@ -336,9 +336,11 @@ module.exports = ({ strapi }) => ({
         try {
           const where = { [userKey]: userKey === 'user' ? { id: numericUserId } : numericUserId };
           if (params.dateFrom || params.dateTo) {
-            where.last_accessed_at = {};
-            if (params.dateFrom) where.last_accessed_at.$gte = params.dateFrom;
-            if (params.dateTo) where.last_accessed_at.$lte = params.dateTo;
+            const dateFilter = {};
+            if (params.dateFrom) dateFilter.$gte = params.dateFrom;
+            if (params.dateTo) dateFilter.$lte = params.dateTo;
+            // @ts-ignore - Dynamic query builder
+            where['last_accessed_at'] = dateFilter;
           }
           const raw = await strapi.db.query('api::user-progress.user-progress').findMany({
             where,
@@ -558,9 +560,11 @@ module.exports = ({ strapi }) => ({
         try {
           const where = { [userKey]: userKey === 'user' ? { id: numericUserId } : numericUserId };
           if (params.dateFrom || params.dateTo) {
-            where.last_updated = {};
-            if (params.dateFrom) where.last_updated.$gte = params.dateFrom;
-            if (params.dateTo) where.last_updated.$lte = params.dateTo;
+            const dateFilter = {};
+            if (params.dateFrom) dateFilter.$gte = params.dateFrom;
+            if (params.dateTo) dateFilter.$lte = params.dateTo;
+            // @ts-ignore - Dynamic query builder
+            where['last_updated'] = dateFilter;
           }
           const raw = await strapi.db.query('api::module-video-progress.module-video-progress').findMany({
             where,
@@ -811,8 +815,10 @@ module.exports = ({ strapi }) => ({
     });
 
     // Holidays - by month (holiday has unit_location; news/event do not)
-    const holidayFilters = { ...filters };
-    if (params.unitLocation) holidayFilters.unit_location = { id: params.unitLocation };
+    let holidayFilters = { ...filters };
+    if (params.unitLocation) {
+      holidayFilters['unit_location'] = { id: params.unitLocation };
+    }
     let holidays = [];
     try {
       holidays = await strapi.documents('api::holiday.holiday').findMany({
@@ -1222,32 +1228,41 @@ module.exports = ({ strapi }) => ({
    * Same filters as getLearningEmployeeTable but returns all rows as CSV.
    */
   async getLearningEmployeeTableExport(params = {}) {
+    const XLSX = require('xlsx');
     const result = await this.getLearningEmployeeTableForExport(params);
-    const headers = [
-      'Employee Name',
-      'Company',
-      'Courses Enrolled',
-      'Total Modules Done',
-      'Progress %',
-      'Avg Quiz Score',
-      'Course Completion Time (min)',
-    ];
-    const headerRow = headers.map((h) => this.escapeCsvValue(h)).join(',');
-    const dataRows = (result.rows || []).map((r) =>
-      [
-        r.employeeName,
-        r.company,
-        r.coursesEnrolled,
-        r.totalModulesDone,
-        r.progressPercent,
-        r.avgScore,
-        r.courseCompletionTimeMinutes,
-      ]
-        .map((v) => this.escapeCsvValue(v))
-        .join(',')
-    );
-    const csv = [headerRow, ...dataRows].join('\r\n');
-    return '\uFEFF' + csv; // BOM for Excel UTF-8
+    
+    // Prepare data for Excel
+    const exportData = (result.rows || []).map((r) => ({
+      'Employee Name': r.employeeName || '—',
+      'Company': r.company || '—',
+      'Courses Enrolled': r.coursesEnrolled || 0,
+      'Total Modules Done': r.totalModulesDone || 0,
+      'Progress %': r.progressPercent || 0,
+      'Avg Quiz Score': r.avgScore || 0,
+      'Course Completion Time (min)': r.courseCompletionTimeMinutes || 0,
+    }));
+
+    // Create workbook and worksheet
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(exportData);
+
+    // Auto-size columns
+    const maxWidth = 50;
+    const headers = ['Employee Name', 'Company', 'Courses Enrolled', 'Total Modules Done', 'Progress %', 'Avg Quiz Score', 'Course Completion Time (min)'];
+    const wscols = headers.map((header) => {
+      const maxLen = Math.max(
+        header.length,
+        ...exportData.map((row) => String(row[header] || '').length)
+      );
+      return { wch: Math.min(maxLen + 2, maxWidth) };
+    });
+    ws['!cols'] = wscols;
+
+    // Add worksheet to workbook
+    XLSX.utils.book_append_sheet(wb, ws, 'Employee Learning Summary');
+
+    // Write to buffer
+    return XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
   },
 
   /**
@@ -1539,7 +1554,7 @@ module.exports = ({ strapi }) => ({
         byDate[dateKey] = { date: dateKey, day: dayKey, News_Reading: 0, Event_Info: 0, Townhall_Video: 0, Townhall_PDF: 0, Holiday_View: 0 };
       }
       const type = log.activity_type || 'News_Reading';
-      const mins = Math.round((log.duration_seconds || 0) / 60);
+      const mins = log.activity_duration || 0;
       if (byDate[dateKey][type] !== undefined) {
         byDate[dateKey][type] += mins;
       } else {
@@ -1614,10 +1629,18 @@ module.exports = ({ strapi }) => ({
     }
 
     const rows = list.map((log) => {
-      const secs = log.duration_seconds || 0;
+      const mins = log.activity_duration || 0;
+      const secs = mins * 60;
       const m = Math.floor(secs / 60);
       const s = secs % 60;
-      const duration = m > 0 ? `${m}m ${s}s` : `${s}s`;
+      let duration;
+      if (mins === 0) {
+        duration = 0;
+      } else if (s === 0) {
+        duration = `${m}m`;
+      } else {
+        duration = `${m}m ${s}s`;
+      }
       const userName = log.user
         ? (log.user.employee_name || log.user.username || log.user.email || `User ${log.user.id}`)
         : '—';
@@ -1625,7 +1648,7 @@ module.exports = ({ strapi }) => ({
       return {
         userName,
         company: companyName,
-        activity: log.activity_description || log.activity_type || '—',
+        activity: log.activity_type || log.activity_description || '—',
         duration,
         timestamp: log.timestamp,
       };
@@ -1648,7 +1671,7 @@ module.exports = ({ strapi }) => ({
     let companyId = null;
     if (company) {
       if (typeof company === 'number' || (typeof company === 'string' && /^\d+$/.test(company))) {
-        companyId = parseInt(company, 10);
+        companyId = typeof company === 'number' ? company : parseInt(company, 10);
       } else {
         const c = await strapi.db.query('api::company.company').findOne({
           where: { name: { $eqi: String(company) } },
@@ -1664,7 +1687,7 @@ module.exports = ({ strapi }) => ({
         company: companyId || undefined,
         activity_type,
         activity_description,
-        duration_seconds: Math.max(0, duration_seconds || 0),
+        activity_duration: Math.round(Math.max(0, duration_seconds || 0) / 60),
         timestamp: new Date().toISOString(),
       },
     });

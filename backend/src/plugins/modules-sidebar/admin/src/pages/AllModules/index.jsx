@@ -1029,7 +1029,7 @@ const AllModulesPage = () => {
                   {canSee('api::quiz-reattempt-request.quiz-reattempt-request') && (
                     <AdminLink
                       label="Quiz Reattempt Requests"
-                      to="/plugins/modules-sidebar/quiz-reattempt-requests"
+                      to="/plugins/quiz-reattempt-requests"
                     />
                   )}
                 </Section>

@@ -1,0 +1,49 @@
+{
+  "kind": "collectionType",
+  "collectionName": "profile_edit_requests",
+  "info": {
+    "singularName": "profile-edit-request",
+    "pluralName": "profile-edit-requests",
+    "displayName": "Profile Edit Request",
+    "description": "Employee profile edit requests pending HR approval"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "users_permissions_user": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "plugin::users-permissions.user"
+    },
+    "requested_changes": {
+      "type": "json",
+      "required": true
+    },
+    "reason": {
+      "type": "text"
+    },
+    "request_status": {
+      "type": "enumeration",
+      "enum": [
+        "Pending",
+        "Approved",
+        "Rejected"
+      ],
+      "default": "Pending",
+      "required": true
+    },
+    "reviewed_by": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "admin::user"
+    },
+    "reviewed_at": {
+      "type": "datetime"
+    },
+    "admin_comment": {
+      "type": "text"
+    }
+  }
+}

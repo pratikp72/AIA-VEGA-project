@@ -93,6 +93,28 @@
         "required": true,
         "optionsList": "English\nHindi\nGujarati"
       }
+    },
+    "orientation_required": {
+      "type": "customField",
+      "customField": "global::yes-no-toggle",
+      "options": {
+        "required": true
+      }
+    },
+    "orientation_detail": {
+      "type": "component",
+      "conditions": {
+        "visible": {
+          "==": [
+            {
+              "var": "orientation_required"
+            },
+            true
+          ]
+        }
+      },
+      "component": "course.orientation",
+      "repeatable": false
     }
   }
 }

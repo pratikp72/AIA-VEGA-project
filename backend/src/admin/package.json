@@ -1,0 +1,9 @@
+{
+  "name": "aia-vega-admin",
+  "version": "1.0.0",
+  "description": "AIA-VEGA Admin Panel",
+  "strapi": {
+    "name": "AIA-VEGA",
+    "description": "AIA-VEGA Admin Panel"
+  }
+}

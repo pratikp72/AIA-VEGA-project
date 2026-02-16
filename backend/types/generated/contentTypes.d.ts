@@ -446,7 +446,8 @@ export interface ApiActivityLogActivityLog extends Struct.CollectionTypeSchema {
       Schema.Attribute.CustomField<
         'global::number-range',
         {
-          max: '1';
+          max: '';
+          min: '1';
           positiveOnly: true;
           required: true;
         }
@@ -705,6 +706,14 @@ export interface ApiCourseCourse extends Struct.CollectionTypeSchema {
       >;
     modules: Schema.Attribute.Component<'course.module', true> &
       Schema.Attribute.Required;
+    orientation_detail: Schema.Attribute.Component<'course.orientation', false>;
+    orientation_required: Schema.Attribute.Boolean &
+      Schema.Attribute.CustomField<
+        'global::yes-no-toggle',
+        {
+          required: true;
+        }
+      >;
     prerequisite_courses: Schema.Attribute.Relation<
       'manyToMany',
       'api::course.course'
@@ -850,6 +859,9 @@ export interface ApiFormTemplateFormTemplate
     createdAt: Schema.Attribute.DateTime;
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
+    custom_yes_no: Schema.Attribute.Boolean &
+      Schema.Attribute.Required &
+      Schema.Attribute.CustomField<'global::yes-no-toggle'>;
     description: Schema.Attribute.Text & Schema.Attribute.Required;
     form_excel: Schema.Attribute.Media<'files'> & Schema.Attribute.Required;
     form_pdf: Schema.Attribute.Media<'files'> & Schema.Attribute.Required;
@@ -889,6 +901,8 @@ export interface ApiGalleryItemGalleryItem extends Struct.CollectionTypeSchema {
     createdAt: Schema.Attribute.DateTime;
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
+    date: Schema.Attribute.Date & Schema.Attribute.Required;
+    description: Schema.Attribute.String & Schema.Attribute.Required;
     image: Schema.Attribute.Media<'images'> & Schema.Attribute.Required;
     locale: Schema.Attribute.String & Schema.Attribute.Private;
     localizations: Schema.Attribute.Relation<
@@ -896,6 +910,7 @@ export interface ApiGalleryItemGalleryItem extends Struct.CollectionTypeSchema {
       'api::gallery-item.gallery-item'
     > &
       Schema.Attribute.Private;
+    location: Schema.Attribute.String & Schema.Attribute.Required;
     media_type: Schema.Attribute.Enumeration<['Image', 'Video']> &
       Schema.Attribute.Required;
     publishedAt: Schema.Attribute.DateTime;
@@ -1100,6 +1115,10 @@ export interface ApiNewsNews extends Struct.CollectionTypeSchema {
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
     description: Schema.Attribute.RichText & Schema.Attribute.Required;
+    likes: Schema.Attribute.Relation<
+      'manyToMany',
+      'plugin::users-permissions.user'
+    >;
     locale: Schema.Attribute.String & Schema.Attribute.Private;
     localizations: Schema.Attribute.Relation<'oneToMany', 'api::news.news'> &
       Schema.Attribute.Private;
@@ -1165,6 +1184,49 @@ export interface ApiNotificationNotification
     updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
     user: Schema.Attribute.Relation<
+      'manyToOne',
+      'plugin::users-permissions.user'
+    >;
+  };
+}
+
+export interface ApiProfileEditRequestProfileEditRequest
+  extends Struct.CollectionTypeSchema {
+  collectionName: 'profile_edit_requests';
+  info: {
+    description: 'Employee profile edit requests pending HR approval';
+    displayName: 'Profile Edit Request';
+    pluralName: 'profile-edit-requests';
+    singularName: 'profile-edit-request';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    admin_comment: Schema.Attribute.Text;
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::profile-edit-request.profile-edit-request'
+    > &
+      Schema.Attribute.Private;
+    publishedAt: Schema.Attribute.DateTime;
+    reason: Schema.Attribute.Text;
+    request_status: Schema.Attribute.Enumeration<
+      ['Pending', 'Approved', 'Rejected']
+    > &
+      Schema.Attribute.Required &
+      Schema.Attribute.DefaultTo<'Pending'>;
+    requested_changes: Schema.Attribute.JSON & Schema.Attribute.Required;
+    reviewed_at: Schema.Attribute.DateTime;
+    reviewed_by: Schema.Attribute.Relation<'manyToOne', 'admin::user'>;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    users_permissions_user: Schema.Attribute.Relation<
       'manyToOne',
       'plugin::users-permissions.user'
     >;
@@ -1388,6 +1450,43 @@ export interface ApiUserProgressUserProgress
       'manyToOne',
       'plugin::users-permissions.user'
     >;
+  };
+}
+
+export interface PluginAuditLogAuditEntry extends Struct.CollectionTypeSchema {
+  collectionName: 'audit_entries';
+  info: {
+    description: 'Track all changes made to content entries';
+    displayName: 'Audit Entry';
+    pluralName: 'audit-entries';
+    singularName: 'audit-entry';
+  };
+  options: {
+    comment: 'System collection - do not modify manually';
+    draftAndPublish: false;
+  };
+  attributes: {
+    action: Schema.Attribute.Enumeration<['created', 'updated', 'deleted']> &
+      Schema.Attribute.Required;
+    adminUser: Schema.Attribute.Relation<'manyToOne', 'admin::user'>;
+    changes: Schema.Attribute.JSON;
+    collectionName: Schema.Attribute.String;
+    contentType: Schema.Attribute.String & Schema.Attribute.Required;
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    entryId: Schema.Attribute.Integer & Schema.Attribute.Required;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'plugin::audit-log.audit-entry'
+    > &
+      Schema.Attribute.Private;
+    publishedAt: Schema.Attribute.DateTime;
+    snapshot: Schema.Attribute.JSON;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
   };
 }
 
@@ -1941,11 +2040,13 @@ declare module '@strapi/strapi' {
       'api::news-category.news-category': ApiNewsCategoryNewsCategory;
       'api::news.news': ApiNewsNews;
       'api::notification.notification': ApiNotificationNotification;
+      'api::profile-edit-request.profile-edit-request': ApiProfileEditRequestProfileEditRequest;
       'api::quiz-reattempt-request.quiz-reattempt-request': ApiQuizReattemptRequestQuizReattemptRequest;
       'api::quiz-submission.quiz-submission': ApiQuizSubmissionQuizSubmission;
       'api::townhall.townhall': ApiTownhallTownhall;
       'api::unit-location.unit-location': ApiUnitLocationUnitLocation;
       'api::user-progress.user-progress': ApiUserProgressUserProgress;
+      'plugin::audit-log.audit-entry': PluginAuditLogAuditEntry;
       'plugin::content-releases.release': PluginContentReleasesRelease;
       'plugin::content-releases.release-action': PluginContentReleasesReleaseAction;
       'plugin::i18n.locale': PluginI18NLocale;

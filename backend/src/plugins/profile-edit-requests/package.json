@@ -1,0 +1,21 @@
+{
+  "name": "profile-edit-requests",
+  "version": "1.0.0",
+  "description": "Manage employee profile edit requests - HR approval workflow",
+  "strapi": {
+    "name": "profile-edit-requests",
+    "displayName": "Profile Edit Requests",
+    "description": "Approve or reject employee profile edit requests",
+    "kind": "plugin"
+  },
+  "dependencies": {},
+  "author": {
+    "name": "AIA-VEGA"
+  },
+  "maintainers": [],
+  "engines": {
+    "node": ">=18.0.0 <=22.x.x",
+    "npm": ">=6.0.0"
+  },
+  "license": "MIT"
+}

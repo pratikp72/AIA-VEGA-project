@@ -190,68 +190,6 @@ module.exports = {
         },
         config: { auth: false, policies: [] },
       },
-      // Quiz Reattempt Requests – list/update via admin JWT (avoids 401 from content API)
-      {
-        method: 'GET',
-        path: '/modules-sidebar/quiz-reattempt-requests',
-        handler: async (ctx) => {
-          let adminUser = ctx.state?.user || ctx.state?.admin;
-          if (!adminUser) {
-            adminUser = await getAdminUserFromToken(ctx, strapi);
-            if (adminUser) ctx.state.admin = adminUser;
-          }
-          if (!adminUser) return ctx.unauthorized('Authentication required');
-          try {
-            const uid = 'api::quiz-reattempt-request.quiz-reattempt-request';
-            const list = await strapi.documents(uid).findMany({
-              status: 'published',
-              populate: {
-                course: { populate: ['quiz'] },
-                users_permissions_user: true,
-              },
-              pagination: { limit: 100, start: 0 },
-            });
-            const rows = Array.isArray(list) ? list : [];
-            ctx.body = { data: rows };
-          } catch (error) {
-            strapi.log.error('modules-sidebar quiz-reattempt-requests GET:', error);
-            ctx.throw(500, error.message);
-          }
-        },
-        config: { auth: false, policies: [] },
-      },
-      {
-        method: 'PUT',
-        path: '/modules-sidebar/quiz-reattempt-requests/:documentId',
-        handler: async (ctx) => {
-          let adminUser = ctx.state?.user || ctx.state?.admin;
-          if (!adminUser) {
-            adminUser = await getAdminUserFromToken(ctx, strapi);
-            if (adminUser) ctx.state.admin = adminUser;
-          }
-          if (!adminUser) return ctx.unauthorized('Authentication required');
-          const documentId = ctx.params.documentId ? String(ctx.params.documentId) : null;
-          const body = ctx.request?.body;
-          const newStatus = body?.data?.request_status;
-          if (!documentId || !newStatus || !['Approved', 'Rejected'].includes(newStatus)) {
-            return ctx.badRequest('Invalid documentId or request_status');
-          }
-          try {
-            const uid = 'api::quiz-reattempt-request.quiz-reattempt-request';
-            // status: 'published' so the update applies to published version and stays published
-            await strapi.documents(uid).update({
-              documentId,
-              data: { request_status: newStatus },
-              status: 'published',
-            });
-            ctx.body = { data: { documentId, request_status: newStatus } };
-          } catch (error) {
-            strapi.log.error('modules-sidebar quiz-reattempt-requests PUT:', error);
-            ctx.throw(500, error.message);
-          }
-        },
-        config: { auth: false, policies: [] },
-      },
     ]);
   },
 };

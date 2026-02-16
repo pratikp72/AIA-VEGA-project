@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="robots" content="noindex" />
+    <title>AIA-VEGA Admin</title>
+    <link rel="icon" type="image/png" href="/favicon.png" />
+    <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+    <script>
+      // Force page title to always show AIA-VEGA instead of Strapi
+      (function() {
+        const originalTitle = document.title;
+        Object.defineProperty(document, 'title', {
+          set: function(newTitle) {
+            // Replace "Strapi" with "AIA-VEGA" in any title
+            const updatedTitle = (newTitle || '').replace(/Strapi/gi, 'AIA-VEGA');
+            document.getElementsByTagName('title')[0].innerHTML = updatedTitle;
+          },
+          get: function() {
+            return document.getElementsByTagName('title')[0].innerHTML;
+          }
+        });
+      })();
+    </script>
+    <style>
+      body {
+        margin: 0;
+        padding: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="strapi"></div>
+  </body>
+</html>

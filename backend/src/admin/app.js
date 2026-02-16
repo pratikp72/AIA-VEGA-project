@@ -20,8 +20,9 @@
  * - Role-based visibility is handled through permissions and menu hooks
  */
 
-import CourseLanguageSyncOnSelect from './components/CourseLanguageSyncOnSelect';
-import AutoFillComponentIds from './components/AutoFillComponentIds';
+import CourseLanguageSyncOnSelect from './components/CourseLanguageSyncOnSelect.jsx';
+import AutoFillComponentIds from './components/AutoFillComponentIds.jsx';
+import HideAddButtonsForQuizFeedback from './components/HideAddButtonsForQuizFeedback.jsx';
 
 export default {
   /**
@@ -44,7 +45,7 @@ export default {
         defaultMessage: 'Calendar will not allow selecting past dates.',
       },
       components: {
-        Input: async () => import('./components/DateFutureOnlyInput').then((m) => ({ default: m.default })),
+        Input: async () => import('./components/DateFutureOnlyInput.jsx').then((m) => ({ default: m.default })),
       },
     });
 
@@ -61,7 +62,7 @@ export default {
         defaultMessage: 'Select multiple options. Configure options in Base settings when adding the field.',
       },
       components: {
-        Input: async () => import('./components/MultiSelectDropdownInput').then((m) => ({ default: m.default })),
+        Input: async () => import('./components/MultiSelectDropdownInput.jsx').then((m) => ({ default: m.default })),
       },
       options: {
         base: [
@@ -89,6 +90,41 @@ export default {
       },
     });
 
+    // Custom field: Yes/No toggle (boolean) – appears in Custom tab when adding a field
+    app.customFields.register({
+      name: 'yes-no-toggle',
+      type: 'boolean',
+      intlLabel: {
+        id: 'app.custom-fields.yes-no-toggle.label',
+        defaultMessage: 'Yes/No Toggle',
+      },
+      intlDescription: {
+        id: 'app.custom-fields.yes-no-toggle.description',
+        defaultMessage: 'Boolean field shown as a toggle (Yes/No). You can make it required in Base or Advanced settings.',
+      },
+      components: {
+        Input: async () => import('./components/YesNoToggleInput.jsx').then((m) => ({ default: m.default })),
+      },
+      options: {
+        base: [
+          {
+            sectionTitle: {
+              id: 'app.custom-fields.yes-no-toggle.section',
+              defaultMessage: 'Yes/No Toggle',
+            },
+            items: [
+              {
+                intlLabel: { id: 'app.custom-fields.yes-no-toggle.required', defaultMessage: 'Required' },
+                name: 'options.required',
+                type: 'checkbox',
+                description: 'Field must be set (user must choose Yes or No).',
+              },
+            ],
+          },
+        ],
+      },
+    });
+
     // Custom field: number/integer with min, max, integerOnly, positiveOnly (configurable in Content-Type Builder)
     app.customFields.register({
       name: 'number-range',
@@ -102,7 +138,7 @@ export default {
         defaultMessage: 'Integer with optional min/max. Configure in Base settings when adding the field.',
       },
       components: {
-        Input: async () => import('./components/NumberRangeInput').then((m) => ({ default: m.default })),
+        Input: async () => import('./components/NumberRangeInput.jsx').then((m) => ({ default: m.default })),
       },
       options: {
         base: [
@@ -159,6 +195,11 @@ export default {
       contentManager.injectComponent('editView', 'right-links', {
         name: 'AutoFillComponentIds',
         Component: AutoFillComponentIds,
+      });
+      // Hide "Add entry" button for quiz and feedback since auto-creation handles it
+      contentManager.injectComponent('editView', 'right-links', {
+        name: 'HideAddButtonsForQuizFeedback',
+        Component: HideAddButtonsForQuizFeedback,
       });
     }
 
@@ -357,6 +398,42 @@ export default {
     console.log('Custom Admin Menu Plugin: Menu structure registered');
     console.log('Note: Configure Content Manager visibility via role permissions in Strapi admin');
     console.log('For business roles, revoke general Content Manager permissions');
+    
+    // Replace "Strapi" with "AIA-VEGA" in document title
+    if (typeof window !== 'undefined') {
+      // Set initial title
+      document.title = 'AIA-VEGA Admin';
+      
+      // Override title setter to always replace "Strapi" with "AIA-VEGA"
+      const originalTitleDescriptor = Object.getOwnPropertyDescriptor(Document.prototype, 'title');
+      if (originalTitleDescriptor) {
+        Object.defineProperty(document, 'title', {
+          set: function(newTitle) {
+            const updatedTitle = (newTitle || '').replace(/Strapi/gi, 'AIA-VEGA');
+            originalTitleDescriptor.set.call(this, updatedTitle);
+          },
+          get: function() {
+            return originalTitleDescriptor.get.call(this);
+          },
+          configurable: true,
+        });
+      }
+      
+      // Also watch for title changes via MutationObserver
+      const titleElement = document.querySelector('title');
+      if (titleElement) {
+        const observer = new MutationObserver(function(mutations) {
+          mutations.forEach(function(mutation) {
+            if (mutation.target.textContent && mutation.target.textContent.includes('Strapi')) {
+              mutation.target.textContent = mutation.target.textContent.replace(/Strapi/gi, 'AIA-VEGA');
+            }
+          });
+        });
+        observer.observe(titleElement, { childList: true, characterData: true, subtree: true });
+      }
+    }
+    
+    console.log('AIA-VEGA Admin Panel initialized');
   },
 
   /**
@@ -365,5 +442,25 @@ export default {
   config: {
     // Locale configuration - add locales here if needed
     locales: [],
+    // Translations - Replace "Strapi" with "AIA-VEGA"
+    translations: {
+      en: {
+        'app.components.LeftMenu.navbrand.title': 'AIA-VEGA',
+        'app.components.LeftMenu.navbrand.workplace': 'Admin Panel',
+        'Auth.form.welcome.title': 'Welcome to AIA-VEGA',
+        'Auth.form.welcome.subtitle': 'Log in to your account',
+        'app.components.HomePage.welcome': 'Welcome to AIA-VEGA',
+        'app.components.HomePage.welcome.again': 'Welcome',
+        'Settings.application.title': 'AIA-VEGA Settings',
+      },
+    },
+    // Head configuration for page title
+    head: {
+      favicon: '/favicon.png',
+    },
+    // Tutorial configuration
+    tutorials: false,
+    // Notification configuration
+    notifications: { releases: false },
   },
 };

@@ -34,6 +34,21 @@ export interface CourseModule extends Struct.ComponentSchema {
   };
 }
 
+export interface CourseOrientation extends Struct.ComponentSchema {
+  collectionName: 'components_course_orientations';
+  info: {
+    displayName: 'Orientation';
+  };
+  attributes: {
+    orientation_flow: Schema.Attribute.Enumeration<
+      ['Before Course Completion', 'After Course Completion']
+    > &
+      Schema.Attribute.Required;
+    topics_to_cover: Schema.Attribute.Blocks & Schema.Attribute.Required;
+    trainer_name: Schema.Attribute.String & Schema.Attribute.Required;
+  };
+}
+
 export interface FeedbackFormAnswer extends Struct.ComponentSchema {
   collectionName: 'components_feedback_form_answers';
   info: {
@@ -62,6 +77,13 @@ export interface FeedbackFormQuestion extends Struct.ComponentSchema {
       ['Rating', 'Text', 'AgreeOrDisagree', 'YesNo']
     > &
       Schema.Attribute.Required;
+    compulsory: Schema.Attribute.Boolean &
+      Schema.Attribute.CustomField<
+        'global::yes-no-toggle',
+        {
+          required: true;
+        }
+      >;
     language: Schema.Attribute.Enumeration<['English', 'Hindi', 'Gujarati']> &
       Schema.Attribute.Required;
     mandatory: Schema.Attribute.Boolean &
@@ -146,6 +168,13 @@ export interface QuizQuiz extends Struct.ComponentSchema {
   attributes: {
     completion_time: Schema.Attribute.Integer &
       Schema.Attribute.CustomField<'global::number-range'>;
+    compulsory: Schema.Attribute.Boolean &
+      Schema.Attribute.CustomField<
+        'global::yes-no-toggle',
+        {
+          required: true;
+        }
+      >;
     language: Schema.Attribute.Enumeration<['English', 'Hindi', 'Gujarati']> &
       Schema.Attribute.Required;
     max_attempt: Schema.Attribute.Integer &
@@ -220,10 +249,24 @@ export interface RoutesSift extends Struct.ComponentSchema {
   };
 }
 
+export interface SharedRequiredToggle extends Struct.ComponentSchema {
+  collectionName: 'components_shared_required_toggles';
+  info: {
+    description: 'Reusable boolean toggle (Yes/No) with required validation. Use in any content-type schema.';
+    displayName: 'Yes/No Toggle (Required)';
+  };
+  attributes: {
+    value: Schema.Attribute.Boolean &
+      Schema.Attribute.Required &
+      Schema.Attribute.DefaultTo<false>;
+  };
+}
+
 declare module '@strapi/strapi' {
   export module Public {
     export interface ComponentSchemas {
       'course.module': CourseModule;
+      'course.orientation': CourseOrientation;
       'feedback-form.answer': FeedbackFormAnswer;
       'feedback-form.question': FeedbackFormQuestion;
       'quiz.answer': QuizAnswer;
@@ -235,6 +278,7 @@ declare module '@strapi/strapi' {
       'routes.bus-route': RoutesBusRoute;
       'routes.bus-stop': RoutesBusStop;
       'routes.sift': RoutesSift;
+      'shared.required-toggle': SharedRequiredToggle;
     }
   }
 }

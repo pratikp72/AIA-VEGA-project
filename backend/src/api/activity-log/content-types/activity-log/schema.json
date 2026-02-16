@@ -46,7 +46,8 @@
       "options": {
         "required": true,
         "positiveOnly": true,
-        "max": "1"
+        "max": "",
+        "min": "1"
       }
     }
   }

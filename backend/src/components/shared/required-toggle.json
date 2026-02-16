@@ -1,0 +1,15 @@
+{
+  "collectionName": "components_shared_required_toggles",
+  "info": {
+    "displayName": "Yes/No Toggle (Required)",
+    "description": "Reusable boolean toggle (Yes/No) with required validation. Use in any content-type schema."
+  },
+  "options": {},
+  "attributes": {
+    "value": {
+      "type": "boolean",
+      "required": true,
+      "default": false
+    }
+  }
+}

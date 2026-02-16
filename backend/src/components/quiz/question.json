@@ -16,7 +16,10 @@
     "question_type": {
       "type": "enumeration",
       "required": true,
-      "enum": ["Multiple_choice", "Multiple_select"]
+      "enum": [
+        "Multiple_choice",
+        "Multiple_select"
+      ]
     },
     "order": {
       "type": "integer"

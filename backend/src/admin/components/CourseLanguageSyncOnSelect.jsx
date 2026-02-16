@@ -154,6 +154,7 @@ function CourseLanguageSyncOnSelect({ slug }) {
 
   // When user clicks "Add new entry", expand that single new block to N blocks (one per language).
   // Defer setValues so it runs after the form's "add row" update is committed (avoids being overwritten).
+  // For quiz and feedback, PREVENT expansion - we don't want users manually adding entries
   useEffect(() => {
     if (N <= 0 || !values) return;
 
@@ -174,6 +175,7 @@ function CourseLanguageSyncOnSelect({ slug }) {
     let nextValues = { ...values };
     let didUpdate = false;
 
+    // MODULES: Allow expansion (users can add module sets)
     if (modLen === prev.modules + 1 && modLen % N === 1) {
       const expanded = expandLastSetToLanguages(
         values.modules,
@@ -189,32 +191,24 @@ function CourseLanguageSyncOnSelect({ slug }) {
       prev.modules = modLen;
     }
 
-    if (quizLen === prev.quiz + 1 && quizLen % N === 1) {
-      const expanded = expandLastSetToLanguages(
-        values.quiz,
-        languages,
-        (lang) => createQuizPlaceholder(lang)
-      );
-      if (expanded) {
-        nextValues = { ...nextValues, quiz: expanded };
-        prev.quiz = expanded.length;
-        didUpdate = true;
-      }
+    // QUIZ: BLOCK manual additions - remove the newly added entry to prevent expansion
+    if (quizLen === prev.quiz + 1) {
+      // User tried to add a quiz entry - remove it
+      const trimmed = values.quiz.slice(0, prev.quiz);
+      nextValues = { ...nextValues, quiz: trimmed };
+      prev.quiz = trimmed.length;
+      didUpdate = true;
     } else {
       prev.quiz = quizLen;
     }
 
-    if (fbLen === prev.feedback_question + 1 && fbLen % N === 1) {
-      const expanded = expandLastSetToLanguages(
-        values.feedback_question,
-        languages,
-        (lang, index) => createFeedbackPlaceholder(lang, index)
-      );
-      if (expanded) {
-        nextValues = { ...nextValues, feedback_question: expanded };
-        prev.feedback_question = expanded.length;
-        didUpdate = true;
-      }
+    // FEEDBACK: BLOCK manual additions - remove the newly added entry to prevent expansion
+    if (fbLen === prev.feedback_question + 1) {
+      // User tried to add a feedback entry - remove it
+      const trimmed = values.feedback_question.slice(0, prev.feedback_question);
+      nextValues = { ...nextValues, feedback_question: trimmed };
+      prev.feedback_question = trimmed.length;
+      didUpdate = true;
     } else {
       prev.feedback_question = fbLen;
     }

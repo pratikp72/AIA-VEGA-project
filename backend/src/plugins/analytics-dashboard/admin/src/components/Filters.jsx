@@ -17,15 +17,15 @@ export function Filters({
   children,
   // Unit Location (Overall dashboard only)
   showUnitLocation = false,
-  unitLocation,
-  onUnitLocationChange,
+  unitLocation = '',
+  onUnitLocationChange = null,
   unitLocations = [],
   // Employee Table (Learning dashboard only)
   showEmployeeTable = false,
   // Activity Tracking (Overall dashboard only)
   showActivityTracking = false,
-  activityType,
-  onActivityTypeChange,
+  activityType = '',
+  onActivityTypeChange = null,
   search,
   onSearchChange,
 }) {
@@ -63,11 +63,11 @@ export function Filters({
             View
           </Typography>
           <SingleSelect value={viewMode} onChange={onViewModeChange}>
-            <SingleSelectOption value="global">Global</SingleSelectOption>
-            <SingleSelectOption value="personal">Personal</SingleSelectOption>
             {showActivityTracking && (
               <SingleSelectOption value="activityTracking">Activity Tracking</SingleSelectOption>
             )}
+            <SingleSelectOption value="personal">Personal</SingleSelectOption>
+            <SingleSelectOption value="global">Content</SingleSelectOption>
             {showEmployeeTable && (
               <SingleSelectOption value="table">Employee Table</SingleSelectOption>
             )}
@@ -94,7 +94,7 @@ export function Filters({
             />
           </Box>
         )}
-        {viewMode !== 'table' && (
+        {(
           <>
             <Box>
               <Typography variant="pi" textColor="neutral600" style={{ marginBottom: 4 }}>
@@ -201,7 +201,7 @@ export function Filters({
             </select>
           </Box>
         )}
-        {showUnitLocation && (
+        {showUnitLocation && viewMode !== 'personal' && (
           <Box style={{ minWidth: 180 }}>
             <Typography variant="pi" textColor="neutral600" style={{ marginBottom: 4 }}>
               Unit Location

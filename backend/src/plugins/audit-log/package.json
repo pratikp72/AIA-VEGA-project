@@ -1,0 +1,21 @@
+{
+  "name": "audit-log",
+  "version": "1.0.0",
+  "description": "Comprehensive audit trail for all content changes",
+  "strapi": {
+    "name": "audit-log",
+    "displayName": "Audit Log",
+    "description": "Track all create, update, and delete operations",
+    "kind": "plugin"
+  },
+  "dependencies": {},
+  "author": {
+    "name": "AIA-VEGA"
+  },
+  "maintainers": [],
+  "engines": {
+    "node": ">=18.0.0 <=22.x.x",
+    "npm": ">=6.0.0"
+  },
+  "license": "MIT"
+}

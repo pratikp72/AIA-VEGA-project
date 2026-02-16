@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Page, Layouts } from '@strapi/admin/strapi-admin';
-import { Box, Flex, Typography, Loader, Button } from '@strapi/design-system';
-import { useAnalytics } from '../../hooks/useAnalytics';
+import { Box, Flex, Typography, Loader, Button } from '@strapi/design-system';import * as XLSX from 'xlsx';import { useAnalytics } from '../../hooks/useAnalytics';
 import { StatCard } from '../../components/StatCard';
 import { DonutChart } from '../../components/DonutChart';
 import { BarChart } from '../../components/BarChart';
@@ -13,7 +12,7 @@ import { EmployeeSearch } from '../../components/EmployeeSearch';
 import { EmployeeDetailCard } from '../../components/EmployeeDetailCard';
 
 export default function LearningAnalyticsPage() {
-  const { fetchLearningGlobal, fetchLearningPersonal, fetchLearningEmployeeTable, exportLearningEmployeeTable, fetchDepartments } = useAnalytics();
+  const { fetchLearningGlobal, fetchLearningPersonal, fetchLearningEmployeeTable, fetchDepartments } = useAnalytics();
   const [viewMode, setViewMode] = useState('global');
   const [dateFrom, setDateFrom] = useState(null);
   const [dateTo, setDateTo] = useState(null);
@@ -36,59 +35,52 @@ export default function LearningAnalyticsPage() {
   const [moduleVideoPage, setModuleVideoPage] = useState(1);
   const [moduleVideoPageSize, setModuleVideoPageSize] = useState(10);
   const [selectedCourseForModules, setSelectedCourseForModules] = useState('');
-  const [exporting, setExporting] = useState(false);
   const searchTimeoutRef = useRef(null);
 
-  const handleExportPersonal = useCallback(() => {
+  const handleExportAllPersonalData = useCallback(() => {
     if (!data || !employeeDetail) return;
-    const rows = [];
-    const quote = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
-    // Employee detail
-    rows.push('Employee Detail');
-    rows.push(['Employee ID', 'Name', 'Email', 'Company', 'Department'].map(quote).join(','));
-    rows.push([
-      quote(employeeDetail.id ?? employeeId ?? ''),
-      quote(employeeDetail.username ?? employeeDetail.name ?? ''),
-      quote(employeeDetail.email ?? ''),
-      quote(employeeDetail.company ?? ''),
-      quote(employeeDetail.department ?? ''),
-    ].join(','));
-    rows.push(''); // blank line
-    // Course progress
-    rows.push('My Course Detail');
-    rows.push(['Course', 'Category', 'Status', 'Progress %', 'Time (min)', 'Completed At', 'Certificate'].map(quote).join(','));
-    (data.courseProgress || []).forEach((c) => {
-      rows.push([
-        quote(c.courseTitle ?? ''),
-        quote(c.courseCategory ?? ''),
-        quote(c.status ?? ''),
-        quote(c.percentage ?? ''),
-        quote(c.timeSpentMinutes ?? ''),
-        quote(c.completedAt ?? ''),
-        quote(c.certificateIssued ? 'Yes' : 'No'),
-      ].join(','));
-    });
-    rows.push('');
-    // Module video detail
-    rows.push('Module Video Detail');
-    rows.push(['Course', 'Module Title', 'Completion Type', 'Time Watched (min)', 'Video Duration (min)'].map(quote).join(','));
-    (data.moduleVideoProgress || []).forEach((m) => {
-      rows.push([
-        quote(m.courseTitle ?? ''),
-        quote(m.moduleTitle ?? ''),
-        quote(m.videoCompletionType ?? ''),
-        quote(m.timeWatchedMinutes ?? ''),
-        quote(m.videoDurationMinutes ?? ''),
-      ].join(','));
-    });
 
-    const blob = new Blob([rows.join('\n')], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `learning-personal-${employeeDetail.id ?? employeeId ?? 'user'}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+    // Create workbook with multiple sheets
+    const wb = XLSX.utils.book_new();
+
+    // Sheet 1: Employee Personal Details
+    const employeeData = [{
+      'Employee ID': employeeDetail.id ?? employeeId ?? '',
+      'Name': employeeDetail.employee_name || employeeDetail.username || employeeDetail.name || '',
+      'Email': employeeDetail.email ?? '',
+      'Company': employeeDetail.company ?? '',
+      'Department': employeeDetail.department?.name || employeeDetail.department || '',
+    }];
+    const ws1 = XLSX.utils.json_to_sheet(employeeData);
+    XLSX.utils.book_append_sheet(wb, ws1, 'Employee Details');
+
+    // Sheet 2: My Course Progress
+    const courseProgressData = (data.courseProgress || []).map((c) => ({
+      'Course': c.courseTitle ?? '',
+      'Category': c.courseCategory ?? '',
+      'Status': c.status ?? '',
+      'Progress %': c.percentage ?? '',
+      'Time (min)': c.timeSpentMinutes ?? '',
+      'Completed At': c.completedAt ?? '',
+      'Certificate': c.certificateIssued ? 'Yes' : 'No',
+    }));
+    const ws2 = XLSX.utils.json_to_sheet(courseProgressData);
+    XLSX.utils.book_append_sheet(wb, ws2, 'My Course Progress');
+
+    // Sheet 3: Module Video Details
+    const moduleVideoData = (data.moduleVideoProgress || []).map((m) => ({
+      'Course': m.courseTitle ?? '',
+      'Module': m.moduleTitle ?? '',
+      'Completion Type': m.videoCompletionType ?? '',
+      'Time Watched (min)': m.timeWatchedMinutes ?? '',
+      'Video Duration (min)': m.videoDurationMinutes ?? '',
+    }));
+    const ws3 = XLSX.utils.json_to_sheet(moduleVideoData);
+    XLSX.utils.book_append_sheet(wb, ws3, 'Module Video Details');
+
+    // Download file
+    const fileName = `learning-analytics-${employeeDetail.employee_name || employeeDetail.username || 'user'}-${new Date().toISOString().split('T')[0]}.xlsx`;
+    XLSX.writeFile(wb, fileName);
   }, [data, employeeDetail, employeeId]);
 
   useEffect(() => {
@@ -119,15 +111,15 @@ export default function LearningAnalyticsPage() {
 
     let fetcher;
     if (viewMode === 'table') {
+      const searchVal = searchDebounced?.trim();
       const tableParams = {
         ...params,
         sortBy: 'courseCompletionTimeMinutes',
         sortOrder,
         page,
         pageSize,
+        ...(searchVal && { search: searchVal }),
       };
-      const searchVal = searchDebounced?.trim();
-      if (searchVal) tableParams.search = searchVal;
       fetcher = () => fetchLearningEmployeeTable(tableParams);
     } else if (viewMode === 'personal' && employeeId) {
       fetcher = () => fetchLearningPersonal({ ...params, userId: employeeId });
@@ -182,8 +174,7 @@ export default function LearningAnalyticsPage() {
       <Page.Main>
       <Layouts.Header
         title="Learning Analytics"
-        subtitle={isPersonal ? 'Personal learning metrics' : 'Global learning metrics'}
-        as="h2"
+        subtitle={isPersonal ? 'Personal learning metrics' : 'Content learning metrics'}
       />
       <Layouts.Content>
         <Box paddingLeft={8} paddingRight={8} paddingTop={6} paddingBottom={8}>
@@ -221,36 +212,10 @@ export default function LearningAnalyticsPage() {
 
           {!loading && data && viewMode === 'table' && (
             <Box marginBottom={6}>
-              <Flex justifyContent="flex-end" marginBottom={3}>
-                <Button
-                  variant="secondary"
-                  size="S"
-                  loading={exporting}
-                  disabled={exporting}
-                  onClick={async () => {
-                    setExporting(true);
-                    try {
-                      const params = {};
-                      if (dateFrom) params.dateFrom = dateFrom;
-                      if (dateTo) params.dateTo = dateTo;
-                      if (company) params.company = company;
-                      if (searchDebounced?.trim()) params.search = searchDebounced.trim();
-                      params.sortBy = 'courseCompletionTimeMinutes';
-                      params.sortOrder = sortOrder;
-                      await exportLearningEmployeeTable(params);
-                    } catch (err) {
-                      setError(err.message);
-                    } finally {
-                      setExporting(false);
-                    }
-                  }}
-                >
-                  Download
-                </Button>
-              </Flex>
               <DataTable
                 data={data.rows || []}
                 title="Employee Learning Summary"
+                exportFileName="employee-learning-summary.xlsx"
                 pagination={
                   data.total != null && data.total > 0
                     ? {
@@ -349,7 +314,7 @@ export default function LearningAnalyticsPage() {
                 </Flex>
               )}
 
-              {/* Global view only: Status Distribution, Completion Trend, Category, Department */}
+              {/* Content view only: Status Distribution, Completion Trend, Category, Department */}
               {!isPersonal && (
                 <>
                   <Flex gap={4} marginBottom={6} wrap="wrap">
@@ -396,6 +361,16 @@ export default function LearningAnalyticsPage() {
               {/* Personal view: Course by category + Completion trend over time – always show so layout is visible */}
               {isPersonal && (
                 <>
+                  <Flex justifyContent="flex-end" marginBottom={4}>
+                    <Button
+                      variant="secondary"
+                      size="M"
+                      onClick={handleExportAllPersonalData}
+                      disabled={!data?.courseProgress?.length || !employeeDetail}
+                    >
+                      Download 
+                    </Button>
+                  </Flex>
                   <Flex gap={4} marginBottom={6} wrap="wrap">
                     <Box style={{ flex: '1 1 350px', minWidth: 280 }}>
                       <BarChart
@@ -424,16 +399,6 @@ export default function LearningAnalyticsPage() {
                     const paginatedData = data.courseProgress.slice(start, start + courseProgressPageSize);
                     return (
                       <Box marginBottom={6}>
-                        <Flex justifyContent="flex-end" marginBottom={3}>
-                          <Button
-                            variant="secondary"
-                            size="S"
-                            onClick={handleExportPersonal}
-                            disabled={!data?.courseProgress?.length}
-                          >
-                            Download
-                          </Button>
-                        </Flex>
                         <DataTable
                           data={paginatedData}
                           title="My Course Progress"

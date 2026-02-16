@@ -20,6 +20,10 @@ module.exports = {
       name: 'multi-select-dropdown',
       type: 'json',
     });
+    strapi.customFields.register({
+      name: 'yes-no-toggle',
+      type: 'boolean',
+    });
 
     // When a course is created or updated, sync modules/quiz/feedback_question to match course_language (one entry per language)
     strapi.documents.use(async (context, next) => {

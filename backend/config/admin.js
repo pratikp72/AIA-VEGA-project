@@ -17,4 +17,6 @@ module.exports = ({ env }) => ({
     nps: env.bool('FLAG_NPS', true),
     promoteEE: env.bool('FLAG_PROMOTE_EE', true),
   },
+  // Custom admin panel configuration
+  url: env('ADMIN_URL', '/admin'),
 });

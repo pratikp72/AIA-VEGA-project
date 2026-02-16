@@ -48,6 +48,13 @@
     "completion_time": {
       "type": "customField",
       "customField": "global::number-range"
+    },
+    "compulsory": {
+      "type": "customField",
+      "customField": "global::yes-no-toggle",
+      "options": {
+        "required": true
+      }
     }
   },
   "config": {}

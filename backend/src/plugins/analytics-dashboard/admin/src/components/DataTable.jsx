@@ -1,7 +1,55 @@
 import React from 'react';
 import { Box, Typography, Table, Thead, Tbody, Tr, Th, Td, Button, Flex } from '@strapi/design-system';
+import * as XLSX from 'xlsx';
 
-export function DataTable({ data = [], columns = [], title, pagination = null, sortBy = null, sortOrder = 'asc', onSortChange = null, fontSize }) {
+export function DataTable({ data = [], columns = [], title, pagination = null, sortBy = null, sortOrder = 'asc', onSortChange = null, fontSize, exportFileName = null }) {
+  const handleExportToExcel = () => {
+    if (!data || data.length === 0) return;
+
+    // Prepare data for Excel export
+    const exportData = data.map((row) => {
+      const exportRow = {};
+      columns.forEach((col) => {
+        let value = row[col.key];
+        // If there's a render function, use it but strip JSX
+        if (col.render) {
+          const rendered = col.render(value, row);
+          // If rendered is a React element, try to extract text content
+          if (rendered && typeof rendered === 'object' && rendered.props) {
+            value = rendered.props.children || value;
+          } else if (typeof rendered === 'string' || typeof rendered === 'number') {
+            value = rendered;
+          }
+        }
+        exportRow[col.label] = value ?? '—';
+      });
+      return exportRow;
+    });
+
+    // Create workbook and worksheet
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(exportData);
+
+    // Auto-size columns
+    const maxWidth = 50;
+    const wscols = columns.map((col) => {
+      const maxLen = Math.max(
+        col.label.length,
+        ...exportData.map((row) => String(row[col.label] || '').length)
+      );
+      return { wch: Math.min(maxLen + 2, maxWidth) };
+    });
+    ws['!cols'] = wscols;
+
+    // Add worksheet to workbook
+    XLSX.utils.book_append_sheet(wb, ws, title || 'Data');
+
+    // Generate file name
+    const fileName = exportFileName || `${title || 'data'}_${new Date().toISOString().split('T')[0]}.xlsx`;
+
+    // Download file
+    XLSX.writeFile(wb, fileName);
+  };
   if (!data || data.length === 0) {
     return (
       <Box padding={4} background="neutral0" hasRadius shadow="tableShadow" borderColor="neutral200" borderWidth="1px" borderStyle="solid">
@@ -25,11 +73,23 @@ export function DataTable({ data = [], columns = [], title, pagination = null, s
   return (
     <Box padding={4} background="neutral0" hasRadius shadow="tableShadow" borderColor="neutral200" borderWidth="1px" borderStyle="solid">
       <Flex justifyContent="space-between" alignItems="center" marginBottom={4} wrap="wrap" gap={2}>
-        {title && (
-          <Typography variant="sigma" textColor="neutral600" fontWeight="semiBold">
-            {title}
-          </Typography>
-        )}
+        <Flex gap={2} alignItems="center">
+          {title && (
+            <Typography variant="sigma" textColor="neutral600" fontWeight="semiBold">
+              {title}
+            </Typography>
+          )}
+          {exportFileName && (
+            <Button
+              variant="secondary"
+              size="S"
+              onClick={handleExportToExcel}
+              title="Download as Excel file"
+            >
+              Download Excel
+            </Button>
+          )}
+        </Flex>
         {pagination && total > 0 && (
           <Flex gap={2} alignItems="center" wrap="wrap">
             <Typography variant="pi" textColor="neutral600">

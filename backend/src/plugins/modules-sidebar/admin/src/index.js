@@ -3018,22 +3018,6 @@ export default {
       Component: () => import('./pages/AllModules/index.jsx'),
     });
 
-    /**
-     * Quiz Reattempt Requests – list with Approve/Reject buttons per entry (LM Admin).
-     */
-    app.addMenuLink({
-      to: `plugins/${PLUGIN_ID}/quiz-reattempt-requests`,
-      icon: Question,
-      intlLabel: {
-        id: `${PLUGIN_ID}.menu.quiz-reattempt-requests`,
-        defaultMessage: 'Quiz Reattempt Requests',
-      },
-      permissions: [
-        { action: `plugin::${PLUGIN_ID}.read`, subject: null },
-      ],
-      Component: () => import('./pages/QuizReattemptRequests/index.jsx'),
-    });
-
     // No need to manually add routes here: `addMenuLink` already mounts the route via `Component`.
     // Adding routes incorrectly can also break the Admin router.
 

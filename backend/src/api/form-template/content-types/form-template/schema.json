@@ -15,6 +15,11 @@
       "type": "string",
       "required": true
     },
+    "custom_yes_no": {
+      "type": "customField",
+      "customField": "global::yes-no-toggle",
+      "required": true
+    },
     "form_type": {
       "type": "enumeration",
       "required": true,

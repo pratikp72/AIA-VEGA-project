@@ -61,6 +61,11 @@
     "publish_date": {
       "type": "customField",
       "customField": "global::date-future-only"
+    },
+    "likes": {
+      "type": "relation",
+      "relation": "manyToMany",
+      "target": "plugin::users-permissions.user"
     }
   }
 }

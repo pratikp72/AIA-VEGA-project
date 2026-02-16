@@ -40,7 +40,7 @@ export function useAnalytics() {
       const downloadUrl = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = downloadUrl;
-      a.download = 'employee-learning-summary.csv';
+      a.download = 'employee-learning-summary.xlsx';
       a.click();
       URL.revokeObjectURL(downloadUrl);
     },

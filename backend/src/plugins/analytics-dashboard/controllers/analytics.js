@@ -111,16 +111,14 @@ module.exports = ({ strapi }) => {
       try {
         const params = getQueryParams(ctx);
         const service = getAnalyticsService();
-        const csv = await service.getLearningEmployeeTableExport(params);
-        ctx.set('Content-Type', 'text/csv; charset=utf-8');
-        ctx.set('Content-Disposition', 'attachment; filename="employee-learning-summary.csv"');
-        ctx.body = csv;
+        const excelBuffer = await service.getLearningEmployeeTableExport(params);
+        ctx.set('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        ctx.set('Content-Disposition', 'attachment; filename="employee-learning-summary.xlsx"');
+        ctx.body = excelBuffer;
       } catch (error) {
         strapi.log.error('Analytics learningEmployeeTableExport error:', error);
-        ctx.set('Content-Type', 'text/csv; charset=utf-8');
-        ctx.set('Content-Disposition', 'attachment; filename="employee-learning-summary.csv"');
-        ctx.body = 'No data available';
-        ctx.status = 200;
+        ctx.body = { error: 'Export failed' };
+        ctx.status = 500;
       }
     },
 
@@ -235,6 +233,7 @@ module.exports = ({ strapi }) => {
      * Track activity - creates activity log entry from frontend.
      * Requires JWT auth. User and company are auto-filled from token.
      * Body: { activity_type, activity_description, duration_seconds }
+     * Note: duration_seconds will be converted to minutes for storage
      */
     async activityTrack(ctx) {
       try {

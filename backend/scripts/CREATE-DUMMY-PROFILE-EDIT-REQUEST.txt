@@ -1,0 +1,57 @@
+/**
+ * INSTRUCTIONS TO CREATE DUMMY PROFILE EDIT REQUEST
+ * 
+ * 1. Make sure Strapi server is running (npm run develop)
+ * 
+ * 2. Open Strapi Admin Panel in browser: http://localhost:1337/admin
+ * 
+ * 3. Go to Content Manager → Profile Edit Request
+ * 
+ * 4. Click "+ Create new entry" button
+ * 
+ * 5. Fill in the following test data:
+ * 
+ *    Users Permissions User: [Select any employee from dropdown]
+ *    
+ *    Requested Changes (JSON):
+ *    {
+ *      "employee_name": "John Doe Updated",
+ *      "contact_no": "+1-555-0199",
+ *      "designation": "Senior Manager",
+ *      "working_location": "San Francisco Office"
+ *    }
+ *    
+ *    Reason:
+ *    Dummy entry for testing - Employee requesting to update contact information after office relocation
+ *    
+ *    Request Status: Pending
+ *    
+ *    (Leave Reviewed By, Reviewed At, and Admin Comment empty)
+ * 
+ * 6. Click "Save"
+ * 
+ * 7. Now go to Plugins → Profile Edit Requests to see the entry in the admin table view!
+ * 
+ * ---
+ * 
+ * ALTERNATIVE: Run via Strapi Console
+ * 
+ * 1. Stop the dev server if running
+ * 2. Run: npm run strapi console
+ * 3. Wait for console to load
+ * 4. Paste and run this command:
+ * 
+ * const users = await strapi.query('plugin::users-permissions.user').findMany({ limit: 1 }); 
+ * const req = await strapi.documents('api::profile-edit-request.profile-edit-request').create({ 
+ *   data: { 
+ *     users_permissions_user: users[0].id, 
+ *     requested_changes: { employee_name: "John Doe Updated", contact_no: "+1-555-0199", designation: "Senior Manager", working_location: "San Francisco Office" }, 
+ *     reason: "Dummy entry - Employee updating contact info", 
+ *     request_status: "Pending" 
+ *   } 
+ * }); 
+ * console.log('Created:', req.documentId);
+ * 
+ * 5. Type .exit to close console
+ * 6. Restart dev server: npm run develop
+ */

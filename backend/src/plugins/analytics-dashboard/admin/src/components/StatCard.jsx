@@ -4,7 +4,7 @@ import { CHART_COLORS } from './chartColors';
 
 const CARD_ACCENT_COLORS = CHART_COLORS.slice(0, 6);
 
-export function StatCard({ label, value, subtext, colorIndex = 0 }) {
+export function StatCard({ label, value, subtext = null, colorIndex = 0 }) {
   const accentColor = CARD_ACCENT_COLORS[colorIndex % CARD_ACCENT_COLORS.length];
   return (
     <Box
