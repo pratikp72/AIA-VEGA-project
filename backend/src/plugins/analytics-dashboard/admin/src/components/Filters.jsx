@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useCallback } from 'react';
 import { Box, Flex, Typography, SingleSelect, SingleSelectOption } from '@strapi/design-system';
+import DateRangeInput from './DateRangeInput';
 
 export function Filters({
   viewMode,
@@ -58,6 +59,30 @@ export function Filters({
         Filters
       </Typography>
       <Flex gap={4} wrap="wrap" alignItems="end">
+        {/* 1. Company */}
+        <Box style={{ minWidth: 140 }}>
+          <Typography variant="pi" textColor="neutral600" style={{ marginBottom: 4 }}>
+            Company
+          </Typography>
+          <select
+            value={company || ''}
+            onChange={(e) => onCompanyChange(e.target.value || '')}
+            style={{
+              padding: '8px 12px',
+              border: '1px solid #dcdce4',
+              borderRadius: '4px',
+              fontSize: '14px',
+              minWidth: '100%',
+            }}
+          >
+            {companies.map((c) => (
+              <option key={c.value} value={c.value}>
+                {c.label}
+              </option>
+            ))}
+          </select>
+        </Box>
+        {/* 2. View */}
         <Box style={{ minWidth: 140 }}>
           <Typography variant="pi" textColor="neutral600" style={{ marginBottom: 4 }}>
             View
@@ -94,42 +119,25 @@ export function Filters({
             />
           </Box>
         )}
-        {(
-          <>
-            <Box>
-              <Typography variant="pi" textColor="neutral600" style={{ marginBottom: 4 }}>
-                Date From
-              </Typography>
-              <input
-                type="date"
-                value={dateFrom || ''}
-                onChange={(e) => onDateFromChange(e.target.value || null)}
-                style={{
-                  padding: '8px 12px',
-                  border: '1px solid #dcdce4',
-                  borderRadius: '4px',
-                  fontSize: '14px',
-                }}
-              />
-            </Box>
-            <Box>
-              <Typography variant="pi" textColor="neutral600" style={{ marginBottom: 4 }}>
-                Date To
-              </Typography>
-              <input
-                type="date"
-                value={dateTo || ''}
-                onChange={(e) => onDateToChange(e.target.value || null)}
-                style={{
-                  padding: '8px 12px',
-                  border: '1px solid #dcdce4',
-                  borderRadius: '4px',
-                  fontSize: '14px',
-                }}
-              />
-            </Box>
-          </>
-        )}
+        {/* 3. Date Range (single icon, popup) */}
+        <Box style={{ display: 'flex', flexDirection: 'column', minWidth: 260 }}>
+          <Typography variant="pi" textColor="neutral600" style={{ marginBottom: 4 }}>
+            Date Range
+          </Typography>
+          <DateRangeInput
+            value={{ start: dateFrom ? new Date(dateFrom) : null, end: dateTo ? new Date(dateTo) : null }}
+            onChange={({ start, end }) => {
+              if (!start && !end) {
+                onDateFromChange(null);
+                onDateToChange(null);
+              } else if (start && end && start.getTime() !== end.getTime()) {
+                onDateFromChange(start ? start.toISOString().slice(0, 10) : null);
+                onDateToChange(end ? end.toISOString().slice(0, 10) : null);
+              }
+            }}
+          />
+        </Box>
+        {/* Rest as before */}
         {viewMode !== 'personal' && viewMode !== 'table' && departments.length > 0 && (
           <Box style={{ minWidth: 180 }}>
             <Typography variant="pi" textColor="neutral600" style={{ marginBottom: 4 }}>
@@ -155,28 +163,6 @@ export function Filters({
             </select>
           </Box>
         )}
-        <Box style={{ minWidth: 140 }}>
-          <Typography variant="pi" textColor="neutral600" style={{ marginBottom: 4 }}>
-            Company
-          </Typography>
-          <select
-            value={company || ''}
-            onChange={(e) => onCompanyChange(e.target.value || '')}
-            style={{
-              padding: '8px 12px',
-              border: '1px solid #dcdce4',
-              borderRadius: '4px',
-              fontSize: '14px',
-              minWidth: '100%',
-            }}
-          >
-            {companies.map((c) => (
-              <option key={c.value} value={c.value}>
-                {c.label}
-              </option>
-            ))}
-          </select>
-        </Box>
         {showActivityTracking && viewMode === 'activityTracking' && (
           <Box style={{ minWidth: 180 }}>
             <Typography variant="pi" textColor="neutral600" style={{ marginBottom: 4 }}>

@@ -1,7 +1,3 @@
-/**
- * Profile Edit Requests – search, filter, pagination; Approve/Reject with change preview.
- */
-
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Layouts } from '@strapi/strapi/admin';
 import {
@@ -22,6 +18,8 @@ import {
   Modal,
 } from '@strapi/design-system';
 import { getFetchClient } from '@strapi/strapi/admin';
+import DataTable from '../../../../analytics-dashboard/admin/src/components/DataTable';
+import DateRangeInput from '../../../../analytics-dashboard/admin/src/components/DateRangeInput';
 
 const PAGE_SIZE = 10;
 const TABLE_FONT_STYLE = { fontSize: '15px' };
@@ -31,6 +29,11 @@ const STATUS_OPTIONS = [
   { value: 'Approved', label: 'Approved' },
   { value: 'Rejected', label: 'Rejected' },
 ];
+const COMPANY_OPTIONS = [
+  { value: '', label: 'All Companies' },
+  { value: 'AIA', label: 'AIA' },
+  { value: 'VEGA', label: 'VEGA' },
+];
 
 export default function ProfileEditRequestsPage() {
   const [list, setList] = useState([]);
@@ -39,9 +42,11 @@ export default function ProfileEditRequestsPage() {
   const [updatingId, setUpdatingId] = useState(null);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [companyFilter, setCompanyFilter] = useState('');
   const [page, setPage] = useState(1);
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [showModal, setShowModal] = useState(false);
+  const [dateRange, setDateRange] = useState({ start: null, end: null });
   
   const { get, put } = getFetchClient();
   const isMounted = useRef(true);
@@ -122,19 +127,25 @@ export default function ProfileEditRequestsPage() {
     const statusVal = typeof statusRaw === 'string' ? statusRaw : 'Pending';
     const reason = attrs.reason ?? entry.reason ?? '—';
     const requestedChanges = attrs.requested_changes ?? entry.requested_changes ?? {};
-    return { userName, userId, statusVal, reason, requestedChanges, attrs };
+    const userCompany = attrs.company || attrs.companyName || '';
+    return { userName, userId, statusVal, reason, requestedChanges, attrs, userCompany };
   };
 
   const filteredList = useMemo(() => {
     const q = (search || '').toLowerCase().trim();
     const status = (statusFilter || '').trim();
+    const company = (companyFilter || '').trim();
     return list.filter((entry) => {
-      const { userName, statusVal } = getDisplayValues(entry);
+      const { userName, statusVal, attrs } = getDisplayValues(entry);
+      const userCompany = attrs.company || attrs.companyName || '';
       if (status && statusVal !== status) return false;
+      if (company && userCompany !== company) return false;
+      if (dateRange && dateRange.start && attrs.createdAt && new Date(attrs.createdAt) < dateRange.start) return false;
+      if (dateRange && dateRange.end && attrs.createdAt && new Date(attrs.createdAt) > dateRange.end) return false;
       if (!q) return true;
       return (userName && userName.toLowerCase().includes(q));
     });
-  }, [list, search, statusFilter]);
+  }, [list, search, statusFilter, companyFilter, dateRange]);
 
   const totalFiltered = filteredList.length;
   const totalPages = Math.max(1, Math.ceil(totalFiltered / PAGE_SIZE));
@@ -190,48 +201,89 @@ export default function ProfileEditRequestsPage() {
             </Box>
           )}
 
-          {/* Search and filter */}
-          <Flex gap={4} marginBottom={4} wrap="wrap" alignItems="flex-end">
-            <Box style={{ minWidth: 220 }}>
-              <Typography variant="pi" textColor="neutral600" style={{ marginBottom: 4, display: 'block' }}>
-                Search
-              </Typography>
-              <input
-                type="text"
-                value={search}
-                onChange={(e) => {
-                  setSearch(e.target.value);
-                  setPage(1);
-                }}
-                placeholder="Employee name…"
-                style={{
-                  padding: '8px 12px',
-                  border: '1px solid #dcdce4',
-                  borderRadius: '4px',
-                  fontSize: '14px',
-                  width: '100%',
-                }}
-              />
-            </Box>
-            <Box style={{ minWidth: 140 }}>
-              <Typography variant="pi" textColor="neutral600" style={{ marginBottom: 4, display: 'block' }}>
-                Status
-              </Typography>
-              <SingleSelect
-                value={statusFilter}
-                onChange={(v) => {
-                  setStatusFilter(String(v || ''));
-                  setPage(1);
-                }}
-              >
-                {STATUS_OPTIONS.map((opt) => (
-                  <SingleSelectOption key={opt.value || 'all'} value={opt.value}>
-                    {opt.label}
-                  </SingleSelectOption>
-                ))}
-              </SingleSelect>
-            </Box>
-          </Flex>
+          {/* Unified filter card */}
+          <Box
+            padding={4}
+            background="neutral0"
+            hasRadius
+            shadow="tableShadow"
+            marginBottom={6}
+          >
+            <Typography variant="sigma" textColor="neutral600" marginBottom={3}>
+              Filters
+            </Typography>
+            <Flex gap={4} wrap="wrap" alignItems="flex-end">
+              <Box style={{ minWidth: 220 }}>
+                <Typography variant="pi" textColor="neutral600" style={{ marginBottom: 4, display: 'block' }}>
+                  Search
+                </Typography>
+                <input
+                  type="text"
+                  value={search}
+                  onChange={(e) => {
+                    setSearch(e.target.value);
+                    setPage(1);
+                  }}
+                  placeholder="Employee name…"
+                  style={{
+                    padding: '8px 12px',
+                    border: '1px solid #dcdce4',
+                    borderRadius: '4px',
+                    fontSize: '14px',
+                    width: '100%',
+                  }}
+                />
+              </Box>
+              <Box style={{ minWidth: 140 }}>
+                <Typography variant="pi" textColor="neutral600" style={{ marginBottom: 4, display: 'block' }}>
+                  Status
+                </Typography>
+                <SingleSelect
+                  value={statusFilter}
+                  onChange={(v) => {
+                    setStatusFilter(String(v || ''));
+                    setPage(1);
+                  }}
+                >
+                  {STATUS_OPTIONS.map((opt) => (
+                    <SingleSelectOption key={opt.value || 'all'} value={opt.value}>
+                      {opt.label}
+                    </SingleSelectOption>
+                  ))}
+                </SingleSelect>
+              </Box>
+              <Box style={{ minWidth: 160 }}>
+                <Typography variant="pi" textColor="neutral600" style={{ marginBottom: 4, display: 'block' }}>
+                  Company
+                </Typography>
+                <SingleSelect
+                  value={companyFilter}
+                  onChange={(v) => {
+                    setCompanyFilter(String(v || ''));
+                    setPage(1);
+                  }}
+                >
+                  {COMPANY_OPTIONS.map((opt) => (
+                    <SingleSelectOption key={opt.value || 'all'} value={opt.value}>
+                      {opt.label}
+                    </SingleSelectOption>
+                  ))}
+                </SingleSelect>
+              </Box>
+              <Box style={{ minWidth: 260 }}>
+                <Typography variant="pi" textColor="neutral600" style={{ marginBottom: 4, display: 'block' }}>
+                  Date Range
+                </Typography>
+                <DateRangeInput
+                  value={dateRange}
+                  onChange={({ start, end }) => {
+                    setDateRange({ start, end });
+                    setPage(1);
+                  }}
+                />
+              </Box>
+            </Flex>
+          </Box>
 
           {loading ? (
             <Flex justifyContent="center" padding={8}>
@@ -248,104 +300,50 @@ export default function ProfileEditRequestsPage() {
           ) : (
             <>
               <Box background="neutral0" hasRadius shadow="tableShadow" padding={6}>
-                <Table colCount={6} rowCount={pageList.length}>
-                  <Thead>
-                    <Tr>
-                      <Th>
-                        <Typography variant="sigma">Employee</Typography>
-                      </Th>
-                      <Th>
-                        <Typography variant="sigma">User ID</Typography>
-                      </Th>
-                      <Th>
-                        <Typography variant="sigma">Reason</Typography>
-                      </Th>
-                      <Th>
-                        <Typography variant="sigma">Changes</Typography>
-                      </Th>
-                      <Th>
-                        <Typography variant="sigma">Status</Typography>
-                      </Th>
-                      <Th>
-                        <Typography variant="sigma">Actions</Typography>
-                      </Th>
-                    </Tr>
-                  </Thead>
-                  <Tbody>
-                    {pageList.map((entry, index) => {
-                      const id = entryId(entry);
+                <DataTable
+                  data={pageList}
+                  columns={[
+                    { key: 'userName', label: 'Employee' },
+                    { key: 'userId', label: 'User ID' },
+                    { key: 'reason', label: 'Reason' },
+                    { key: 'changes', label: 'Changes', render: (val, row) => (
+                      <Button size="S" variant="tertiary" onClick={() => viewChanges(row)}>
+                        View ({row.requestedChanges ? Object.keys(row.requestedChanges).length : 0} field{row.requestedChanges && Object.keys(row.requestedChanges).length !== 1 ? 's' : ''})
+                      </Button>
+                    ) },
+                    { key: 'statusVal', label: 'Status', render: (val) => (
+                      <Badge
+                        variant={val === 'Approved' ? 'success' : val === 'Rejected' ? 'danger' : 'warning'}
+                      >
+                        {val}
+                      </Badge>
+                    ) },
+                    { key: 'company', label: 'Company', render: (val, row) => (row?.attrs?.company || row?.attrs?.companyName || '—') },
+                    { key: 'actions', label: 'Actions', render: (val, row) => {
+                      const id = entryId(row);
                       const idStr = id != null ? String(id) : '';
-                      const { userName, userId, statusVal, reason, requestedChanges } = getDisplayValues(entry);
+                      const statusVal = row.statusVal;
                       const isPending = statusVal === 'Pending';
                       const isUpdating = updatingId === idStr || updatingId === id;
-                      const changeCount = requestedChanges ? Object.keys(requestedChanges).length : 0;
-
-                      return (
-                        <Tr key={idStr || entry.id || `row-${start + index}`}>
-                          <Td>
-                            <Typography variant="omega" style={TABLE_FONT_STYLE}>{userName}</Typography>
-                          </Td>
-                          <Td>
-                            <Typography variant="omega" style={TABLE_FONT_STYLE}>{userId}</Typography>
-                          </Td>
-                          <Td>
-                            <Typography variant="omega" style={TABLE_FONT_STYLE}>
-                              {reason.length > 50 ? reason.substring(0, 50) + '...' : reason}
-                            </Typography>
-                          </Td>
-                          <Td>
-                            <Button
-                              size="S"
-                              variant="tertiary"
-                              onClick={() => viewChanges(entry)}
-                            >
-                              View ({changeCount} field{changeCount !== 1 ? 's' : ''})
-                            </Button>
-                          </Td>
-                          <Td>
-                            <Badge
-                              variant={
-                                statusVal === 'Approved'
-                                  ? 'success'
-                                  : statusVal === 'Rejected'
-                                  ? 'danger'
-                                  : 'warning'
-                              }
-                            >
-                              {statusVal}
-                            </Badge>
-                          </Td>
-                          <Td>
-                            {isPending ? (
-                              <Flex gap={2}>
-                                <Button
-                                  size="S"
-                                  variant="default"
-                                  disabled={isUpdating}
-                                  onClick={() => updateStatus(id, 'Approved')}
-                                >
-                                  Approve
-                                </Button>
-                                <Button
-                                  size="S"
-                                  variant="danger"
-                                  disabled={isUpdating}
-                                  onClick={() => updateStatus(id, 'Rejected')}
-                                >
-                                  Reject
-                                </Button>
-                              </Flex>
-                            ) : (
-                              <Typography variant="omega" textColor="neutral600" style={TABLE_FONT_STYLE}>
-                                —
-                              </Typography>
-                            )}
-                          </Td>
-                        </Tr>
+                      return isPending ? (
+                        <Flex gap={2}>
+                          <Button size="S" variant="default" disabled={isUpdating} onClick={() => updateStatus(id, 'Approved')}>Approve</Button>
+                          <Button size="S" variant="danger" disabled={isUpdating} onClick={() => updateStatus(id, 'Rejected')}>Reject</Button>
+                        </Flex>
+                      ) : (
+                        <Typography variant="omega" textColor="neutral600" style={TABLE_FONT_STYLE}>—</Typography>
                       );
-                    })}
-                  </Tbody>
-                </Table>
+                    } },
+                  ]}
+                  pagination={{
+                    page: currentPage,
+                    pageSize: PAGE_SIZE,
+                    total: totalFiltered,
+                    onPageChange: (p) => setPage(Number(p)),
+                    onPageSizeChange: () => {},
+                  }}
+                  exportFileName={`profile-edit-requests-${new Date().toISOString().split('T')[0]}.xlsx`}
+                />
 
                 {/* Pagination */}
                 {totalPages > 1 && (

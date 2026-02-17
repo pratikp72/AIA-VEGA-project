@@ -195,3 +195,5 @@ export function DataTable({ data = [], columns = [], title, pagination = null, s
     </Box>
   );
 }
+
+export default DataTable;
