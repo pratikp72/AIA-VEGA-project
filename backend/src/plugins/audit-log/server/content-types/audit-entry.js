@@ -42,5 +42,10 @@ module.exports = {
       type: 'json',
       description: 'Full data snapshot at time of change',
     },
+    company: {
+      type: 'string',
+      configurable: false,
+      description: 'Company (AIA or Vega) for filtering',
+    },
   },
 };

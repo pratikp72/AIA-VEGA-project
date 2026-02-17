@@ -1,3 +1,5 @@
+//@ts-ignore
+
 import React, { useState, useEffect, useRef } from 'react';
 import { Layouts } from '@strapi/strapi/admin';
 import { Box, Typography, Table, Thead, Tbody, Tr, Th, Td, Flex, Loader, Badge, SingleSelect, SingleSelectOption } from '@strapi/design-system';
@@ -15,7 +17,7 @@ const AuditLogPage = () => {
   const COMPANY_OPTIONS = [
     { value: '', label: 'All Companies' },
     { value: 'AIA', label: 'AIA' },
-    { value: 'VEGA', label: 'VEGA' },
+    { value: 'Vega', label: 'Vega' },
   ];
   const [companyFilter, setCompanyFilter] = useState('');
 

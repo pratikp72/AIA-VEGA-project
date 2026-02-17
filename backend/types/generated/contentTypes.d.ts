@@ -1471,6 +1471,7 @@ export interface PluginAuditLogAuditEntry extends Struct.CollectionTypeSchema {
     adminUser: Schema.Attribute.Relation<'manyToOne', 'admin::user'>;
     changes: Schema.Attribute.JSON;
     collectionName: Schema.Attribute.String;
+    company: Schema.Attribute.String;
     contentType: Schema.Attribute.String & Schema.Attribute.Required;
     createdAt: Schema.Attribute.DateTime;
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &

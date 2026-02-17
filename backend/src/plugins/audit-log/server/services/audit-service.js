@@ -4,7 +4,8 @@ module.exports = ({ strapi }) => ({
       // Get friendly collection name
       const contentTypeObj = strapi.contentTypes[contentType];
       const collectionName = contentTypeObj?.info?.displayName || contentType;
-
+      // Extract company from data (user snapshot)
+      const company = data && data.company ? data.company : null;
       await strapi.entityService.create('plugin::audit-log.audit-entry', {
         data: {
           action,
@@ -14,6 +15,7 @@ module.exports = ({ strapi }) => ({
           adminUser,
           changes: changes || null,
           snapshot: data || null,
+          company, // Store as top-level field
         },
       });
     } catch (error) {
@@ -30,6 +32,7 @@ module.exports = ({ strapi }) => ({
     action = null,
     sortBy = 'createdAt',
     sortOrder = 'desc',
+    company = null,
   }) {
     const filters = {};
 
@@ -54,6 +57,11 @@ module.exports = ({ strapi }) => ({
       filters.action = { $eq: action };
     }
 
+    // Company filtering (now stored as top-level field)
+    if (company && company !== '') {
+      filters["company"] = { $eq: company };
+    }
+
     const entries = await strapi.entityService.findPage('plugin::audit-log.audit-entry', {
       page,
       pageSize,
@@ -62,23 +70,35 @@ module.exports = ({ strapi }) => ({
       populate: ['adminUser'],
     });
 
+    // TEMP: Log snapshot data for debugging company filter
+    entries.results.forEach(entry => {
+      const snapshot = entry.snapshot || {};
+      strapi.log.info(`[AUDIT-LOG DEBUG] entryId=${entry.id} snapshot.company=`, snapshot.company, 'snapshot=', JSON.stringify(snapshot));
+    });
+
     return {
-      data: entries.results.map(entry => ({
-        id: entry.id,
-        action: entry.action,
-        contentType: entry.contentType,
-        collectionName: entry.collectionName,
-        entryId: entry.entryId,
-        adminUser: entry.adminUser ? {
-          id: entry.adminUser.id,
-          firstname: entry.adminUser.firstname,
-          lastname: entry.adminUser.lastname,
-          email: entry.adminUser.email,
-        } : null,
-        changes: entry.changes,
-        data: entry.snapshot, // Include snapshot data (contains company, employee_name, etc.)
-        createdAt: entry.createdAt,
-      })),
+      data: entries.results.map(entry => {
+        // Extract userId and company from snapshot (if available)
+        const snapshot = entry.snapshot || {};
+        return {
+          id: entry.id,
+          action: entry.action,
+          contentType: entry.contentType,
+          collectionName: entry.collectionName,
+          entryId: entry.entryId,
+          adminUser: entry.adminUser ? {
+            id: entry.adminUser.id,
+            firstname: entry.adminUser.firstname,
+            lastname: entry.adminUser.lastname,
+            email: entry.adminUser.email,
+          } : null,
+          changes: entry.changes,
+          data: snapshot, // Full snapshot for reference
+          userId: snapshot.id || snapshot.userId || null,
+          company: snapshot.company || null,
+          createdAt: entry.createdAt,
+        };
+      }),
       pagination: entries.pagination,
     };
   },
