@@ -7,10 +7,14 @@ import DateRangeInput from '../../../../analytics-dashboard/admin/src/components
 import { getFetchClient } from '@strapi/strapi/admin';
 import DataTable from '../../../../analytics-dashboard/admin/src/components/DataTable';
 
+const TABLE_FONT_STYLE = { fontSize: '14px' };
+
 const AuditLogPage = () => {
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [pagination, setPagination] = useState({ page: 1, pageSize: 25, total: 0 });
+  // pageSize state for DataTable
+  const [pageSize, setPageSize] = useState(25);
   const [dateRange, setDateRange] = useState({ start: null, end: null });
   const [action, setAction] = useState('');
   const contentType = 'plugin::users-permissions.user'; // Fixed to user collection
@@ -24,12 +28,12 @@ const AuditLogPage = () => {
   const { get } = getFetchClient();
   const isMounted = useRef(true);
 
-  const fetchLogs = async (page = 1) => {
+  const fetchLogs = async (page = 1, pageSizeArg) => {
     try {
       setLoading(true);
       const params = new URLSearchParams({
         page: page.toString(),
-        pageSize: '25',
+        pageSize: (pageSizeArg || pageSize).toString(),
         sortBy: 'createdAt',
         sortOrder: 'desc',
       });
@@ -44,7 +48,7 @@ const AuditLogPage = () => {
       
       if (isMounted.current) {
         setLogs(data.data || []);
-        setPagination({ page, pageSize: 25, total: data.pagination?.total || 0 });
+        setPagination({ page, pageSize: pageSizeArg, total: data.pagination?.total || 0 });
       }
     } catch (error) {
       console.error('Failed to fetch audit logs:', error);
@@ -57,16 +61,16 @@ const AuditLogPage = () => {
 
   // Initial load
   useEffect(() => {
-    fetchLogs(1);
+    fetchLogs(1, pageSize);
     return () => {
       isMounted.current = false;
     };
-  }, []);
+  }, [pageSize]);
 
   // Reload when filters change
   useEffect(() => {
-    fetchLogs(1); // Reset to page 1 when filters change
-  }, [dateRange, action, companyFilter]);
+    fetchLogs(1, pageSize); // Reset to page 1 when filters change
+  }, [dateRange, action, companyFilter, pageSize]);
 
   const getActionColor = (action) => {
     switch (action) {
@@ -89,7 +93,7 @@ const AuditLogPage = () => {
   };
 
   const handlePageChange = (newPage) => {
-    fetchLogs(newPage);
+    fetchLogs(newPage, pageSize);
   };
 
   return (
@@ -156,9 +160,17 @@ const AuditLogPage = () => {
           </Box>
 
           {/* Audit Log Table */}
-          <Box background="neutral0" hasRadius shadow="tableShadow" padding={6}>
+          {/* <Box background="neutral0" hasRadius shadow="tableShadow" padding={6}> */}
             <DataTable
-              data={logs}
+              data={
+                logs
+                  .filter((log) => {
+                    if (!companyFilter) return true;
+                    const company = log.user?.company || log.company || '';
+                    return company.toLowerCase() === companyFilter.toLowerCase();
+                  })
+                  .slice((pagination.page - 1) * pageSize, (pagination.page - 1) * pageSize + pageSize)
+              }
               columns={[
                 { key: 'createdAt', label: 'Date & Time', render: (val) => <Typography variant="omega">{formatDate(val)}</Typography> },
                 { key: 'action', label: 'Action', render: (val) => <Badge variant={getActionColor(val)}>{val}</Badge> },
@@ -169,14 +181,20 @@ const AuditLogPage = () => {
               ]}
               pagination={{
                 page: pagination.page,
-                pageSize: pagination.pageSize,
+                pageSize: pageSize,
                 total: pagination.total,
                 onPageChange: handlePageChange,
-                onPageSizeChange: () => {},
+                onPageSizeChange: (newSize) => {
+                  setPageSize(Number(newSize));
+                  setPagination((prev) => ({ ...prev, page: 1, pageSize: Number(newSize) }));
+                  // Immediately fetch logs with new page size
+                  fetchLogs(1, Number(newSize));
+                },
               }}
               exportFileName={`audit-log-${new Date().toISOString().split('T')[0]}.xlsx`}
+              fontSize={TABLE_FONT_STYLE.fontSize}
             />
-          </Box>
+          {/* </Box> */}
         </Box>
       </Layouts.Content>
     </Layouts.Root>

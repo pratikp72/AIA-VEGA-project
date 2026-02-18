@@ -31,7 +31,7 @@ export function Filters({
   onSearchChange,
 }) {
   const activityTypeOptions = [
-    { value: '', label: 'All Activities' },
+    { value: '', label: 'All Pages' },
     { value: 'News_Reading', label: 'News Reading' },
     { value: 'Event_Info', label: 'Event Info' },
     { value: 'Townhall_Video', label: 'Townhall (Video)' },
@@ -166,7 +166,7 @@ export function Filters({
         {showActivityTracking && viewMode === 'activityTracking' && (
           <Box style={{ minWidth: 180 }}>
             <Typography variant="pi" textColor="neutral600" style={{ marginBottom: 4 }}>
-              Activity Type
+              Pages
             </Typography>
             <select
               value={activityType || ''}

@@ -44,6 +44,11 @@
     },
     "admin_comment": {
       "type": "text"
+    },
+    "company": {
+      "type": "enumeration",
+      "enum": ["AIA", "Vega"],
+      "required": false
     }
   }
 }

@@ -2,17 +2,29 @@ module.exports = ({ strapi }) => ({
   async getAll() {
     const entries = await strapi.entityService.findMany('api::profile-edit-request.profile-edit-request', {
       populate: {
-        users_permissions_user: {
-          fields: ['username', 'employee_name', 'emp_id', 'contact_no'],
-        },
+        users_permissions_user: true, // Populate all user fields
         reviewed_by: {
           fields: ['firstname', 'lastname'],
         },
       },
       sort: { createdAt: 'desc' },
     });
-
-    return entries;
+    // Ensure all user fields are present
+    return entries.map((entry) => {
+      if (entry.users_permissions_user && typeof entry.users_permissions_user === 'object') {
+        const user = entry.users_permissions_user;
+        entry.userName = user.username || user.employee_name || user.name || '—';
+        entry.userId = user.id || user.emp_id || '—';
+        entry.userCompany = user.company || '—';
+        entry.userContact = user.contact_no || '—';
+      } else {
+        entry.userName = '—';
+        entry.userId = '—';
+        entry.userCompany = '—';
+        entry.userContact = '—';
+      }
+      return entry;
+    });
   },
 
   async updateStatus(id, newStatus, adminComment, adminUser) {

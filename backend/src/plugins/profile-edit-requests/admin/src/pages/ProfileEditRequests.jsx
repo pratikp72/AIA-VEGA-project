@@ -21,14 +21,8 @@ import { getFetchClient } from '@strapi/strapi/admin';
 import DataTable from '../../../../analytics-dashboard/admin/src/components/DataTable';
 import DateRangeInput from '../../../../analytics-dashboard/admin/src/components/DateRangeInput';
 
-const PAGE_SIZE = 10;
-const TABLE_FONT_STYLE = { fontSize: '15px' };
-const STATUS_OPTIONS = [
-  { value: '', label: 'All' },
-  { value: 'Pending', label: 'Pending' },
-  { value: 'Approved', label: 'Approved' },
-  { value: 'Rejected', label: 'Rejected' },
-];
+const DEFAULT_PAGE_SIZE = 10;
+const TABLE_FONT_STYLE = { fontSize: '14px' };
 const COMPANY_OPTIONS = [
   { value: '', label: 'All Companies' },
   { value: 'AIA', label: 'AIA' },
@@ -41,9 +35,9 @@ export default function ProfileEditRequestsPage() {
   const [error, setError] = useState(null);
   const [updatingId, setUpdatingId] = useState(null);
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
   const [companyFilter, setCompanyFilter] = useState('');
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [showModal, setShowModal] = useState(false);
   const [dateRange, setDateRange] = useState({ start: null, end: null });
@@ -124,34 +118,32 @@ export default function ProfileEditRequestsPage() {
     const userName = userAttrs.username ?? userAttrs.email ?? userAttrs.employee_name ?? '—';
     const userId = user.id ?? '—';
     const statusRaw = attrs.request_status ?? entry.request_status ?? 'Pending';
-    const statusVal = typeof statusRaw === 'string' ? statusRaw : 'Pending';
     const reason = attrs.reason ?? entry.reason ?? '—';
     const requestedChanges = attrs.requested_changes ?? entry.requested_changes ?? {};
-    const userCompany = attrs.company || attrs.companyName || '';
-    return { userName, userId, statusVal, reason, requestedChanges, attrs, userCompany };
+    // Prefer company from user, fallback to company on request
+    const userCompany = userAttrs.company || attrs.company || attrs.companyName || '';
+      return { userName, userId, reason, requestedChanges, attrs, userCompany };
   };
 
   const filteredList = useMemo(() => {
     const q = (search || '').toLowerCase().trim();
-    const status = (statusFilter || '').trim();
     const company = (companyFilter || '').trim();
     return list.filter((entry) => {
-      const { userName, statusVal, attrs } = getDisplayValues(entry);
-      const userCompany = attrs.company || attrs.companyName || '';
-      if (status && statusVal !== status) return false;
-      if (company && userCompany !== company) return false;
-      if (dateRange && dateRange.start && attrs.createdAt && new Date(attrs.createdAt) < dateRange.start) return false;
-      if (dateRange && dateRange.end && attrs.createdAt && new Date(attrs.createdAt) > dateRange.end) return false;
-      if (!q) return true;
-      return (userName && userName.toLowerCase().includes(q));
+      const { userName, statusVal, userCompany, attrs } = getDisplayValues(entry);
+        if (company && userCompany && userCompany.toLowerCase() !== company.toLowerCase()) return false;
+        if (company && !userCompany) return false;
+        if (dateRange && dateRange.start && attrs.createdAt && new Date(attrs.createdAt) < dateRange.start) return false;
+        if (dateRange && dateRange.end && attrs.createdAt && new Date(attrs.createdAt) > dateRange.end) return false;
+        if (!q) return true;
+        return (userName && userName.toLowerCase().includes(q));
     });
-  }, [list, search, statusFilter, companyFilter, dateRange]);
+  }, [list, search, companyFilter, dateRange]);
 
   const totalFiltered = filteredList.length;
-  const totalPages = Math.max(1, Math.ceil(totalFiltered / PAGE_SIZE));
+  const totalPages = Math.max(1, Math.ceil(totalFiltered / pageSize));
   const currentPage = Math.min(Math.max(1, page), totalPages);
-  const start = (currentPage - 1) * PAGE_SIZE;
-  const pageList = filteredList.slice(start, start + PAGE_SIZE);
+  const start = (currentPage - 1) * pageSize;
+  const pageList = filteredList.slice(start, start + pageSize);
 
   useEffect(() => {
     if (currentPage !== page) setPage(currentPage);
@@ -167,18 +159,59 @@ export default function ProfileEditRequestsPage() {
       return <Typography>No changes specified</Typography>;
     }
 
+    // Get old values from selectedRequest's user (if available)
+    // Support both Strapi v4 (with .data/.attributes) and flat populated object
+    let user = {};
+    if (selectedRequest?.attributes?.users_permissions_user?.data?.attributes) {
+      user = selectedRequest.attributes.users_permissions_user.data.attributes;
+    } else if (selectedRequest?.users_permissions_user?.attributes) {
+      user = selectedRequest.users_permissions_user.attributes;
+    } else if (selectedRequest?.users_permissions_user) {
+      user = selectedRequest.users_permissions_user;
+    }
+    // Debug: print user object to console
+    console.log('User object for changes dialog:', user);
+
+    // Helper to get old value with fallback for common aliases
+    const getOldValue = (field) => {
+      if (user[field] !== undefined) return user[field];
+      if (field === 'name' && user.employee_name !== undefined) return user.employee_name;
+      if (field === 'employee_name' && user.name !== undefined) return user.name;
+      if (field === 'ext' && user.extension !== undefined) return user.extension;
+      if (field === 'branch' && user.branch !== undefined) return user.branch;
+      return undefined;
+    };
+
     return (
       <Box>
-        {Object.entries(requestedChanges).map(([field, value]) => (
-          <Flex key={field} padding={2} background="neutral100" marginBottom={2} hasRadius>
-            <Box style={{ flex: 1 }}>
-              <Typography variant="pi" fontWeight="bold">{field}:</Typography>
-              <Typography variant="omega" style={{ marginLeft: 8 }}>
-                {typeof value === 'object' ? JSON.stringify(value) : String(value)}
-              </Typography>
-            </Box>
-          </Flex>
-        ))}
+        {Object.entries(requestedChanges).map(([field, newValue]) => {
+          const oldValue = getOldValue(field);
+          console.log('Field:', field, 'New:', newValue, 'Old:', oldValue, 'User:', user);
+          return (
+            <Flex key={field} padding={2} background="neutral100" marginBottom={2} hasRadius>
+              <Box style={{ flex: 1, display: 'flex', alignItems: 'center' }}>
+                <Typography variant="pi" fontWeight="bold" style={{ minWidth: 80 }}>{field}:</Typography>
+                {oldValue !== undefined ? (
+                  <>
+                    <Typography variant="omega" style={{ marginLeft: 8, textDecoration: 'line-through' }}>
+                      {typeof oldValue === 'object' ? JSON.stringify(oldValue) : String(oldValue)}
+                    </Typography>
+                    <Typography variant="omega" style={{ margin: '0 8px' }}>
+                      &rarr;
+                    </Typography>
+                    <Typography variant="omega" style={{ fontWeight: 'bold' }}>
+                      {typeof newValue === 'object' ? JSON.stringify(newValue) : String(newValue)}
+                    </Typography>
+                  </>
+                ) : (
+                  <Typography variant="omega" style={{ marginLeft: 8 }}>
+                    {typeof newValue === 'object' ? JSON.stringify(newValue) : String(newValue)}
+                  </Typography>
+                )}
+              </Box>
+            </Flex>
+          );
+        })}
       </Box>
     );
   };
@@ -194,190 +227,118 @@ export default function ProfileEditRequestsPage() {
         }
       />
       <Layouts.Content>
-        <Box paddingLeft={8} paddingRight={8} paddingTop={6} paddingBottom={8}>
-          {error && (
-            <Box padding={4} background="danger100" hasRadius marginBottom={4}>
-              <Typography textColor="danger700">{error}</Typography>
+        {/* Unified filter card */}
+        <Box
+          padding={4}
+          background="neutral0"
+          hasRadius
+          shadow="tableShadow"
+          marginBottom={6}
+        >
+          <Typography variant="sigma" textColor="neutral600" marginBottom={3}>
+            Filters
+          </Typography>
+          <Flex gap={4} wrap="wrap" alignItems="flex-end">
+            <Box style={{ minWidth: 220 }}>
+              <Typography variant="pi" textColor="neutral600" style={{ marginBottom: 4, display: 'block' }}>
+                Search
+              </Typography>
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => {
+                  setSearch(e.target.value);
+                  setPage(1);
+                }}
+                placeholder="Employee name…"
+                style={{
+                  padding: '8px 12px',
+                  border: '1px solid #dcdce4',
+                  borderRadius: '4px',
+                  fontSize: '14px',
+                  width: '100%',
+                }}
+              />
             </Box>
-          )}
-
-          {/* Unified filter card */}
-          <Box
-            padding={4}
-            background="neutral0"
-            hasRadius
-            shadow="tableShadow"
-            marginBottom={6}
-          >
-            <Typography variant="sigma" textColor="neutral600" marginBottom={3}>
-              Filters
-            </Typography>
-            <Flex gap={4} wrap="wrap" alignItems="flex-end">
-              <Box style={{ minWidth: 220 }}>
-                <Typography variant="pi" textColor="neutral600" style={{ marginBottom: 4, display: 'block' }}>
-                  Search
-                </Typography>
-                <input
-                  type="text"
-                  value={search}
-                  onChange={(e) => {
-                    setSearch(e.target.value);
-                    setPage(1);
-                  }}
-                  placeholder="Employee name…"
-                  style={{
-                    padding: '8px 12px',
-                    border: '1px solid #dcdce4',
-                    borderRadius: '4px',
-                    fontSize: '14px',
-                    width: '100%',
-                  }}
-                />
-              </Box>
-              <Box style={{ minWidth: 140 }}>
-                <Typography variant="pi" textColor="neutral600" style={{ marginBottom: 4, display: 'block' }}>
-                  Status
-                </Typography>
-                <SingleSelect
-                  value={statusFilter}
-                  onChange={(v) => {
-                    setStatusFilter(String(v || ''));
-                    setPage(1);
-                  }}
-                >
-                  {STATUS_OPTIONS.map((opt) => (
-                    <SingleSelectOption key={opt.value || 'all'} value={opt.value}>
-                      {opt.label}
-                    </SingleSelectOption>
-                  ))}
-                </SingleSelect>
-              </Box>
-              <Box style={{ minWidth: 160 }}>
-                <Typography variant="pi" textColor="neutral600" style={{ marginBottom: 4, display: 'block' }}>
-                  Company
-                </Typography>
-                <SingleSelect
-                  value={companyFilter}
-                  onChange={(v) => {
-                    setCompanyFilter(String(v || ''));
-                    setPage(1);
-                  }}
-                >
-                  {COMPANY_OPTIONS.map((opt) => (
-                    <SingleSelectOption key={opt.value || 'all'} value={opt.value}>
-                      {opt.label}
-                    </SingleSelectOption>
-                  ))}
-                </SingleSelect>
-              </Box>
-              <Box style={{ minWidth: 260 }}>
-                <Typography variant="pi" textColor="neutral600" style={{ marginBottom: 4, display: 'block' }}>
-                  Date Range
-                </Typography>
-                <DateRangeInput
-                  value={dateRange}
-                  onChange={({ start, end }) => {
-                    setDateRange({ start, end });
-                    setPage(1);
-                  }}
-                />
-              </Box>
-            </Flex>
-          </Box>
-
-          {loading ? (
-            <Flex justifyContent="center" padding={8}>
-              <Loader>Loading...</Loader>
-            </Flex>
-          ) : list.length === 0 ? (
-            <Box padding={6} background="neutral100" hasRadius>
-              <Typography textColor="neutral600">No profile edit requests yet.</Typography>
+            <Box style={{ minWidth: 160 }}>
+              <Typography variant="pi" textColor="neutral600" style={{ marginBottom: 4, display: 'block' }}>
+                Company
+              </Typography>
+              <SingleSelect
+                value={companyFilter}
+                onChange={(v) => {
+                  setCompanyFilter(String(v || ''));
+                  setPage(1);
+                }}
+              >
+                {COMPANY_OPTIONS.map((opt) => (
+                  <SingleSelectOption key={opt.value || 'all'} value={opt.value}>
+                    {opt.label}
+                  </SingleSelectOption>
+                ))}
+              </SingleSelect>
             </Box>
-          ) : totalFiltered === 0 ? (
-            <Box padding={6} background="neutral100" hasRadius>
-              <Typography textColor="neutral600">No requests match your search or filter.</Typography>
+            <Box style={{ minWidth: 260 }}>
+              <Typography variant="pi" textColor="neutral600" style={{ marginBottom: 4, display: 'block' }}>
+                Date Range
+              </Typography>
+              <DateRangeInput
+                value={dateRange}
+                onChange={({ start, end }) => {
+                  setDateRange({ start, end });
+                  setPage(1);
+                }}
+              />
             </Box>
-          ) : (
-            <>
-              <Box background="neutral0" hasRadius shadow="tableShadow" padding={6}>
-                <DataTable
-                  data={pageList}
-                  columns={[
-                    { key: 'userName', label: 'Employee' },
-                    { key: 'userId', label: 'User ID' },
-                    { key: 'reason', label: 'Reason' },
-                    { key: 'changes', label: 'Changes', render: (val, row) => (
-                      <Button size="S" variant="tertiary" onClick={() => viewChanges(row)}>
-                        View ({row.requestedChanges ? Object.keys(row.requestedChanges).length : 0} field{row.requestedChanges && Object.keys(row.requestedChanges).length !== 1 ? 's' : ''})
-                      </Button>
-                    ) },
-                    { key: 'statusVal', label: 'Status', render: (val) => (
-                      <Badge
-                        variant={val === 'Approved' ? 'success' : val === 'Rejected' ? 'danger' : 'warning'}
-                      >
-                        {val}
-                      </Badge>
-                    ) },
-                    { key: 'company', label: 'Company', render: (val, row) => (row?.attrs?.company || row?.attrs?.companyName || '—') },
-                    { key: 'actions', label: 'Actions', render: (val, row) => {
-                      const id = entryId(row);
-                      const idStr = id != null ? String(id) : '';
-                      const statusVal = row.statusVal;
-                      const isPending = statusVal === 'Pending';
-                      const isUpdating = updatingId === idStr || updatingId === id;
-                      return isPending ? (
-                        <Flex gap={2}>
-                          <Button size="S" variant="default" disabled={isUpdating} onClick={() => updateStatus(id, 'Approved')}>Approve</Button>
-                          <Button size="S" variant="danger" disabled={isUpdating} onClick={() => updateStatus(id, 'Rejected')}>Reject</Button>
-                        </Flex>
-                      ) : (
-                        <Typography variant="omega" textColor="neutral600" style={TABLE_FONT_STYLE}>—</Typography>
-                      );
-                    } },
-                  ]}
-                  pagination={{
-                    page: currentPage,
-                    pageSize: PAGE_SIZE,
-                    total: totalFiltered,
-                    onPageChange: (p) => setPage(Number(p)),
-                    onPageSizeChange: () => {},
-                  }}
-                  exportFileName={`profile-edit-requests-${new Date().toISOString().split('T')[0]}.xlsx`}
-                />
-
-                {/* Pagination */}
-                {totalPages > 1 && (
-                  <Flex justifyContent="space-between" alignItems="center" marginTop={4} paddingTop={4}>
-                    <Typography variant="pi" textColor="neutral600">
-                      {start + 1}–{Math.min(start + PAGE_SIZE, totalFiltered)} of {totalFiltered}
-                    </Typography>
-                    <Flex gap={2}>
-                      <Button
-                        variant="tertiary"
-                        size="S"
-                        disabled={currentPage <= 1}
-                        onClick={() => setPage((p) => Math.max(1, p - 1))}
-                      >
-                        Previous
-                      </Button>
-                      <Typography variant="pi" style={{ alignSelf: 'center' }}>
-                        Page {currentPage} of {totalPages}
-                      </Typography>
-                      <Button
-                        variant="tertiary"
-                        size="S"
-                        disabled={currentPage >= totalPages}
-                        onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                      >
-                        Next
-                      </Button>
-                    </Flex>
-                  </Flex>
-                )}
-              </Box>
-            </>
-          )}
+          </Flex>
         </Box>
+
+        {loading ? (
+          <Flex justifyContent="center" padding={8}>
+            <Loader>Loading...</Loader>
+          </Flex>
+        ) : list.length === 0 ? (
+          <Box padding={6} background="neutral100" hasRadius>
+            <Typography textColor="neutral600">No profile edit requests yet.</Typography>
+          </Box>
+        ) : totalFiltered === 0 ? (
+          <Box padding={6} background="neutral100" hasRadius>
+            <Typography textColor="neutral600">No requests match your search or filter.</Typography>
+          </Box>
+        ) : (
+          <>
+            {/* <Box background="neutral0" hasRadius shadow="tableShadow" padding={6}> */}
+              <DataTable
+                data={pageList}
+                columns={[
+                  { key: 'userName', label: 'Employee' },
+                  { key: 'userId', label: 'User ID' },
+                  { key: 'reason', label: 'Reason' },
+                  { key: 'changes', label: 'Changes', render: (val, row) => (
+                    <Button size="S" variant="tertiary" onClick={() => viewChanges(row)}>
+                      View 
+                    </Button>
+                  ) },
+                  { key: 'company', label: 'Company', render: (val, row) => (row?.userCompany || '—') },
+                ]}
+                pagination={{
+                  page: currentPage,
+                  pageSize: pageSize,
+                  total: totalFiltered,
+                  onPageChange: (p) => setPage(Number(p)),
+                  onPageSizeChange: (newSize) => {
+                    setPageSize(Number(newSize));
+                    setPage(1);
+                  },
+                }}
+                exportFileName={`profile-edit-requests-${new Date().toISOString().split('T')[0]}.xlsx`}
+                fontSize={TABLE_FONT_STYLE.fontSize}
+              />
+
+              {/* Pagination removed as requested */}
+            {/* </Box> */}
+          </>
+        )}
 
         {/* Changes Preview Modal */}
         {showModal && selectedRequest && (

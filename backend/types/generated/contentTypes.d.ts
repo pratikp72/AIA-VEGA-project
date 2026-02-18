@@ -1204,6 +1204,7 @@ export interface ApiProfileEditRequestProfileEditRequest
   };
   attributes: {
     admin_comment: Schema.Attribute.Text;
+    company: Schema.Attribute.Enumeration<['AIA', 'Vega']>;
     createdAt: Schema.Attribute.DateTime;
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
