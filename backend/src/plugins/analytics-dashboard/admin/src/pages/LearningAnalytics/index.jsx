@@ -12,7 +12,26 @@ import { EmployeeSearch } from '../../components/EmployeeSearch';
 import { EmployeeDetailCard } from '../../components/EmployeeDetailCard';
 
 export default function LearningAnalyticsPage() {
+    // Additional filter states for Filters component
+    const [filterStatus, setFilterStatus] = useState('');
+    const [filterTimeMin, setFilterTimeMin] = useState('');
+    const [filterTimeMax, setFilterTimeMax] = useState('');
   const { fetchLearningGlobal, fetchLearningPersonal, fetchLearningEmployeeTable, fetchDepartments } = useAnalytics();
+  // Fetch all courses for dropdown
+  const fetchAllCourses = async () => {
+    try {
+      const res = await fetch('/api/courses?pagination[limit]=1000');
+      if (!res.ok) throw new Error('Failed to fetch courses');
+      const json = await res.json();
+      // Strapi v4: json.data is array of course objects
+      setCourses(Array.isArray(json.data) ? json.data.map(c => ({
+        id: c.id,
+        title: c.attributes?.title || c.title || `Course ${c.id}`
+      })) : []);
+    } catch (err) {
+      setCourses([]);
+    }
+  };
   const [viewMode, setViewMode] = useState('global');
   const [dateFrom, setDateFrom] = useState(null);
   const [dateTo, setDateTo] = useState(null);
@@ -35,6 +54,8 @@ export default function LearningAnalyticsPage() {
   const [moduleVideoPage, setModuleVideoPage] = useState(1);
   const [moduleVideoPageSize, setModuleVideoPageSize] = useState(10);
   const [selectedCourseForModules, setSelectedCourseForModules] = useState('');
+  const [filterCourse, setFilterCourse] = useState('');
+  const [courses, setCourses] = useState([]);
   const searchTimeoutRef = useRef(null);
 
   const handleExportAllPersonalData = useCallback(() => {
@@ -96,6 +117,7 @@ export default function LearningAnalyticsPage() {
 
   useEffect(() => {
     fetchDepartments().then(setDepartments).catch(() => setDepartments([]));
+    fetchAllCourses();
   }, []);
 
   const loadData = useCallback(() => {
@@ -108,6 +130,7 @@ export default function LearningAnalyticsPage() {
       if (department) params.department = department;
     }
     if (company) params.company = company;
+    if (filterStatus) params.status = filterStatus;
 
     let fetcher;
     if (viewMode === 'table') {
@@ -119,6 +142,10 @@ export default function LearningAnalyticsPage() {
         page,
         pageSize,
         ...(searchVal && { search: searchVal }),
+        ...(filterCourse && { courseId: filterCourse }),
+        ...(filterStatus && { status: filterStatus }),
+        ...(filterTimeMin && { filterTimeMin }),
+        ...(filterTimeMax && { filterTimeMax }),
       };
       fetcher = () => fetchLearningEmployeeTable(tableParams);
     } else if (viewMode === 'personal' && employeeId) {
@@ -131,7 +158,7 @@ export default function LearningAnalyticsPage() {
       .then(setData)
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
-  }, [viewMode, employeeId, dateFrom, dateTo, department, company, searchDebounced, sortOrder, page, pageSize]);
+  }, [viewMode, employeeId, dateFrom, dateTo, department, company, searchDebounced, sortOrder, page, pageSize, filterCourse]);
 
   useEffect(() => {
     if (viewMode === 'table') setPage(1);
@@ -162,7 +189,7 @@ export default function LearningAnalyticsPage() {
       setData(null);
       setLoading(false);
     }
-  }, [viewMode, employeeId, dateFrom, dateTo, department, company, searchDebounced, sortOrder, page, pageSize]);
+  }, [viewMode, employeeId, dateFrom, dateTo, department, company, searchDebounced, sortOrder, page, pageSize, filterCourse, filterStatus, filterTimeMin, filterTimeMax]);
 
   const kpis = data?.kpis || {};
   const quiz = data?.quiz || {};
@@ -194,6 +221,15 @@ export default function LearningAnalyticsPage() {
             showEmployeeTable
             search={search}
             onSearchChange={setSearch}
+            filterCourse={filterCourse}
+            setFilterCourse={setFilterCourse}
+            courses={courses}
+            filterStatus={filterStatus}
+            setFilterStatus={setFilterStatus}
+            filterTimeMin={filterTimeMin}
+            setFilterTimeMin={setFilterTimeMin}
+            filterTimeMax={filterTimeMax}
+            setFilterTimeMax={setFilterTimeMax}
           >
             <EmployeeSearch value={employeeId} onChange={setEmployeeId} onEmployeeFound={setEmployeeDetail} />
           </Filters>
@@ -212,59 +248,103 @@ export default function LearningAnalyticsPage() {
 
           {!loading && data && viewMode === 'table' && (
             <Box marginBottom={6}>
-              <DataTable
-                data={data.rows || []}
-                title="Employee Learning Summary"
-                exportFileName="employee-learning-summary.xlsx"
-                pagination={
-                  data.total != null && data.total > 0
-                    ? {
-                        page: data.page || 1,
-                        pageSize: data.pageSize || 10,
-                        total: data.total,
-                        onPageChange: setPage,
-                        onPageSizeChange: (v) => {
-                          setPageSize(Number(v));
-                          setPage(1);
-                        },
-                      }
-                    : null
+              {(() => {
+                const rows = data.rows || [];
+                const q = (search || '').toLowerCase().trim();
+                let filtered = rows;
+                // Filter by course enrollment if course filter is selected
+                if (filterCourse) {
+                  filtered = filtered.filter((row) => {
+                    // Accept both Strapi v4 and custom backend shapes
+                    // row.coursesEnrolledIds: array of course IDs
+                    // row.coursesEnrolled: array of course objects or IDs
+                    if (Array.isArray(row.coursesEnrolledIds)) {
+                      return row.coursesEnrolledIds.includes(filterCourse);
+                    }
+                    if (Array.isArray(row.coursesEnrolled)) {
+                      // Accept array of objects or IDs
+                      return row.coursesEnrolled.some(c => {
+                        if (typeof c === 'object') return String(c.id) === String(filterCourse);
+                        return String(c) === String(filterCourse);
+                      });
+                    }
+                    // fallback: if only count is available, skip filtering
+                    return true;
+                  });
                 }
-                sortBy="courseCompletionTimeMinutes"
-                sortOrder={sortOrder}
-                onSortChange={(_, order) => {
-                  setSortOrder(order);
-                  setPage(1);
-                }}
-                fontSize="16px"
-                columns={[
-                  { key: 'employeeName', label: 'Employee Name' },
-                  { key: 'company', label: 'Company' },
-                  { key: 'coursesEnrolled', label: 'Courses Enrolled' },
-                  { key: 'totalModulesDone', label: 'Total Modules Done' },
-                  {
-                    key: 'progressPercent',
-                    label: 'Progress %',
-                    render: (v) => `${v ?? 0}%`,
-                  },
-                  { key: 'avgScore', label: 'Avg Quiz Score' },
-                  {
-                    key: 'courseCompletionTimeMinutes',
-                    label: 'Course Completion Time',
-                    sortable: true,
-                    render: (v) => {
-                      if (v == null || v === '') return '—';
-                      const m = Number(v);
-                      if (Number.isNaN(m) || m < 0) return '—';
-                      const h = Math.floor(m / 60);
-                      const min = m % 60;
-                      if (h === 0) return `${min}m`;
-                      if (min === 0) return `${h}h`;
-                      return `${h}h${min}m`;
-                    },
-                  },
-                ]}
-              />
+                if (q) {
+                  // First, filter by name (flexible)
+                  filtered = filtered.filter((row) => {
+                    const name = (row.employeeName || '').toLowerCase();
+                    return name.includes(q);
+                  });
+                  // If more than one match, try to further filter by emp_id/emp_code
+                  if (filtered.length > 1) {
+                    // Try to extract an emp_id or emp_code from the search string
+                    const empCodeMatch = q.match(/\b\d{3,}\b/); // e.g. 12345
+                    const empIdMatch = q.match(/emp\d{3,}/i); // e.g. EMP12345
+                    if (empCodeMatch) {
+                      filtered = filtered.filter((row) =>
+                        (row.emp_code || '').toLowerCase().includes(empCodeMatch[0])
+                      );
+                    } else if (empIdMatch) {
+                      filtered = filtered.filter((row) =>
+                        (row.emp_id || '').toLowerCase().includes(empIdMatch[0].toLowerCase())
+                      );
+                    }
+                  }
+                }
+                return (
+                  <DataTable
+                    data={filtered}
+                    title="Employee Learning Summary"
+                    exportFileName="employee-learning-summary.xlsx"
+                    pagination={
+                      data.total != null && data.total > 0
+                        ? {
+                            page: data.page || 1,
+                            pageSize: data.pageSize || 10,
+                            total: data.total,
+                            onPageChange: setPage,
+                            onPageSizeChange: (v) => {
+                              setPageSize(Number(v));
+                              setPage(1);
+                            },
+                          }
+                        : null
+                    }
+                    sortBy="courseCompletionTimeMinutes"
+                    sortOrder={sortOrder}
+                    onSortChange={(_, order) => {
+                      setSortOrder(order);
+                      setPage(1);
+                    }}
+                    fontSize="16px"
+                    columns={[ 
+                      { key: 'employeeName', label: 'Employee Name' },
+                      { key: 'company', label: 'Company' },
+                      { key: 'coursesEnrolled', label: 'Courses Enrolled' },
+                      { key: 'totalModulesDone', label: 'Total Modules Done' },
+                      { key: 'progressPercent', label: 'Avg Progress %', render: (v) => `${v ?? 0}%` },
+                      { key: 'avgScore', label: 'Avg Quiz Score' },
+                      {
+                        key: 'courseCompletionTimeMinutes',
+                        label: 'Completion Time',
+                        sortable: true,
+                        render: (v) => {
+                          const m = Number(v);
+                          if (Number.isNaN(m) || m < 0) return '—';
+                          const h = Math.floor(m / 60);
+                          const min = m % 60;
+                          if (h === 0) return `${min}m`;
+                          if (min === 0) return `${h}h`;
+                          return `${h}h${min}m`;
+                        },
+                      },
+                    ]}
+                  />
+                );
+              })()}
             </Box>
           )}
 

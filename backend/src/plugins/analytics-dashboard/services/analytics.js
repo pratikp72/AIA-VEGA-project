@@ -1130,6 +1130,30 @@ module.exports = ({ strapi }) => ({
       }
     }
 
+    // Filter progressList by courseId using only the course relation
+    if (params.courseId) {
+      const courseIdStr = String(params.courseId);
+      progressList = progressList.filter((p) => {
+        // Only use course relation for filtering
+        return p.course && String(p.course.id) === courseIdStr;
+      });
+    }
+
+    // Filter progressList by progress_status if status filter is applied
+    if (params.status) {
+      progressList = progressList.filter((p) => p.progress_status === params.status);
+    }
+
+    // Filter progressList by course completion time min/max
+    if (params.filterTimeMin) {
+      const min = Number(params.filterTimeMin);
+      progressList = progressList.filter((p) => (p.time_spent_minutes ?? 0) >= min);
+    }
+    if (params.filterTimeMax) {
+      const max = Number(params.filterTimeMax);
+      progressList = progressList.filter((p) => (p.time_spent_minutes ?? 0) <= max);
+    }
+
     const submissionFilters = { submitted_by: { id: { $in: userIdsNumeric } } };
     let submissionList = [];
     try {
@@ -1168,7 +1192,7 @@ module.exports = ({ strapi }) => ({
       if (idx !== undefined) submissionByUserIdx[idx].push(s);
     });
 
-    const rows = userList.map((u, i) => {
+    let rows = userList.map((u, i) => {
       const progs = progressByUserIdx[i] || [];
       const subs = submissionByUserIdx[i] || [];
       const coursesEnrolled = progs.length;
@@ -1198,6 +1222,12 @@ module.exports = ({ strapi }) => ({
         avgScore,
       };
     });
+
+    // If courseId filter is applied, only include users with progress records for that course
+    // If courseId or status filter is applied, only include users with progress records for that course/status
+    if (params.courseId || params.status) {
+      rows = rows.filter((row, i) => (progressByUserIdx[i] || []).length > 0);
+    }
 
     const sortBy = params.sortBy || 'courseCompletionTimeMinutes';
     const sortOrder = (params.sortOrder || 'desc').toLowerCase();

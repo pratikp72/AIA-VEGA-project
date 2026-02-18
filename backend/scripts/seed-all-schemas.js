@@ -149,7 +149,7 @@ async function run() {
   const connectUser = (idx) => {
     if (userIds.length === 0) return undefined;
     const uid = userIds[idx % userIds.length];
-    return typeof uid === 'number' ? { connect: [{ id: uid }] } : { connect: [{ documentId: uid }] };
+    return { connect: [{ documentId: uid }] };
   };
   console.log('Using', userIds.length, 'user(s) for analytics (notifications, activity logs, progress).');
 
@@ -509,7 +509,7 @@ async function run() {
         data: {
           user: connectUser(i),
           company: connectCompany(i),
-          activity_type: actTypes[i % actTypes.length],
+          activity_type: actTypes[i % actTypes.length] as 'News_Reading' | 'Event_Info' | 'Townhall_Video' | 'Townhall_PDF' | 'Holiday_View',
           activity_description: `Activity ${i + 1} (${actTypes[i % actTypes.length]})`,
           activity_duration: 1,
           timestamp: dateInRange(dayOffset),
@@ -588,13 +588,26 @@ async function run() {
         : null;
       const dayOffset = (uIdx * 20 + cIdx * 5) % Math.max(1, totalDays);
       const lastAccessed = dateInRange(dayOffset);
+
+      // Populate completed_modules based on status
+      let completedModules = [];
+      if (isCompleted) {
+        // 2-4 modules completed
+        const num = 2 + ((uIdx + cIdx) % 3); // 2, 3, or 4
+        completedModules = Array.from({ length: num }, (_, i) => `mod-${cIdx + 1}-${i + 1}`);
+      } else if (status === 'In_progress') {
+        // 1 module started
+        completedModules = [`mod-${cIdx + 1}-1`];
+      }
+      // Not_started and Failed: leave empty
+
       try {
         await createAndPublish('api::user-progress.user-progress', {
           user: connectUser(uIdx),
           course: { connect: [{ documentId: courseId }] },
           progress_status: status,
           progress_percentage: isCompleted ? 100 : Math.min(90, (uIdx + cIdx) * 8),
-          completed_modules: [],
+          completed_modules: completedModules,
           last_accessed_at: lastAccessed,
           time_spent_minutes: 10 + (uIdx % 5) * 10 + (cIdx % 3) * 5,
           certificate_issued: isCompleted && cIdx % 2 === 0,

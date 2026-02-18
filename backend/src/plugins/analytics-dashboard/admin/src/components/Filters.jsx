@@ -16,19 +16,25 @@ export function Filters({
   onCompanyChange,
   showEmployeeSelector,
   children,
-  // Unit Location (Overall dashboard only)
   showUnitLocation = false,
   unitLocation = '',
   onUnitLocationChange = null,
   unitLocations = [],
-  // Employee Table (Learning dashboard only)
   showEmployeeTable = false,
-  // Activity Tracking (Overall dashboard only)
   showActivityTracking = false,
   activityType = '',
   onActivityTypeChange = null,
   search,
   onSearchChange,
+  filterCourse,
+  setFilterCourse,
+  filterStatus,
+  setFilterStatus,
+  filterTimeMin,
+  setFilterTimeMin,
+  filterTimeMax,
+  setFilterTimeMax,
+  courses = [],
 }) {
   const activityTypeOptions = [
     { value: '', label: 'All Pages' },
@@ -100,24 +106,97 @@ export function Filters({
         </Box>
         {showEmployeeSelector && viewMode === 'personal' && children}
         {viewMode === 'table' && (
-          <Box style={{ minWidth: 200 }}>
-            <Typography variant="pi" textColor="neutral600" style={{ marginBottom: 4 }}>
-              Search Employee (ID or name)
-            </Typography>
-            <input
-              type="text"
-              value={search || ''}
-              onChange={(e) => onSearchChange?.(e.target.value || '')}
-              placeholder="ID, name, or email"
-              style={{
-                padding: '8px 12px',
-                border: '1px solid #dcdce4',
-                borderRadius: '4px',
-                fontSize: '14px',
-                minWidth: '100%',
-              }}
-            />
-          </Box>
+          <>
+            {/* 3. Search Employee */}
+            <Box style={{ minWidth: 200 }}>
+              <Typography variant="pi" textColor="neutral600" style={{ marginBottom: 4 }}>
+                Search Employee
+              </Typography>
+              <input
+                type="text"
+                value={search || ''}
+                onChange={(e) => onSearchChange?.(e.target.value || '')}
+                placeholder="name"
+                style={{
+                  padding: '8px 12px',
+                  border: '1px solid #dcdce4',
+                  borderRadius: '4px',
+                  fontSize: '14px',
+                  minWidth: '100%',
+                }}
+              />
+            </Box>
+            {/* 4. Course Filter */}
+            <Box style={{ minWidth: 180 }}>
+              <Typography variant="pi" textColor="neutral600" style={{ marginBottom: 4 }}>
+                Course
+              </Typography>
+              <select
+                value={filterCourse || ''}
+                onChange={e => setFilterCourse(e.target.value)}
+                style={{
+                  padding: '8px 12px',
+                  border: '1px solid #dcdce4',
+                  borderRadius: '4px',
+                  fontSize: '14px',
+                  minWidth: '100%',
+                }}
+              >
+                <option value="">All Courses</option>
+                {courses.map(c => (
+                  <option key={c.id} value={c.id}>{c.title}</option>
+                ))}
+              </select>
+            </Box>
+            {/* 5. Course by Status */}
+            <Box style={{ minWidth: 160 }}>
+              <Typography variant="pi" textColor="neutral600" style={{ marginBottom: 4 }}>
+                Course Status
+              </Typography>
+              <select
+                value={filterStatus || ''}
+                onChange={e => setFilterStatus(e.target.value)}
+                style={{
+                  padding: '8px 12px',
+                  border: '1px solid #dcdce4',
+                  borderRadius: '4px',
+                  fontSize: '14px',
+                  minWidth: '100%',
+                }}
+              >
+                <option value="">All Statuses</option>
+                <option value="Not_started">Not Started</option>
+                <option value="In_progress">In Progress</option>
+                <option value="Completed">Completed</option>
+                <option value="Failed">Failed</option>
+              </select>
+            </Box>
+            {/* 6. Time Range for Course Completion */}
+            <Box style={{ minWidth: 200 }}>
+              <Typography variant="pi" textColor="neutral600" style={{ marginBottom: 4 }}>
+                Course Completion Time (min)
+              </Typography>
+              <Flex gap={2} alignItems="center">
+                <input
+                  type="number"
+                  min="0"
+                  value={filterTimeMin}
+                  onChange={e => setFilterTimeMin(e.target.value)}
+                  placeholder="Min"
+                  style={{ width: 70, padding: '6px', border: '1px solid #dcdce4', borderRadius: 4 }}
+                />
+                <Typography variant="pi">to</Typography>
+                <input
+                  type="number"
+                  min="0"
+                  value={filterTimeMax}
+                  onChange={e => setFilterTimeMax(e.target.value)}
+                  placeholder="Max"
+                  style={{ width: 70, padding: '6px', border: '1px solid #dcdce4', borderRadius: 4 }}
+                />
+              </Flex>
+            </Box>
+          </>
         )}
         {/* 3. Date Range (single icon, popup) */}
         <Box style={{ display: 'flex', flexDirection: 'column', minWidth: 260 }}>
