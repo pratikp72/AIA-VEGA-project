@@ -129,13 +129,35 @@ export default function ProfileEditRequestsPage() {
     const q = (search || '').toLowerCase().trim();
     const company = (companyFilter || '').trim();
     return list.filter((entry) => {
-      const { userName, statusVal, userCompany, attrs } = getDisplayValues(entry);
-        if (company && userCompany && userCompany.toLowerCase() !== company.toLowerCase()) return false;
-        if (company && !userCompany) return false;
-        if (dateRange && dateRange.start && attrs.createdAt && new Date(attrs.createdAt) < dateRange.start) return false;
-        if (dateRange && dateRange.end && attrs.createdAt && new Date(attrs.createdAt) > dateRange.end) return false;
-        if (!q) return true;
-        return (userName && userName.toLowerCase().includes(q));
+      const { userName, userId, userCompany, attrs } = getDisplayValues(entry);
+      const entryIdVal = entry.documentId ?? entry.id ?? entry._id;
+      // Company filtering
+      if (company) {
+        if (!userCompany || userCompany.toLowerCase() !== company.toLowerCase()) return false;
+      }
+      // Date range filtering
+      if (dateRange && dateRange.start && attrs.createdAt && new Date(attrs.createdAt) < dateRange.start) return false;
+      if (dateRange && dateRange.end && attrs.createdAt && new Date(attrs.createdAt) > dateRange.end) return false;
+      if (!q) return true;
+      // Enhanced search: allow searching by name, emp_code, emp_id, user id, and request id
+      const userAttrs = attrs.users_permissions_user?.data?.attributes || attrs.users_permissions_user?.attributes || attrs.users_permissions_user || {};
+      const matches = (
+        (userName && userName.toLowerCase().includes(q)) ||
+        (userAttrs.firstname && userAttrs.firstname.toLowerCase().includes(q)) ||
+        (userAttrs.lastname && userAttrs.lastname.toLowerCase().includes(q)) ||
+        (userAttrs.emp_code && String(userAttrs.emp_code).toLowerCase().includes(q)) ||
+        (userAttrs.emp_id && String(userAttrs.emp_id).toLowerCase().includes(q)) ||
+        (userAttrs.id && String(userAttrs.id).toLowerCase().includes(q)) ||
+        (entryIdVal && String(entryIdVal).toLowerCase().includes(q))
+      );
+      // Company-specific strictness (optional: keep for digit/EMP pattern enforcement)
+      if (company.toLowerCase() === 'aia' && /^\d+$/.test(q)) {
+        return userAttrs.emp_code && String(userAttrs.emp_code).includes(q);
+      } else if (company.toLowerCase() === 'vega' && /^emp\d+$/i.test(q)) {
+        return userAttrs.emp_id && String(userAttrs.emp_id).toLowerCase().includes(q);
+      }
+      // Otherwise, allow match by any of the above
+      return matches;
     });
   }, [list, search, companyFilter, dateRange]);
 
@@ -239,28 +261,7 @@ export default function ProfileEditRequestsPage() {
             Filters
           </Typography>
           <Flex gap={4} wrap="wrap" alignItems="flex-end">
-            <Box style={{ minWidth: 220 }}>
-              <Typography variant="pi" textColor="neutral600" style={{ marginBottom: 4, display: 'block' }}>
-                Search
-              </Typography>
-              <input
-                type="text"
-                value={search}
-                onChange={(e) => {
-                  setSearch(e.target.value);
-                  setPage(1);
-                }}
-                placeholder="Employee name…"
-                style={{
-                  padding: '8px 12px',
-                  border: '1px solid #dcdce4',
-                  borderRadius: '4px',
-                  fontSize: '14px',
-                  width: '100%',
-                }}
-              />
-            </Box>
-            <Box style={{ minWidth: 160 }}>
+             <Box style={{ minWidth: 160 }}>
               <Typography variant="pi" textColor="neutral600" style={{ marginBottom: 4, display: 'block' }}>
                 Company
               </Typography>
@@ -277,6 +278,27 @@ export default function ProfileEditRequestsPage() {
                   </SingleSelectOption>
                 ))}
               </SingleSelect>
+            </Box>
+            <Box style={{ minWidth: 220 }}>
+              <Typography variant="pi" textColor="neutral600" style={{ marginBottom: 4, display: 'block' }}>
+                Search
+              </Typography>
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => {
+                  setSearch(e.target.value);
+                  setPage(1);
+                }}
+                placeholder={companyFilter.toLowerCase() === 'aia' ? 'Employee code (digits)' : companyFilter.toLowerCase() === 'vega' ? 'EMP ID (EMP12345)' : 'User, company, ID, etc.'}
+                style={{
+                  padding: '8px 12px',
+                  border: '1px solid #dcdce4',
+                  borderRadius: '4px',
+                  fontSize: '14px',
+                  width: '100%',
+                }}
+              />
             </Box>
             <Box style={{ minWidth: 260 }}>
               <Typography variant="pi" textColor="neutral600" style={{ marginBottom: 4, display: 'block' }}>
@@ -310,17 +332,30 @@ export default function ProfileEditRequestsPage() {
             {/* <Box background="neutral0" hasRadius shadow="tableShadow" padding={6}> */}
               <DataTable
                 data={pageList}
-                columns={[
-                  { key: 'userName', label: 'Employee' },
-                  { key: 'userId', label: 'User ID' },
-                  { key: 'reason', label: 'Reason' },
-                  { key: 'changes', label: 'Changes', render: (val, row) => (
-                    <Button size="S" variant="tertiary" onClick={() => viewChanges(row)}>
-                      View 
-                    </Button>
-                  ) },
-                  { key: 'company', label: 'Company', render: (val, row) => (row?.userCompany || '—') },
-                ]}
+                        columns={[
+                          { key: 'userName', label: 'Employee' },
+                          { key: 'userId', label: 'User ID', render: (val, row) => {
+                              const attrs = row.attributes || row;
+                              const user = attrs.users_permissions_user?.data ?? attrs.users_permissions_user ?? {};
+                              const userAttrs = user.attributes ?? user;
+                              const company = (userAttrs.company || attrs.company || '').toLowerCase();
+                              if (company === 'aia') {
+                                return <Typography variant="omega" style={TABLE_FONT_STYLE}>{userAttrs.emp_code || '\u2014'}</Typography>;
+                              } else if (company === 'vega') {
+                                return <Typography variant="omega" style={TABLE_FONT_STYLE}>{userAttrs.emp_id || '\u2014'}</Typography>;
+                              } else {
+                                return <Typography variant="omega" style={TABLE_FONT_STYLE}>{row.userId || '\u2014'}</Typography>;
+                              }
+                            }
+                          },
+                          { key: 'reason', label: 'Reason' },
+                          { key: 'changes', label: 'Changes', render: (val, row) => (
+                            <Button size="S" variant="tertiary" onClick={() => viewChanges(row)}>
+                              View 
+                            </Button>
+                          ) },
+                          { key: 'company', label: 'Company', render: (val, row) => (row?.userCompany || '\u2014') },
+                        ]}
                 pagination={{
                   page: currentPage,
                   pageSize: pageSize,

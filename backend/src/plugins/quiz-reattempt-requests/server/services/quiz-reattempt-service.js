@@ -3,7 +3,7 @@ module.exports = ({ strapi }) => ({
     const entries = await strapi.entityService.findMany('api::quiz-reattempt-request.quiz-reattempt-request', {
       populate: {
         users_permissions_user: {
-          fields: ['username', 'email', 'employee_name'],
+          fields: ['username', 'email', 'employee_name', 'company', 'emp_code', 'emp_id'],
         },
         course: {
           fields: ['title'],

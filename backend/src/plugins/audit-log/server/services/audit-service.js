@@ -78,7 +78,7 @@ module.exports = ({ strapi }) => ({
 
     return {
       data: entries.results.map(entry => {
-        // Extract userId and company from snapshot (if available)
+        // Extract userId, username, company, emp_code, emp_id from snapshot (if available)
         const snapshot = entry.snapshot || {};
         return {
           id: entry.id,
@@ -96,6 +96,18 @@ module.exports = ({ strapi }) => ({
           data: snapshot, // Full snapshot for reference
           userId: snapshot.id || snapshot.userId || null,
           company: snapshot.company || null,
+          user: snapshot
+            ? {
+                id: snapshot.id || snapshot.userId || null,
+                username: snapshot.username || null,
+                firstname: snapshot.firstname || null,
+                lastname: snapshot.lastname || null,
+                email: snapshot.email || null,
+                company: snapshot.company || null,
+                emp_code: snapshot.emp_code || null,
+                emp_id: snapshot.emp_id || null,
+              }
+            : null,
           createdAt: entry.createdAt,
         };
       }),

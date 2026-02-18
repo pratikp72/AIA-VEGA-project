@@ -10,6 +10,7 @@ import DataTable from '../../../../analytics-dashboard/admin/src/components/Data
 const TABLE_FONT_STYLE = { fontSize: '14px' };
 
 const AuditLogPage = () => {
+    const [search, setSearch] = useState('');
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [pagination, setPagination] = useState({ page: 1, pageSize: 25, total: 0 });
@@ -116,6 +117,39 @@ const AuditLogPage = () => {
               Filters
             </Typography>
             <Flex gap={4} wrap="wrap">
+                <Box style={{ minWidth: 160 }}>
+                <Typography variant="pi" textColor="neutral600" style={{ marginBottom: 4, display: 'block' }}>
+                  Company
+                </Typography>
+                <SingleSelect
+                  value={companyFilter}
+                  onChange={(v) => setCompanyFilter(String(v || ''))}
+                >
+                  {COMPANY_OPTIONS.map((opt) => (
+                    <SingleSelectOption key={opt.value || 'all'} value={opt.value}>
+                      {opt.label}
+                    </SingleSelectOption>
+                  ))}
+                </SingleSelect>
+              </Box>
+              <Box style={{ minWidth: 220 }}>
+                <Typography variant="pi" textColor="neutral600" style={{ marginBottom: 4, display: 'block' }}>
+                  Search
+                </Typography>
+                <input
+                  type="text"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder={companyFilter.toLowerCase() === 'aia' ? 'Employee code (digits)' : companyFilter.toLowerCase() === 'vega' ? 'EMP ID (EMP12345)' : 'User, company, ID, etc.'}
+                  style={{
+                    padding: '8px 12px',
+                    border: '1px solid #dcdce4',
+                    borderRadius: '4px',
+                    fontSize: '14px',
+                    width: '100%',
+                  }}
+                />
+              </Box>
               <Box style={{ minWidth: 260 }}>
                 <Typography variant="pi" textColor="neutral600" style={{ marginBottom: 4, display: 'block' }}>
                   Date Range
@@ -141,21 +175,6 @@ const AuditLogPage = () => {
                   <SingleSelectOption value="deleted">Deleted</SingleSelectOption>
                 </SingleSelect>
               </Box>
-              <Box style={{ minWidth: 160 }}>
-                <Typography variant="pi" textColor="neutral600" style={{ marginBottom: 4, display: 'block' }}>
-                  Company
-                </Typography>
-                <SingleSelect
-                  value={companyFilter}
-                  onChange={(v) => setCompanyFilter(String(v || ''))}
-                >
-                  {COMPANY_OPTIONS.map((opt) => (
-                    <SingleSelectOption key={opt.value || 'all'} value={opt.value}>
-                      {opt.label}
-                    </SingleSelectOption>
-                  ))}
-                </SingleSelect>
-              </Box>
             </Flex>
           </Box>
 
@@ -165,16 +184,48 @@ const AuditLogPage = () => {
               data={
                 logs
                   .filter((log) => {
-                    if (!companyFilter) return true;
-                    const company = log.user?.company || log.company || '';
-                    return company.toLowerCase() === companyFilter.toLowerCase();
+                    const q = (search || '').toLowerCase().trim();
+                    const company = (log.user?.company || log.company || '').toLowerCase();
+                    // Company filter
+                    if (companyFilter && company !== companyFilter.toLowerCase()) return false;
+                    // Enhanced search
+                    if (!q) return true;
+                    const user = log.user || {};
+                    const matches = (
+                      (user.username && user.username.toLowerCase().includes(q)) ||
+                      (user.firstname && user.firstname.toLowerCase().includes(q)) ||
+                      (user.lastname && user.lastname.toLowerCase().includes(q)) ||
+                      (user.emp_code && String(user.emp_code).toLowerCase().includes(q)) ||
+                      (user.emp_id && String(user.emp_id).toLowerCase().includes(q)) ||
+                      (user.id && String(user.id).toLowerCase().includes(q)) ||
+                      (log.userId && String(log.userId).toLowerCase().includes(q))
+                    );
+                    // Company-specific strictness
+                    if (company === 'aia' && /^\d+$/.test(q)) {
+                      return user.emp_code && String(user.emp_code).includes(q);
+                    } else if (company === 'vega' && /^emp\d+$/i.test(q)) {
+                      return user.emp_id && String(user.emp_id).toLowerCase().includes(q);
+                    }
+                    return matches;
                   })
                   .slice((pagination.page - 1) * pageSize, (pagination.page - 1) * pageSize + pageSize)
               }
               columns={[
                 { key: 'createdAt', label: 'Date & Time', render: (val) => <Typography variant="omega">{formatDate(val)}</Typography> },
                 { key: 'action', label: 'Action', render: (val) => <Badge variant={getActionColor(val)}>{val}</Badge> },
-                { key: 'userId', label: 'User ID', render: (val, row) => row.user?.id || row.userId || '—' },
+                { key: 'userId', label: 'User ID', render: (val, row) => {
+                    const user = row.user || {};
+                    const company = (user.company || row.company || '').toLowerCase();
+                    if (company === 'aia') {
+                      return <Typography variant="omega" style={TABLE_FONT_STYLE}>{user.emp_code || '—'}</Typography>;
+                    } else if (company === 'vega') {
+                      return <Typography variant="omega" style={TABLE_FONT_STYLE}>{user.emp_id || '—'}</Typography>;
+                    } else {
+                      return <Typography variant="omega" style={TABLE_FONT_STYLE}>{row.userId || '—'}</Typography>;
+                    }
+                  }
+                },
+                { key: 'userName', label: 'User Name', render: (val, row) => row.user?.username || row.userName || '—' },
                 { key: 'company', label: 'Company', render: (val, row) => row.user?.company || row.company || '—' },
                 { key: 'adminUser', label: 'Changed By', render: (val, row) => val ? `${val.firstname} ${val.lastname}` : 'System' },
                 { key: 'changes', label: 'Changes', render: (val) => val && val.length > 0 ? val.map(c => c.field).join(', ') : '—' },
