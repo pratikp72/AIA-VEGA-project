@@ -1107,7 +1107,7 @@ module.exports = ({ strapi }) => ({
       progressList = await strapi.documents('api::user-progress.user-progress').findMany({
         filters: progressFilters,
         status: 'published',
-        populate: ['user'],
+        populate: ['user', 'course'],
         pagination: { limit: 10000 },
       });
       progressList = Array.isArray(progressList) ? progressList : [];
@@ -1130,12 +1130,12 @@ module.exports = ({ strapi }) => ({
       }
     }
 
-    // Filter progressList by courseId using only the course relation
+    // Filter progressList by courseId (support populated course or raw course id)
     if (params.courseId) {
       const courseIdStr = String(params.courseId);
       progressList = progressList.filter((p) => {
-        // Only use course relation for filtering
-        return p.course && String(p.course.id) === courseIdStr;
+        const courseId = p.course?.id ?? p.course?.documentId ?? p.course_id ?? p.course;
+        return courseId != null && String(courseId) === courseIdStr;
       });
     }
 
@@ -1351,7 +1351,7 @@ module.exports = ({ strapi }) => ({
       progressList = await strapi.documents('api::user-progress.user-progress').findMany({
         filters: progressFilters,
         status: 'published',
-        populate: ['user'],
+        populate: ['user', 'course'],
         pagination: { limit: 50000 },
       }) || [];
     } catch (e) {
@@ -1370,6 +1370,25 @@ module.exports = ({ strapi }) => ({
       } catch (e2) {
         strapi.log.warn('Employee table export: db.query fallback failed:', e2?.message);
       }
+    }
+    progressList = Array.isArray(progressList) ? progressList : [];
+    if (params.courseId) {
+      const courseIdStr = String(params.courseId);
+      progressList = progressList.filter((p) => {
+        const courseId = p.course?.id ?? p.course?.documentId ?? p.course_id ?? p.course;
+        return courseId != null && String(courseId) === courseIdStr;
+      });
+    }
+    if (params.status) {
+      progressList = progressList.filter((p) => p.progress_status === params.status);
+    }
+    if (params.filterTimeMin) {
+      const min = Number(params.filterTimeMin);
+      progressList = progressList.filter((p) => (p.time_spent_minutes ?? 0) >= min);
+    }
+    if (params.filterTimeMax) {
+      const max = Number(params.filterTimeMax);
+      progressList = progressList.filter((p) => (p.time_spent_minutes ?? 0) <= max);
     }
 
     let submissionList = [];
@@ -1407,7 +1426,7 @@ module.exports = ({ strapi }) => ({
       if (idx !== undefined) submissionByUserIdx[idx].push(s);
     });
 
-    const rows = userList.map((u, i) => {
+    let rows = userList.map((u, i) => {
       const progs = progressByUserIdx[i] || [];
       const subs = submissionByUserIdx[i] || [];
       const coursesEnrolled = progs.length;
@@ -1430,6 +1449,9 @@ module.exports = ({ strapi }) => ({
         courseCompletionTimeMinutes: totalTimeSpent,
       };
     });
+    if (params.courseId || params.status) {
+      rows = rows.filter((_, i) => (progressByUserIdx[i] || []).length > 0);
+    }
 
     const sortBy = params.sortBy || 'courseCompletionTimeMinutes';
     const sortOrder = (params.sortOrder || 'desc').toLowerCase();

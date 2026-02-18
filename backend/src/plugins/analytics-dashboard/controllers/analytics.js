@@ -24,6 +24,11 @@ module.exports = ({ strapi }) => {
     sortOrder: ctx.query.sortOrder || ctx.query.sort_order,
     page: ctx.query.page,
     pageSize: ctx.query.pageSize || ctx.query.page_size,
+    // Learning employee table filters
+    courseId: ctx.query.courseId || ctx.query.course_id,
+    status: ctx.query.status,
+    filterTimeMin: ctx.query.filterTimeMin || ctx.query.filter_time_min,
+    filterTimeMax: ctx.query.filterTimeMax || ctx.query.filter_time_max,
   });
 
   return {

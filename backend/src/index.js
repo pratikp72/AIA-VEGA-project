@@ -77,6 +77,14 @@ module.exports = {
   },
 
   bootstrap({ strapi }) {
+    // User-progress automation: course-assignment → Not_started; start-course → In_progress; quiz-submission → Completed/Failed
+    try {
+      const { registerUserProgressLifecycles } = require('./lifecycles/user-progress-automation');
+      registerUserProgressLifecycles(strapi);
+    } catch (e) {
+      strapi.log.error('User-progress automation bootstrap failed:', e?.message || e);
+    }
+
     // Fallback: ensure department when user is created/updated via Content Manager
     const plugin = strapi.plugin('content-manager');
     if (!plugin) return;
