@@ -33,6 +33,7 @@ export default function LearningAnalyticsPage() {
     }
   };
   const [viewMode, setViewMode] = useState('global');
+  const [courseContentViewType, setCourseContentViewType] = useState('statistics'); // 'statistics' | 'table' (Course view only)
   const [dateFrom, setDateFrom] = useState(null);
   const [dateTo, setDateTo] = useState(null);
   const [department, setDepartment] = useState('');
@@ -180,11 +181,13 @@ export default function LearningAnalyticsPage() {
     if (dateTo) params.dateTo = dateTo;
     if (viewMode === 'global') {
       if (department) params.department = department;
-      if (filterCourse) params.courseId = filterCourse;
+      if (filterCourse) {
+        params.courseId = filterCourse;
+        if (filterQuizStatus) params.quizStatus = filterQuizStatus;
+        if (filterFeedbackGiven) params.feedbackGiven = filterFeedbackGiven;
+      }
       if (filterCourseCategory) params.courseCategory = filterCourseCategory;
       if (unitLocation) params.unitLocation = unitLocation;
-      if (filterQuizStatus) params.quizStatus = filterQuizStatus;
-      if (filterFeedbackGiven) params.feedbackGiven = filterFeedbackGiven;
     }
     if (company) params.company = company;
     if (filterStatus) params.status = filterStatus;
@@ -419,6 +422,26 @@ export default function LearningAnalyticsPage() {
               {isPersonal && employeeDetail && (
                 <EmployeeDetailCard employee={employeeDetail} />
               )}
+              {/* Course view: toggle Statistics (charts) vs Table */}
+              {viewMode === 'global' && (
+                <Flex marginBottom={4} alignItems="center" gap={2}>
+                  <Typography variant="pi" textColor="neutral700" fontWeight="semiBold">View:</Typography>
+                  <select
+                    value={courseContentViewType}
+                    onChange={(e) => setCourseContentViewType(e.target.value)}
+                    style={{
+                      padding: '6px 12px',
+                      border: '1px solid #dcdce4',
+                      borderRadius: '4px',
+                      fontSize: '14px',
+                      minWidth: 180,
+                    }}
+                  >
+                    <option value="statistics">Statistics view</option>
+                    <option value="table">Table view</option>
+                  </select>
+                </Flex>
+              )}
               {/* KPI cards: 1.Total course 2.Total enrollments 3.Completion rate 4.Avg learning time 5.Avg quiz score 6.Completed course 7.Drop off rate */}
               <Flex gap={4} marginBottom={6} wrap="wrap">
                 <Box style={{ flex: '1 1 200px', minWidth: 160 }}>
@@ -454,37 +477,110 @@ export default function LearningAnalyticsPage() {
                 </Box>
               </Flex>
 
-              {/* Content view only: 3 charts – Learning activity (full width), Completion funnel, Course status (donut) */}
+              {/* Content view only: Statistics (charts) or Table view */}
               {!isPersonal && (
                 <>
-                  <Box style={{ width: '100%', marginBottom: 24 }}>
-                    <LineChart
-                      data={data.learningActivityByWeek || []}
-                      title="Learning Activity"
-                      nameKey="week"
-                      dataKey="enrollments"
-                      seriesName="Enrollments"
-                      height={280}
-                    />
-                  </Box>
-                  <Flex gap={4} marginBottom={6} wrap="wrap">
-                    <Box style={{ flex: '1 1 340px', minWidth: 280 }}>
-                      <FunnelChart
-                      data={data.completionFunnel || []}
-                      title="Completion Funnel"
-                      nameKey="stage"
-                      dataKey="value"
-                      height={280}
-                    />
-                  </Box>
-                  <Box style={{ flex: '1 1 300px', minWidth: 280 }}>
-                    <DonutChart
-                      data={data.statusDistribution || []}
-                      title="Course Status Distribution"
-                      height={280}
-                    />
-                  </Box>
-                </Flex>
+                  {courseContentViewType === 'statistics' && (
+                    <>
+                      <Box style={{ width: '100%', marginBottom: 24 }}>
+                        <LineChart
+                          data={data.learningActivityByWeek || []}
+                          title="Learning Activity"
+                          nameKey="week"
+                          dataKey="enrollments"
+                          seriesName="Enrollments"
+                          height={280}
+                        />
+                      </Box>
+                      <Flex gap={4} marginBottom={6} wrap="wrap">
+                        <Box style={{ flex: '1 1 340px', minWidth: 280 }}>
+                          <FunnelChart
+                            data={data.completionFunnel || []}
+                            title="Completion Funnel"
+                            nameKey="stage"
+                            dataKey="value"
+                            height={280}
+                          />
+                        </Box>
+                        <Box style={{ flex: '1 1 300px', minWidth: 280 }}>
+                          <DonutChart
+                            data={data.statusDistribution || []}
+                            title="Course Status Distribution"
+                            height={280}
+                          />
+                        </Box>
+                      </Flex>
+                    </>
+                  )}
+                  {courseContentViewType === 'table' && (
+                    <>
+                      <Box marginBottom={6}>
+                        <DataTable
+                          data={data.learningActivityByWeek || []}
+                          title="Learning Activity by Week"
+                          fontSize="16px"
+                          columns={[
+                            { key: 'week', label: 'Week' },
+                            { key: 'enrollments', label: 'Enrollments' },
+                          ]}
+                        />
+                      </Box>
+                      <Flex gap={4} marginBottom={6} wrap="wrap">
+                        <Box style={{ flex: '1 1 340px', minWidth: 280 }}>
+                          <DataTable
+                            data={data.completionFunnel || []}
+                            title="Completion Funnel"
+                            fontSize="16px"
+                            columns={[
+                              { key: 'stage', label: 'Stage' },
+                              { key: 'value', label: 'Count' },
+                            ]}
+                          />
+                        </Box>
+                        <Box style={{ flex: '1 1 300px', minWidth: 280 }}>
+                          <DataTable
+                            data={data.statusDistribution || []}
+                            title="Course Status Distribution"
+                            fontSize="16px"
+                            columns={[
+                              { key: 'name', label: 'Status' },
+                              { key: 'value', label: 'Count' },
+                            ]}
+                          />
+                        </Box>
+                      </Flex>
+                      {(data.departmentDistribution?.length > 0 || data.monthlyCompletions?.length > 0) && (
+                        <Flex gap={4} marginBottom={6} wrap="wrap">
+                          {data.departmentDistribution?.length > 0 && (
+                            <Box style={{ flex: '1 1 340px', minWidth: 280 }}>
+                              <DataTable
+                                data={data.departmentDistribution}
+                                title="Department Distribution"
+                                fontSize="16px"
+                                columns={[
+                                  { key: 'name', label: 'Department' },
+                                  { key: 'value', label: 'Count' },
+                                ]}
+                              />
+                            </Box>
+                          )}
+                          {Array.isArray(data.monthlyCompletions) && data.monthlyCompletions.length > 0 && (
+                            <Box style={{ flex: '1 1 340px', minWidth: 280 }}>
+                              <DataTable
+                                data={data.monthlyCompletions}
+                                title="Monthly Completions"
+                                fontSize="16px"
+                                columns={[
+                                  { key: 'month', label: 'Month' },
+                                  { key: 'value', label: 'Count' },
+                                ]}
+                              />
+                            </Box>
+                          )}
+                        </Flex>
+                      )}
+                    </>
+                  )}
                 </>
               )}
 

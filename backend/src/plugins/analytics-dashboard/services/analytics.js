@@ -197,7 +197,17 @@ module.exports = ({ strapi }) => ({
       const uniqueUserIds = [...new Set(pairs.map((x) => x.userId))];
       const uniqueCourseIds = [...new Set(pairs.map((x) => x.courseId).filter(Boolean))];
       const numericUserIds = uniqueUserIds.filter((id) => typeof id === 'number' || (typeof id === 'string' && /^\d+$/.test(id)));
-      const numericCourseIds = uniqueCourseIds.filter((id) => typeof id === 'number' || (typeof id === 'string' && /^\d+$/.test(id)));
+      let numericCourseIds = uniqueCourseIds.filter((id) => typeof id === 'number' || (typeof id === 'string' && /^\d+$/.test(id)));
+      // When a course is selected it may be sent as documentId; resolve so quiz/feedback queries find submissions
+      if (numericCourseIds.length === 0 && wantCourseId && uniqueCourseIds.length > 0) {
+        const courseIdParam = String(params.courseId || '').trim();
+        if (courseIdParam.length > 10) {
+          try {
+            const row = await strapi.db.query('api::course.course').findOne({ where: { documentId: courseIdParam }, select: ['id'] });
+            if (row?.id != null) numericCourseIds = [Number(row.id)];
+          } catch (_) {}
+        } else if (/^\d+$/.test(courseIdParam)) numericCourseIds = [Number(courseIdParam)];
+      }
       if (numericUserIds.length > 0 && numericCourseIds.length > 0 && (wantQuizStatus === 'pass' || wantQuizStatus === 'fail')) {
         try {
           const quizSubs = await strapi.db.query('api::quiz-submission.quiz-submission').findMany({
@@ -212,9 +222,17 @@ module.exports = ({ strapi }) => ({
           (quizSubs || []).forEach((q) => {
             const uid = q.submitted_by?.id ?? q.submitted_by;
             const cid = q.course?.id ?? q.course;
-            if (uid != null && cid != null) {
-              if (q.passed === true) quizPassedByUserCourse.add(`${uid}-${cid}`);
-              else quizFailedByUserCourse.add(`${uid}-${cid}`);
+            const cidDoc = q.course?.documentId ?? q.course?.document_id;
+            if (uid != null && (cid != null || cidDoc != null)) {
+              const keyNum = cid != null ? `${uid}-${cid}` : null;
+              const keyDoc = cidDoc != null ? `${uid}-${cidDoc}` : null;
+              if (q.passed === true) {
+                if (keyNum) quizPassedByUserCourse.add(keyNum);
+                if (keyDoc) quizPassedByUserCourse.add(keyDoc);
+              } else {
+                if (keyNum) quizFailedByUserCourse.add(keyNum);
+                if (keyDoc) quizFailedByUserCourse.add(keyDoc);
+              }
             }
           });
         } catch (e) {
@@ -234,7 +252,11 @@ module.exports = ({ strapi }) => ({
           (feedbackSubs || []).forEach((f) => {
             const uid = f.users_permissions_user?.id ?? f.users_permissions_user;
             const cid = f.course?.id ?? f.course;
-            if (uid != null && cid != null) feedbackByUserCourse.add(`${uid}-${cid}`);
+            const cidDoc = f.course?.documentId ?? f.course?.document_id;
+            if (uid != null && (cid != null || cidDoc != null)) {
+              if (cid != null) feedbackByUserCourse.add(`${uid}-${cid}`);
+              if (cidDoc != null) feedbackByUserCourse.add(`${uid}-${cidDoc}`);
+            }
           });
         } catch (e) {
           strapi.log.warn('Learning global: feedback submission lookup failed:', e?.message);
@@ -1834,26 +1856,34 @@ module.exports = ({ strapi }) => ({
         return list;
       }
 
-      // Department selected: get courses from course_assignments for that department (optionally same company)
+      // Department selected: get courses from course_assignments where target is Department and this dept is linked
       let assignments = [];
       if (departmentId != null && departmentId !== '') {
-        const numericDept = typeof departmentId === 'number' ? departmentId : parseInt(String(departmentId), 10);
+        let numericDept = typeof departmentId === 'number' ? departmentId : parseInt(String(departmentId), 10);
+        const isDocId = typeof departmentId === 'string' && departmentId.length > 10;
+        if (Number.isNaN(numericDept) && isDocId) {
+          const deptRow = await strapi.db.query('api::department.department').findOne({
+            where: { documentId: departmentId },
+            select: ['id'],
+          });
+          if (deptRow && deptRow.id != null) numericDept = Number(deptRow.id);
+        }
+        // Only assignments with target Department have departments relation; filter by id and optionally by documentId
         if (!Number.isNaN(numericDept)) {
-          try {
-            const byDept = await strapi.documents('api::course-assignment.course-assignment').findMany({
-              status: 'published',
-              filters: { departments: { id: numericDept } },
-              populate: ['course'],
-              limit: 500,
-            });
-            assignments = Array.isArray(byDept) ? byDept : [];
-          } catch (_) {
-            const byDept = await strapi.db.query('api::course-assignment.course-assignment').findMany({
-              where: { departments: { id: numericDept } },
-              populate: ['course'],
-            });
-            assignments = byDept || [];
-          }
+          const byDept = await strapi.db.query('api::course-assignment.course-assignment').findMany({
+            where: { assignment_target_type: 'Department', departments: { id: numericDept } },
+            populate: ['course'],
+            limit: 500,
+          });
+          assignments = byDept || [];
+        }
+        if (assignments.length === 0 && isDocId) {
+          const byDocId = await strapi.db.query('api::course-assignment.course-assignment').findMany({
+            where: { assignment_target_type: 'Department', departments: { documentId: departmentId } },
+            populate: ['course'],
+            limit: 500,
+          });
+          if (byDocId && byDocId.length > 0) assignments = byDocId;
         }
       }
 
