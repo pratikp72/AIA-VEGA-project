@@ -53,9 +53,9 @@ function syncComponentArray(current, languages, createPlaceholder) {
 }
 
 /**
- * Mutate course document data so modules, quiz, feedback_question
- * have exactly one entry per selected course_language, each with language set.
- * Call before create/update so the payload is saved with the right structure.
+ * Mutate course document data so modules, quiz, and feedback.feedback_question
+ * have exactly one entry per selected course_language. feedback is a single
+ * component; feedback.feedback_question is the repeatable array we sync.
  *
  * @param {object} data - Course document payload (params.data)
  */
@@ -78,12 +78,15 @@ function syncCourseLanguageComponents(data) {
     quiz_instruction_checklist: [],
   }));
 
-  data.feedback_question = syncComponentArray(data.feedback_question, languages, (lang, index) => ({
+  // feedback is repeatable: N entries (one per language). Do not sync inner feedback_question.
+  const existingFeedback = Array.isArray(data.feedback) ? data.feedback : [];
+  data.feedback = syncComponentArray(existingFeedback, languages, (lang) => ({
     language: lang,
-    question_id: `fb-${lang.toLowerCase()}-${index}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
-    qestion: '',
-    answer_type: 'Rating',
-    mandatory: true,
+    feedback_question: [],
+  }));
+  data.feedback = data.feedback.map((f) => ({
+    ...f,
+    feedback_question: Array.isArray(f.feedback_question) ? f.feedback_question : [],
   }));
 }
 

@@ -65,11 +65,6 @@
       "component": "quiz.quiz",
       "repeatable": true
     },
-    "feedback_question": {
-      "type": "component",
-      "component": "feedback-form.question",
-      "repeatable": true
-    },
     "course_duration_min": {
       "type": "customField",
       "customField": "global::number-range",
@@ -115,6 +110,11 @@
       },
       "component": "course.orientation",
       "repeatable": false
+    },
+    "feedback": {
+      "type": "component",
+      "component": "feedback-form.feedback-form",
+      "repeatable": true
     }
   }
 }

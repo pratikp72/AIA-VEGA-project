@@ -25,7 +25,12 @@ const CONTENT_TYPE_ID_CONFIG = {
         quiz_questions: { idKey: 'question_id', prefix: 'q', nested: {} },
       },
     },
-    feedback_question: { idKey: 'question_id', prefix: 'fb', nested: {} },
+    // feedback is single component; feedback_question is inside it (repeatable)
+    feedback: {
+      nested: {
+        feedback_question: { idKey: 'question_id', prefix: 'fb', nested: {} },
+      },
+    },
   },
   'api::unit-location.unit-location': {
     bus_routes: {
@@ -41,8 +46,20 @@ const CONTENT_TYPE_ID_CONFIG = {
 function fillIdsInObject(obj, config, didFillRef) {
   if (!obj || typeof obj !== 'object') return;
   for (const [key, spec] of Object.entries(config)) {
-    if (!spec || !spec.idKey) continue;
-    const arr = obj[key];
+    if (!spec) continue;
+    const val = obj[key];
+    // Nested only, single object (e.g. old feedback as single)
+    if (spec.nested && Object.keys(spec.nested).length > 0 && !spec.idKey && val && typeof val === 'object' && !Array.isArray(val)) {
+      fillIdsInObject(val, spec.nested, didFillRef);
+      continue;
+    }
+    // Nested only, repeatable (e.g. feedback: array of { feedback_question: ... })
+    if (spec.nested && Object.keys(spec.nested).length > 0 && !spec.idKey && Array.isArray(val)) {
+      val.forEach((item) => fillIdsInObject(item, spec.nested, didFillRef));
+      continue;
+    }
+    if (!spec.idKey) continue;
+    const arr = val;
     if (!Array.isArray(arr)) continue;
     for (let i = 0; i < arr.length; i++) {
       const item = arr[i];
@@ -63,8 +80,9 @@ function fillIdsInObject(obj, config, didFillRef) {
  * Injected into content-manager editView. For content types that have component id fields,
  * fills missing ids whenever form values change (e.g. user added a new component row).
  */
-function AutoFillComponentIds({ slug }) {
-  const config = slug ? CONTENT_TYPE_ID_CONFIG[slug] : null;
+function AutoFillComponentIds({ slug, model }) {
+  const uid = slug || model;
+  const config = uid ? CONTENT_TYPE_ID_CONFIG[uid] : null;
   const values = useForm('useContentManagerContext', (state) => state.values, false);
   const setValues = useForm('useContentManagerContext', (state) => state.setValues, false);
   const didFillRef = useRef(false);
@@ -79,7 +97,7 @@ function AutoFillComponentIds({ slug }) {
     if (didFillRef.current) {
       setValues(copy);
     }
-  }, [slug, values, setValues, config]);
+  }, [uid, values, setValues, config]);
 
   return null;
 }

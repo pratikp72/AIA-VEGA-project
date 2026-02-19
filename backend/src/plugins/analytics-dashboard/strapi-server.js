@@ -110,6 +110,15 @@ module.exports = {
           policies: [],
         },
       },
+      {
+        method: 'GET',
+        path: '/api/analytics/courses-by-department',
+        handler: controller.coursesByDepartment,
+        config: {
+          auth: false,
+          policies: [],
+        },
+      },
       // ============ ACTIVITY TRACKING ============
       {
         method: 'GET',

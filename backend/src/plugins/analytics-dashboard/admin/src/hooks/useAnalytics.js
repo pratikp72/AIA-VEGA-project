@@ -55,8 +55,9 @@ export function useAnalytics() {
     fetchOverallGlobal: (params) => fetchApi('/api/analytics/overall/global', params),
     fetchOverallPersonal: (params) => fetchApi('/api/analytics/overall/personal', params),
     fetchEmployees: (params) => fetchApi('/api/analytics/employees', params),
-    fetchDepartments: () => fetchApi('/api/analytics/departments'),
-    fetchUnitLocations: () => fetchApi('/api/analytics/unit-locations'),
+    fetchDepartments: (company) => fetchApi('/api/analytics/departments', company ? { company } : {}),
+    fetchUnitLocations: (company) => fetchApi('/api/analytics/unit-locations', company ? { company } : {}),
+    fetchCoursesByDepartment: (departmentId, company) => fetchApi('/api/analytics/courses-by-department', { ...(departmentId ? { departmentId } : {}), ...(company ? { company } : {}) }),
     fetchActivityTimeByTypeAndDay: (params) => fetchApi('/api/analytics/activity/time-by-type-and-day', params),
     fetchActivityLog: (params) => fetchApi('/api/analytics/activity/log', params),
   };

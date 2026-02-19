@@ -611,7 +611,7 @@ export interface ApiCourseAssignmentCourseAssignment
       Schema.Attribute.Required &
       Schema.Attribute.DefaultTo<true>;
     assignment_target_type: Schema.Attribute.Enumeration<
-      ['Department', 'Location', 'Role', 'Individual']
+      ['Department', 'Location', 'Company', 'Individual']
     > &
       Schema.Attribute.Required;
     companies: Schema.Attribute.Relation<'manyToMany', 'api::company.company'>;
@@ -635,8 +635,6 @@ export interface ApiCourseAssignmentCourseAssignment
     > &
       Schema.Attribute.Private;
     publishedAt: Schema.Attribute.DateTime;
-    role: Schema.Attribute.Enumeration<['Hr', 'LearningManager', 'Employee']> &
-      Schema.Attribute.Required;
     unit_locations: Schema.Attribute.Relation<
       'manyToMany',
       'api::unit-location.unit-location'
@@ -686,10 +684,7 @@ export interface ApiCourseCourse extends Struct.CollectionTypeSchema {
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
     description: Schema.Attribute.Blocks & Schema.Attribute.Required;
-    feedback_question: Schema.Attribute.Component<
-      'feedback-form.question',
-      true
-    >;
+    feedback: Schema.Attribute.Component<'feedback-form.feedback-form', true>;
     locale: Schema.Attribute.String & Schema.Attribute.Private;
     localizations: Schema.Attribute.Relation<
       'oneToMany',

@@ -17,7 +17,7 @@
       "enum": [
         "Department",
         "Location",
-        "Role",
+        "Company",
         "Individual"
       ]
     },
@@ -81,29 +81,20 @@
         }
       }
     },
-    "role": {
-      "type": "enumeration",
+    "companies": {
+      "type": "relation",
+      "relation": "manyToMany",
+      "target": "api::company.company",
       "conditions": {
         "visible": {
           "==": [
             {
               "var": "assignment_target_type"
             },
-            "Role"
+            "Company"
           ]
         }
       },
-      "required": true,
-      "enum": [
-        "Hr",
-        "LearningManager",
-        "Employee"
-      ]
-    },
-    "companies": {
-      "type": "relation",
-      "relation": "manyToMany",
-      "target": "api::company.company",
       "mappedBy": "course_assignments"
     }
   }

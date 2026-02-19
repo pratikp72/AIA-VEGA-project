@@ -3,7 +3,7 @@ import { Box, Typography } from '@strapi/design-system';
 import { LineChart as RechartsLine, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { CHART_COLORS } from './chartColors';
 
-export function LineChart({ data = [], title, dataKey = 'value', nameKey = 'month', height = 280 }) {
+export function LineChart({ data = [], title, dataKey = 'value', nameKey = 'month', height = 280, seriesName }) {
   if (!data || data.length === 0) {
     return (
       <Box padding={4} background="neutral0" hasRadius shadow="tableShadow" borderColor="neutral200" borderWidth="1px" borderStyle="solid">
@@ -29,7 +29,7 @@ export function LineChart({ data = [], title, dataKey = 'value', nameKey = 'mont
           <YAxis tick={{ fontSize: 11 }} />
           <Tooltip />
           <Legend />
-          <Line type="monotone" dataKey={dataKey} stroke={CHART_COLORS[0]} strokeWidth={2} dot={{ r: 4, fill: CHART_COLORS[2] }} name="Completions" />
+          <Line type="monotone" dataKey={dataKey} stroke={CHART_COLORS[0]} strokeWidth={2} dot={{ r: 4, fill: CHART_COLORS[2] }} name={seriesName || 'Value'} />
         </RechartsLine>
       </ResponsiveContainer>
     </Box>

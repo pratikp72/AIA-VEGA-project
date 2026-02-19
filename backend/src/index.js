@@ -74,6 +74,9 @@ module.exports = {
       }
       return result;
     });
+
+    // Course-assignment automation runs from docManager.create (Content Manager) and from db lifecycle (API/fallback).
+    // We do not run it here in documents.use to avoid double-running when CM creates.
   },
 
   bootstrap({ strapi }) {
@@ -91,6 +94,7 @@ module.exports = {
     const docManager = plugin.service('document-manager');
     if (!docManager || typeof docManager.create !== 'function') return;
 
+    const COURSE_ASSIGNMENT_UID = 'api::course-assignment.course-assignment';
     const originalCreate = docManager.create.bind(docManager);
     docManager.create = async (uid, opts = {}) => {
       if (uid === COURSE_UID && opts?.data && typeof opts.data === 'object') {
@@ -112,6 +116,8 @@ module.exports = {
           }
         }
       }
+      // Course-assignment automation runs only from db lifecycle (afterCreate) to avoid duplicate
+      // user-progress entries. Do not run here.
       return result;
     };
 

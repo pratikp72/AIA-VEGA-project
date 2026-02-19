@@ -29,16 +29,32 @@ module.exports = ({ strapi }) => {
     status: ctx.query.status,
     filterTimeMin: ctx.query.filterTimeMin || ctx.query.filter_time_min,
     filterTimeMax: ctx.query.filterTimeMax || ctx.query.filter_time_max,
+    // Content view (global) filters
+    quizStatus: ctx.query.quizStatus || ctx.query.quiz_status,
+    feedbackGiven: ctx.query.feedbackGiven || ctx.query.feedback_given,
   });
 
   return {
     async learningGlobal(ctx) {
       const emptyLearning = () => ({
-        kpis: { totalAssignments: 0, completionRate: 0, avgTimeSpentMinutes: 0, certificatesIssued: 0 },
+        kpis: {
+          totalCourses: 0,
+          totalEnrollments: 0,
+          completionRate: 0,
+          avgTimeSpentMinutes: 0,
+          avgQuizScore: 0,
+          completedCourse: 0,
+          dropOffRate: 0,
+          dropOffCount: 0,
+          totalAssignments: 0,
+          certificatesIssued: 0,
+        },
         statusDistribution: [],
         categoryDistribution: [],
         departmentDistribution: [],
         monthlyCompletions: [],
+        learningActivityByWeek: [],
+        completionFunnel: [],
         quiz: { passRate: 0, avgScore: 0, totalAttempts: 0, passed: 0, failed: 0 },
       });
       try {
@@ -47,8 +63,11 @@ module.exports = ({ strapi }) => {
         const data = await service.getLearningGlobal(params) || emptyLearning();
         try {
           data.quiz = await service.getQuizGlobal(params);
+          // Use avgQuizScore from getLearningGlobal (filtered); only fall back to quiz.avgScore if not set
+          if (data.kpis && data.kpis.avgQuizScore === undefined) data.kpis.avgQuizScore = data.quiz?.avgScore ?? 0;
         } catch (quizError) {
           data.quiz = { passRate: 0, avgScore: 0, totalAttempts: 0, passed: 0, failed: 0 };
+          if (data.kpis && data.kpis.avgQuizScore === undefined) data.kpis.avgQuizScore = 0;
         }
         ctx.body = data;
       } catch (error) {
@@ -60,7 +79,17 @@ module.exports = ({ strapi }) => {
 
     async learningPersonal(ctx) {
       const emptyLearningPersonal = () => ({
-        kpis: { totalCourses: 0, completionRate: 0, avgTimeSpentMinutes: 0, certificatesEarned: 0 },
+        kpis: {
+          totalCourses: 0,
+          totalEnrollments: 0,
+          completionRate: 0,
+          avgTimeSpentMinutes: 0,
+          avgQuizScore: 0,
+          completedCourse: 0,
+          dropOffRate: 0,
+          dropOffCount: 0,
+          certificatesEarned: 0,
+        },
         statusDistribution: [],
         categoryDistribution: [],
         departmentDistribution: [],
@@ -80,8 +109,10 @@ module.exports = ({ strapi }) => {
         const data = await service.getLearningPersonal(userId, params) || emptyLearningPersonal();
         try {
           data.quiz = await service.getQuizPersonal(userId, params);
+          if (data.kpis) data.kpis.avgQuizScore = data.quiz?.avgScore ?? 0;
         } catch (_) {
           data.quiz = { passRate: 0, avgScore: 0, totalAttempts: 0, passed: 0, failed: 0 };
+          if (data.kpis) data.kpis.avgQuizScore = 0;
         }
         try {
           const moduleVideoData = await service.getLearningPersonalModuleVideoProgress(userId, params);
@@ -186,8 +217,9 @@ module.exports = ({ strapi }) => {
 
     async departmentsList(ctx) {
       try {
+        const company = ctx.query.company || ctx.query.companyId;
         const service = getAnalyticsService();
-        const data = await service.getDepartmentsList();
+        const data = await service.getDepartmentsList(company);
         ctx.body = data || [];
       } catch (error) {
         strapi.log.error('Analytics departmentsList error:', error?.message || error);
@@ -198,11 +230,26 @@ module.exports = ({ strapi }) => {
 
     async unitLocationsList(ctx) {
       try {
+        const company = ctx.query.company || ctx.query.companyId;
         const service = getAnalyticsService();
-        const data = await service.getUnitLocationsList();
+        const data = await service.getUnitLocationsList(company);
         ctx.body = data || [];
       } catch (error) {
         strapi.log.error('Analytics unitLocationsList error:', error?.message || error);
+        ctx.body = [];
+        ctx.status = 200;
+      }
+    },
+
+    async coursesByDepartment(ctx) {
+      try {
+        const departmentId = ctx.query.departmentId || ctx.query.department_id;
+        const company = ctx.query.company || ctx.query.companyId;
+        const service = getAnalyticsService();
+        const data = await service.getCoursesByDepartment(departmentId, company);
+        ctx.body = data || [];
+      } catch (error) {
+        strapi.log.error('Analytics coursesByDepartment error:', error?.message || error);
         ctx.body = [];
         ctx.status = 200;
       }

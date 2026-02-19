@@ -67,6 +67,21 @@ export interface FeedbackFormAnswer extends Struct.ComponentSchema {
   };
 }
 
+export interface FeedbackFormFeedbackForm extends Struct.ComponentSchema {
+  collectionName: 'components_feedback_form_feedback_forms';
+  info: {
+    displayName: 'Feedback Form';
+  };
+  attributes: {
+    feedback_question: Schema.Attribute.Component<
+      'feedback-form.question',
+      true
+    >;
+    language: Schema.Attribute.Enumeration<['Hindi', 'English', 'Gujarati']> &
+      Schema.Attribute.Required;
+  };
+}
+
 export interface FeedbackFormQuestion extends Struct.ComponentSchema {
   collectionName: 'components_feedback_form_questions';
   info: {
@@ -84,8 +99,6 @@ export interface FeedbackFormQuestion extends Struct.ComponentSchema {
           required: true;
         }
       >;
-    language: Schema.Attribute.Enumeration<['English', 'Hindi', 'Gujarati']> &
-      Schema.Attribute.Required;
     mandatory: Schema.Attribute.Boolean &
       Schema.Attribute.Required &
       Schema.Attribute.DefaultTo<true>;
@@ -268,6 +281,7 @@ declare module '@strapi/strapi' {
       'course.module': CourseModule;
       'course.orientation': CourseOrientation;
       'feedback-form.answer': FeedbackFormAnswer;
+      'feedback-form.feedback-form': FeedbackFormFeedbackForm;
       'feedback-form.question': FeedbackFormQuestion;
       'quiz.answer': QuizAnswer;
       'quiz.checklist': QuizChecklist;

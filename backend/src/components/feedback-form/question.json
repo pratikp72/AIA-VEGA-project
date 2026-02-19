@@ -5,15 +5,6 @@
   },
   "options": {},
   "attributes": {
-    "language": {
-      "type": "enumeration",
-      "required": true,
-      "enum": [
-        "English",
-        "Hindi",
-        "Gujarati"
-      ]
-    },
     "question_id": {
       "type": "string",
       "required": true,

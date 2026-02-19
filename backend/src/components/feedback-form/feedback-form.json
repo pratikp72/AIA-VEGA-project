@@ -1,0 +1,24 @@
+{
+  "collectionName": "components_feedback_form_feedback_forms",
+  "info": {
+    "displayName": "Feedback Form"
+  },
+  "options": {},
+  "attributes": {
+    "feedback_question": {
+      "type": "component",
+      "component": "feedback-form.question",
+      "repeatable": true
+    },
+    "language": {
+      "type": "enumeration",
+      "required": true,
+      "enum": [
+        "Hindi",
+        "English",
+        "Gujarati"
+      ]
+    }
+  },
+  "config": {}
+}

@@ -6,6 +6,7 @@ import { DonutChart } from '../../components/DonutChart';
 import { BarChart } from '../../components/BarChart';
 import { LineChart } from '../../components/LineChart';
 import { AreaChart } from '../../components/AreaChart';
+import { FunnelChart } from '../../components/FunnelChart';
 import { DataTable } from '../../components/DataTable';
 import { Filters } from '../../components/Filters';
 import { EmployeeSearch } from '../../components/EmployeeSearch';
@@ -16,14 +17,13 @@ export default function LearningAnalyticsPage() {
     const [filterStatus, setFilterStatus] = useState('');
     const [filterTimeMin, setFilterTimeMin] = useState('');
     const [filterTimeMax, setFilterTimeMax] = useState('');
-  const { fetchLearningGlobal, fetchLearningPersonal, fetchLearningEmployeeTable, fetchDepartments } = useAnalytics();
-  // Fetch all courses for dropdown
+  const { fetchLearningGlobal, fetchLearningPersonal, fetchLearningEmployeeTable, fetchDepartments, fetchUnitLocations, fetchCoursesByDepartment } = useAnalytics();
+  // Fetch all courses for dropdown (when no department selected)
   const fetchAllCourses = async () => {
     try {
       const res = await fetch('/api/courses?pagination[limit]=1000');
       if (!res.ok) throw new Error('Failed to fetch courses');
       const json = await res.json();
-      // Strapi v4: json.data is array of course objects
       setCourses(Array.isArray(json.data) ? json.data.map(c => ({
         id: c.id,
         title: c.attributes?.title || c.title || `Course ${c.id}`
@@ -57,6 +57,12 @@ export default function LearningAnalyticsPage() {
   const [filterCourse, setFilterCourse] = useState('');
   const [courses, setCourses] = useState([]);
   const searchTimeoutRef = useRef(null);
+  // Content view (global) filters
+  const [filterCourseCategory, setFilterCourseCategory] = useState('');
+  const [unitLocation, setUnitLocation] = useState('');
+  const [unitLocations, setUnitLocations] = useState([]);
+  const [filterQuizStatus, setFilterQuizStatus] = useState('');
+  const [filterFeedbackGiven, setFilterFeedbackGiven] = useState('');
 
   const handleExportAllPersonalData = useCallback(() => {
     if (!data || !employeeDetail) return;
@@ -115,10 +121,56 @@ export default function LearningAnalyticsPage() {
     };
   }, [search, viewMode]);
 
+  // Dedupe dropdown lists by id and name so the same option never appears twice
+  const dedupeList = useCallback((list, nameKey = 'name') => {
+    if (!Array.isArray(list)) return [];
+    const seenId = new Set();
+    const seenName = new Set();
+    return list.filter((item) => {
+      const id = item.id ?? item.documentId;
+      const name = (item[nameKey] != null ? String(item[nameKey]).trim().toLowerCase() : '') || `_${id}`;
+      if (id == null || seenId.has(String(id)) || seenName.has(name)) return false;
+      seenId.add(String(id));
+      seenName.add(name);
+      return true;
+    });
+  }, []);
+
+  // Initial load: all departments, locations, courses (for table view or before company is selected)
   useEffect(() => {
-    fetchDepartments().then(setDepartments).catch(() => setDepartments([]));
+    fetchDepartments().then((data) => setDepartments(dedupeList(data || []))).catch(() => setDepartments([]));
+    fetchUnitLocations().then((data) => setUnitLocations(dedupeList(data || []))).catch(() => setUnitLocations([]));
     fetchAllCourses();
   }, []);
+
+  // When company changes: reset dependent filters and refetch department/location/course lists (so dropdowns show company-scoped or all)
+  useEffect(() => {
+    if (company) {
+      setDepartment('');
+      setFilterCourse('');
+      setUnitLocation('');
+      fetchDepartments(company).then((data) => setDepartments(dedupeList(data || []))).catch(() => setDepartments([]));
+      fetchUnitLocations(company).then((data) => setUnitLocations(dedupeList(data || []))).catch(() => setUnitLocations([]));
+      fetchCoursesByDepartment('', company).then(setCourses).catch(() => setCourses([]));
+    } else {
+      fetchDepartments().then((data) => setDepartments(dedupeList(data || []))).catch(() => setDepartments([]));
+      fetchUnitLocations().then((data) => setUnitLocations(dedupeList(data || []))).catch(() => setUnitLocations([]));
+      fetchAllCourses();
+    }
+  }, [company, dedupeList]);
+
+  // When department changes (content view): fetch courses for that department (and company if set), or company's courses, or all
+  useEffect(() => {
+    if (viewMode !== 'global') return;
+    setFilterCourse('');
+    if (department) {
+      fetchCoursesByDepartment(department, company || '').then(setCourses).catch(() => setCourses([]));
+    } else if (company) {
+      fetchCoursesByDepartment('', company).then(setCourses).catch(() => setCourses([]));
+    } else {
+      fetchAllCourses();
+    }
+  }, [department, company, viewMode]);
 
   const loadData = useCallback(() => {
     setLoading(true);
@@ -128,6 +180,11 @@ export default function LearningAnalyticsPage() {
     if (dateTo) params.dateTo = dateTo;
     if (viewMode === 'global') {
       if (department) params.department = department;
+      if (filterCourse) params.courseId = filterCourse;
+      if (filterCourseCategory) params.courseCategory = filterCourseCategory;
+      if (unitLocation) params.unitLocation = unitLocation;
+      if (filterQuizStatus) params.quizStatus = filterQuizStatus;
+      if (filterFeedbackGiven) params.feedbackGiven = filterFeedbackGiven;
     }
     if (company) params.company = company;
     if (filterStatus) params.status = filterStatus;
@@ -158,7 +215,7 @@ export default function LearningAnalyticsPage() {
       .then(setData)
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
-  }, [viewMode, employeeId, dateFrom, dateTo, department, company, searchDebounced, sortOrder, page, pageSize, filterCourse, filterStatus, filterTimeMin, filterTimeMax]);
+  }, [viewMode, employeeId, dateFrom, dateTo, department, company, searchDebounced, sortOrder, page, pageSize, filterCourse, filterStatus, filterTimeMin, filterTimeMax, filterCourseCategory, unitLocation, filterQuizStatus, filterFeedbackGiven]);
 
   useEffect(() => {
     if (viewMode === 'table') setPage(1);
@@ -189,7 +246,7 @@ export default function LearningAnalyticsPage() {
       setData(null);
       setLoading(false);
     }
-  }, [viewMode, employeeId, dateFrom, dateTo, department, company, searchDebounced, sortOrder, page, pageSize, filterCourse, filterStatus, filterTimeMin, filterTimeMax]);
+  }, [viewMode, employeeId, dateFrom, dateTo, department, company, searchDebounced, sortOrder, page, pageSize, filterCourse, filterStatus, filterTimeMin, filterTimeMax, filterCourseCategory, unitLocation, filterQuizStatus, filterFeedbackGiven]);
 
   const kpis = data?.kpis || {};
   const quiz = data?.quiz || {};
@@ -230,6 +287,15 @@ export default function LearningAnalyticsPage() {
             setFilterTimeMin={setFilterTimeMin}
             filterTimeMax={filterTimeMax}
             setFilterTimeMax={setFilterTimeMax}
+            filterCourseCategory={filterCourseCategory}
+            setFilterCourseCategory={setFilterCourseCategory}
+            unitLocation={unitLocation}
+            onUnitLocationChange={setUnitLocation}
+            unitLocations={unitLocations}
+            filterQuizStatus={filterQuizStatus}
+            setFilterQuizStatus={setFilterQuizStatus}
+            filterFeedbackGiven={filterFeedbackGiven}
+            setFilterFeedbackGiven={setFilterFeedbackGiven}
           >
             <EmployeeSearch value={employeeId} onChange={setEmployeeId} onEmployeeFound={setEmployeeDetail} />
           </Filters>
@@ -353,88 +419,72 @@ export default function LearningAnalyticsPage() {
               {isPersonal && employeeDetail && (
                 <EmployeeDetailCard employee={employeeDetail} />
               )}
-              {/* KPIs */}
+              {/* KPI cards: 1.Total course 2.Total enrollments 3.Completion rate 4.Avg learning time 5.Avg quiz score 6.Completed course 7.Drop off rate */}
               <Flex gap={4} marginBottom={6} wrap="wrap">
-                <Box style={{ flex: '1 1 200px', minWidth: 180 }}>
-                  <StatCard
-                    label={isPersonal ? 'Total Courses' : 'Total Progress Records'}
-                    value={kpis.totalAssignments ?? kpis.totalCourses}
-                    colorIndex={0}
-                  />
+                <Box style={{ flex: '1 1 200px', minWidth: 160 }}>
+                  <StatCard label="Total Course" value={kpis.totalCourses ?? 0} colorIndex={0} />
                 </Box>
-                <Box style={{ flex: '1 1 200px', minWidth: 180 }}>
-                  <StatCard label="Completion Rate" value={`${kpis.completionRate ?? 0}%`} colorIndex={1} />
+                <Box style={{ flex: '1 1 200px', minWidth: 160 }}>
+                  <StatCard label="Total Enrollments" value={kpis.totalEnrollments ?? kpis.totalAssignments ?? 0} colorIndex={1} />
                 </Box>
-                <Box style={{ flex: '1 1 200px', minWidth: 180 }}>
+                <Box style={{ flex: '1 1 200px', minWidth: 160 }}>
+                  <StatCard label="Completion Rate" value={`${kpis.completionRate ?? 0}%`} colorIndex={2} />
+                </Box>
+                <Box style={{ flex: '1 1 200px', minWidth: 160 }}>
                   <StatCard
-                    label="Avg Time Spent"
+                    label="Avg Learning Time"
                     value={`${kpis.avgTimeSpentMinutes ?? 0} min`}
-                    subtext="per course"
-                    colorIndex={2}
+                    subtext="per enrollment"
+                    colorIndex={3}
                   />
                 </Box>
-                <Box style={{ flex: '1 1 200px', minWidth: 180 }}>
+                <Box style={{ flex: '1 1 200px', minWidth: 160 }}>
+                  <StatCard label="Avg Quiz Score" value={kpis.avgQuizScore ?? quiz?.avgScore ?? 0} colorIndex={4} />
+                </Box>
+                <Box style={{ flex: '1 1 200px', minWidth: 160 }}>
+                  <StatCard label="Completed Course" value={kpis.completedCourse ?? 0} colorIndex={5} />
+                </Box>
+                <Box style={{ flex: '1 1 200px', minWidth: 160 }}>
                   <StatCard
-                    label={isPersonal ? 'Certificates Earned' : 'Completed with Certificate'}
-                    value={kpis.certificatesIssued ?? kpis.certificatesEarned ?? 0}
-                    colorIndex={3}
+                    label="Drop Off Rate"
+                    value={`${kpis.dropOffRate ?? 0}%`}
+                    subtext={kpis.dropOffCount != null ? `${kpis.dropOffCount} enrollments inactive 14+ days` : undefined}
+                    colorIndex={6}
                   />
                 </Box>
               </Flex>
 
-              {/* Quiz Stats (when available) */}
-              {(quiz.passRate !== undefined || quiz.avgScore !== undefined) && (
-                <Flex gap={4} marginBottom={6} wrap="wrap">
-                  <Box style={{ flex: '1 1 200px', minWidth: 180 }}>
-                    <StatCard label="Quiz Pass Rate" value={`${quiz.passRate ?? 0}%`} colorIndex={4} />
-                  </Box>
-                  <Box style={{ flex: '1 1 200px', minWidth: 180 }}>
-                    <StatCard label="Quiz Avg Score" value={quiz.avgScore ?? 0} colorIndex={5} />
-                  </Box>
-                </Flex>
-              )}
-
-              {/* Content view only: Status Distribution, Completion Trend, Category, Department */}
+              {/* Content view only: 3 charts – Learning activity (full width), Completion funnel, Course status (donut) */}
               {!isPersonal && (
                 <>
+                  <Box style={{ width: '100%', marginBottom: 24 }}>
+                    <LineChart
+                      data={data.learningActivityByWeek || []}
+                      title="Learning Activity"
+                      nameKey="week"
+                      dataKey="enrollments"
+                      seriesName="Enrollments"
+                      height={280}
+                    />
+                  </Box>
                   <Flex gap={4} marginBottom={6} wrap="wrap">
-                    <Box style={{ flex: '1 1 300px', minWidth: 280 }}>
-                      <DonutChart
-                        data={data.statusDistribution}
-                        title="Course Status Distribution"
-                        height={260}
-                      />
-                    </Box>
-                    <Box style={{ flex: '1 1 400px', minWidth: 320 }}>
-                      <AreaChart
-                        data={data.monthlyCompletions}
-                        title="Completion Trend Over Time"
-                        nameKey="month"
-                        dataKey="value"
-                        height={260}
-                      />
-                    </Box>
-                  </Flex>
-                  <Flex gap={4} marginBottom={6} wrap="wrap">
-                    <Box style={{ flex: '1 1 350px', minWidth: 280 }}>
-                      <BarChart
-                        data={data.categoryDistribution}
-                        title="Courses by Category"
-                        nameKey="name"
-                        dataKey="value"
-                        height={260}
-                      />
-                    </Box>
-                    <Box style={{ flex: '1 1 350px', minWidth: 280 }}>
-                      <BarChart
-                        data={data.departmentDistribution}
-                        title="Course Progress by Department"
-                        nameKey="name"
-                        dataKey="value"
-                        height={260}
-                      />
-                    </Box>
-                  </Flex>
+                    <Box style={{ flex: '1 1 340px', minWidth: 280 }}>
+                      <FunnelChart
+                      data={data.completionFunnel || []}
+                      title="Completion Funnel"
+                      nameKey="stage"
+                      dataKey="value"
+                      height={280}
+                    />
+                  </Box>
+                  <Box style={{ flex: '1 1 300px', minWidth: 280 }}>
+                    <DonutChart
+                      data={data.statusDistribution || []}
+                      title="Course Status Distribution"
+                      height={280}
+                    />
+                  </Box>
+                </Flex>
                 </>
               )}
 

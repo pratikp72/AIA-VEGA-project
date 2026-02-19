@@ -35,6 +35,13 @@ export function Filters({
   filterTimeMax,
   setFilterTimeMax,
   courses = [],
+  // course view (global) filters – order: Company, Date range, Department, Course, Course type, Location, Quiz status, Feedback given
+  filterCourseCategory = '',
+  setFilterCourseCategory = null,
+  filterQuizStatus = '',
+  setFilterQuizStatus = null,
+  filterFeedbackGiven = '',
+  setFilterFeedbackGiven = null,
 }) {
   const activityTypeOptions = [
     { value: '', label: 'All Pages' },
@@ -98,16 +105,169 @@ export function Filters({
               <SingleSelectOption value="activityTracking">Activity Tracking</SingleSelectOption>
             )}
             <SingleSelectOption value="personal">Personal</SingleSelectOption>
-            <SingleSelectOption value="global">Content</SingleSelectOption>
+            <SingleSelectOption value="global">Course</SingleSelectOption>
             {showEmployeeTable && (
               <SingleSelectOption value="table">Employee Table</SingleSelectOption>
             )}
           </SingleSelect>
         </Box>
         {showEmployeeSelector && viewMode === 'personal' && children}
+        {/* Course view (global): 1.Company already above, 2.Date range, 3.Department, 4.Course, 5.Course type, 6.Location, 7.Quiz status, 8.Feedback given */}
+        {viewMode === 'global' && (
+          <>
+            <Box style={{ display: 'flex', flexDirection: 'column', minWidth: 260 }}>
+              <Typography variant="pi" textColor="neutral600" style={{ marginBottom: 4 }}>
+                Date Range
+              </Typography>
+              <DateRangeInput
+                value={{ start: dateFrom ? new Date(dateFrom) : null, end: dateTo ? new Date(dateTo) : null }}
+                onChange={({ start, end }) => {
+                  if (!start && !end) {
+                    onDateFromChange(null);
+                    onDateToChange(null);
+                  } else if (start && end && start.getTime() !== end.getTime()) {
+                    onDateFromChange(start ? start.toISOString().slice(0, 10) : null);
+                    onDateToChange(end ? end.toISOString().slice(0, 10) : null);
+                  }
+                }}
+              />
+            </Box>
+            {departments.length > 0 && (
+              <Box style={{ minWidth: 180 }}>
+                <Typography variant="pi" textColor="neutral600" style={{ marginBottom: 4 }}>
+                  Department
+                </Typography>
+                <select
+                  value={department || ''}
+                  onChange={(e) => onDepartmentChange(e.target.value || '')}
+                  style={{
+                    padding: '8px 12px',
+                    border: '1px solid #dcdce4',
+                    borderRadius: '4px',
+                    fontSize: '14px',
+                    minWidth: '100%',
+                  }}
+                >
+                  <option value="">All Departments</option>
+                  {departments.map((d) => (
+                    <option key={d.id} value={String(d.id)}>
+                      {d.name}
+                    </option>
+                  ))}
+                </select>
+              </Box>
+            )}
+            <Box style={{ minWidth: 180 }}>
+              <Typography variant="pi" textColor="neutral600" style={{ marginBottom: 4 }}>
+                Course
+              </Typography>
+              <select
+                value={filterCourse || ''}
+                onChange={(e) => setFilterCourse(e.target.value)}
+                style={{
+                  padding: '8px 12px',
+                  border: '1px solid #dcdce4',
+                  borderRadius: '4px',
+                  fontSize: '14px',
+                  minWidth: '100%',
+                }}
+              >
+                <option value="">All Courses</option>
+                {courses.map((c) => (
+                  <option key={c.id} value={c.id}>{c.title}</option>
+                ))}
+              </select>
+            </Box>
+            {!filterCourse && (
+              <Box style={{ minWidth: 160 }}>
+                <Typography variant="pi" textColor="neutral600" style={{ marginBottom: 4 }}>
+                  Course Type
+                </Typography>
+                <select
+                  value={filterCourseCategory || ''}
+                  onChange={(e) => setFilterCourseCategory?.(e.target.value || '')}
+                  style={{
+                    padding: '8px 12px',
+                    border: '1px solid #dcdce4',
+                    borderRadius: '4px',
+                    fontSize: '14px',
+                    minWidth: '100%',
+                  }}
+                >
+                  <option value="">All Types</option>
+                  <option value="Mandatory">Mandatory</option>
+                  <option value="Orientation">Orientation</option>
+                  <option value="Other">Other</option>
+                </select>
+              </Box>
+            )}
+            <Box style={{ minWidth: 180 }}>
+              <Typography variant="pi" textColor="neutral600" style={{ marginBottom: 4 }}>
+                Location
+              </Typography>
+              <select
+                value={unitLocation || ''}
+                onChange={(e) => onUnitLocationChange?.(e.target.value || '')}
+                style={{
+                  padding: '8px 12px',
+                  border: '1px solid #dcdce4',
+                  borderRadius: '4px',
+                  fontSize: '14px',
+                  minWidth: '100%',
+                }}
+              >
+                <option value="">All Locations</option>
+                {unitLocations.map((l) => (
+                  <option key={l.id} value={String(l.id)}>
+                    {l.name}
+                  </option>
+                ))}
+              </select>
+            </Box>
+            <Box style={{ minWidth: 140 }}>
+              <Typography variant="pi" textColor="neutral600" style={{ marginBottom: 4 }}>
+                Quiz Status
+              </Typography>
+              <select
+                value={filterQuizStatus || ''}
+                onChange={(e) => setFilterQuizStatus?.(e.target.value || '')}
+                style={{
+                  padding: '8px 12px',
+                  border: '1px solid #dcdce4',
+                  borderRadius: '4px',
+                  fontSize: '14px',
+                  minWidth: '100%',
+                }}
+              >
+                <option value="">All</option>
+                <option value="pass">Pass</option>
+                <option value="fail">Fail</option>
+              </select>
+            </Box>
+            <Box style={{ minWidth: 140 }}>
+              <Typography variant="pi" textColor="neutral600" style={{ marginBottom: 4 }}>
+                Feedback Given
+              </Typography>
+              <select
+                value={filterFeedbackGiven || ''}
+                onChange={(e) => setFilterFeedbackGiven?.(e.target.value || '')}
+                style={{
+                  padding: '8px 12px',
+                  border: '1px solid #dcdce4',
+                  borderRadius: '4px',
+                  fontSize: '14px',
+                  minWidth: '100%',
+                }}
+              >
+                <option value="">All</option>
+                <option value="yes">Yes</option>
+                <option value="no">No</option>
+              </select>
+            </Box>
+          </>
+        )}
         {viewMode === 'table' && (
           <>
-            {/* 3. Search Employee */}
             <Box style={{ minWidth: 200 }}>
               <Typography variant="pi" textColor="neutral600" style={{ marginBottom: 4 }}>
                 Search Employee
@@ -126,7 +286,6 @@ export function Filters({
                 }}
               />
             </Box>
-            {/* 4. Course Filter */}
             <Box style={{ minWidth: 180 }}>
               <Typography variant="pi" textColor="neutral600" style={{ marginBottom: 4 }}>
                 Course
@@ -148,7 +307,6 @@ export function Filters({
                 ))}
               </select>
             </Box>
-            {/* 5. Course by Status */}
             <Box style={{ minWidth: 160 }}>
               <Typography variant="pi" textColor="neutral600" style={{ marginBottom: 4 }}>
                 Course Status
@@ -171,7 +329,6 @@ export function Filters({
                 <option value="Failed">Failed</option>
               </select>
             </Box>
-            {/* 6. Time Range for Course Completion */}
             <Box style={{ minWidth: 200 }}>
               <Typography variant="pi" textColor="neutral600" style={{ marginBottom: 4 }}>
                 Course Completion Time (min)
@@ -196,50 +353,43 @@ export function Filters({
                 />
               </Flex>
             </Box>
+            <Box style={{ display: 'flex', flexDirection: 'column', minWidth: 260 }}>
+              <Typography variant="pi" textColor="neutral600" style={{ marginBottom: 4 }}>
+                Date Range
+              </Typography>
+              <DateRangeInput
+                value={{ start: dateFrom ? new Date(dateFrom) : null, end: dateTo ? new Date(dateTo) : null }}
+                onChange={({ start, end }) => {
+                  if (!start && !end) {
+                    onDateFromChange(null);
+                    onDateToChange(null);
+                  } else if (start && end && start.getTime() !== end.getTime()) {
+                    onDateFromChange(start ? start.toISOString().slice(0, 10) : null);
+                    onDateToChange(end ? end.toISOString().slice(0, 10) : null);
+                  }
+                }}
+              />
+            </Box>
           </>
         )}
-        {/* 3. Date Range (single icon, popup) */}
-        <Box style={{ display: 'flex', flexDirection: 'column', minWidth: 260 }}>
-          <Typography variant="pi" textColor="neutral600" style={{ marginBottom: 4 }}>
-            Date Range
-          </Typography>
-          <DateRangeInput
-            value={{ start: dateFrom ? new Date(dateFrom) : null, end: dateTo ? new Date(dateTo) : null }}
-            onChange={({ start, end }) => {
-              if (!start && !end) {
-                onDateFromChange(null);
-                onDateToChange(null);
-              } else if (start && end && start.getTime() !== end.getTime()) {
-                onDateFromChange(start ? start.toISOString().slice(0, 10) : null);
-                onDateToChange(end ? end.toISOString().slice(0, 10) : null);
-              }
-            }}
-          />
-        </Box>
-        {/* Rest as before */}
-        {viewMode !== 'personal' && viewMode !== 'table' && departments.length > 0 && (
-          <Box style={{ minWidth: 180 }}>
+        {/* Date Range and Department for personal view only (course view has its own block above) */}
+        {viewMode === 'personal' && (
+          <Box style={{ display: 'flex', flexDirection: 'column', minWidth: 260 }}>
             <Typography variant="pi" textColor="neutral600" style={{ marginBottom: 4 }}>
-              Department
+              Date Range
             </Typography>
-            <select
-              value={department || ''}
-              onChange={(e) => onDepartmentChange(e.target.value || '')}
-              style={{
-                padding: '8px 12px',
-                border: '1px solid #dcdce4',
-                borderRadius: '4px',
-                fontSize: '14px',
-                minWidth: '100%',
+            <DateRangeInput
+              value={{ start: dateFrom ? new Date(dateFrom) : null, end: dateTo ? new Date(dateTo) : null }}
+              onChange={({ start, end }) => {
+                if (!start && !end) {
+                  onDateFromChange(null);
+                  onDateToChange(null);
+                } else if (start && end && start.getTime() !== end.getTime()) {
+                  onDateFromChange(start ? start.toISOString().slice(0, 10) : null);
+                  onDateToChange(end ? end.toISOString().slice(0, 10) : null);
+                }
               }}
-            >
-              <option value="">All Departments</option>
-              {departments.map((d) => (
-                <option key={d.id} value={String(d.id)}>
-                  {d.name}
-                </option>
-              ))}
-            </select>
+            />
           </Box>
         )}
         {showActivityTracking && viewMode === 'activityTracking' && (
@@ -266,7 +416,7 @@ export function Filters({
             </select>
           </Box>
         )}
-        {showUnitLocation && viewMode !== 'personal' && (
+        {showUnitLocation && viewMode !== 'personal' && viewMode !== 'global' && (
           <Box style={{ minWidth: 180 }}>
             <Typography variant="pi" textColor="neutral600" style={{ marginBottom: 4 }}>
               Unit Location
