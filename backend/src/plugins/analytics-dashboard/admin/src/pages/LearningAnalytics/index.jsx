@@ -654,42 +654,59 @@ export default function LearningAnalyticsPage() {
                     </Button>
                   </Flex>
                   {/* New: Bar chart for course/time */}
-                  <Flex gap={4} marginBottom={6} wrap="wrap">
-                    <Box style={{ flex: '1 1 350px', minWidth: 280 }}>
-                      <BarChart
-                        data={Array.isArray(data?.courseProgress) ? data.courseProgress.map(c => ({ name: c.courseTitle, value: c.timeSpentMinutes ?? 0 })) : []}
-                        title="Time Spent per Course"
-                        nameKey="name"
-                        dataKey="value"
-                        height={260}
-                        valueLabel="Total Time Spent"
-                        valueUnit="min"
-                        layout="horizontal"
-                      />
-                    </Box>
-                    {/* New: Pie chart for course distribution */}
-                    <Box style={{ flex: '1 1 350px', minWidth: 280 }}>
-                      <DonutChart
-                        data={(() => {
-                          if (!Array.isArray(data?.courseProgress)) return [];
-                          const completed = data.courseProgress.filter(c => c.status === 'completed').length;
-                          const inProgress = data.courseProgress.filter(c => c.status === 'in_progress' || c.status === 'in progress').length;
-                          const certificate = data.courseProgress.filter(c => c.certificateIssued).length;
-                          const quizPass = data.courseProgress.filter(c => c.quizPassed).length;
-                          const feedbackPending = data.courseProgress.filter(c => c.feedbackGiven === false || c.feedbackPending).length;
-                          return [
-                            { name: 'Completed', value: completed },
-                            { name: 'In Progress', value: inProgress },
-                            { name: 'Certificate Earned', value: certificate },
-                            { name: 'Quiz Pass', value: quizPass },
-                            { name: 'Feedback Pending', value: feedbackPending },
-                          ];
-                        })()}
-                        title="Course Distribution"
-                        height={260}
-                      />
-                    </Box>
-                  </Flex>
+                  {/* Bar chart in its own row */}
+                  <Box marginBottom={6}>
+                    <BarChart
+                      data={Array.isArray(data?.courseProgress) ? data.courseProgress.map(c => ({ name: c.courseTitle, value: c.timeSpentMinutes ?? 0, category: c.courseCategory || '' })) : []}
+                      title="Time Spent per Course"
+                      nameKey="name"
+                      dataKey="value"
+                      height={260}
+                      valueLabel="Total Time Spent"
+                      valueUnit="min"
+                      layout="horizontal"
+                      tooltipFormatter={(value, name, props) => {
+                        const category = props && props.payload && props.payload.category ? props.payload.category : '';
+                        return [value + ' min', category ? `Category: ${category}` : undefined];
+                      }}
+                    />
+                  </Box>
+                  {/* Pie chart in its own row */}
+                  <Box marginBottom={6}>
+                    {(() => {
+                      if (Array.isArray(data?.courseProgress)) {
+                        // eslint-disable-next-line no-console
+                        console.log('courseProgress for distribution:', data.courseProgress);
+                      }
+                      return (
+                        <DonutChart
+                          data={(() => {
+                            if (!Array.isArray(data?.courseProgress)) return [];
+                            const completed = data.courseProgress.filter(c => c.status === 'Completed').length;
+                            const inProgress = data.courseProgress.filter(c => c.status === 'In_progress').length;
+                            const certificate = data.courseProgress.filter(c => c.certificateIssued).length;
+                            // Only show quiz/feedback if present in data
+                            const quizPass = data.courseProgress.filter(c => c.quizPassed).length;
+                            const feedbackPending = data.courseProgress.filter(c => c.feedbackGiven === false || c.feedbackPending).length;
+                            const segments = [
+                              { name: 'Completed', value: completed },
+                              { name: 'In Progress', value: inProgress },
+                              { name: 'Certificate Earned', value: certificate },
+                            ];
+                            if (data.courseProgress.some(c => c.quizPassed !== undefined)) {
+                              segments.push({ name: 'Quiz Pass', value: quizPass });
+                            }
+                            if (data.courseProgress.some(c => c.feedbackGiven !== undefined || c.feedbackPending !== undefined)) {
+                              segments.push({ name: 'Feedback Pending', value: feedbackPending });
+                            }
+                            return segments;
+                          })()}
+                          title="Course Distribution"
+                          height={260}
+                        />
+                      );
+                    })()}
+                  </Box>
 
                   {/* Course Progress Table (Personal) – show table or placeholder */}
                   {data?.courseProgress && data.courseProgress.length > 0 ? (() => {
