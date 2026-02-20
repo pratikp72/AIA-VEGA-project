@@ -721,16 +721,43 @@ module.exports = ({ strapi }) => ({
     const dropOffRatePersonal = total > 0 ? Math.round((dropOffCountPersonal / total) * 100) : 0;
     const courseIdsPersonal = new Set(progressesDedup.map((p) => p.course?.id ?? p.course_id ?? p.courseId ?? p.course?.documentId).filter(Boolean));
 
+    // Calculate additional KPIs
+    const inProgressCourses = progressesDedup.filter((p) => p.progress_status === 'In_progress');
+    const lastCourseViewed = progressesDedup.reduce((latest, p) => {
+      if (!p.last_accessed_at) return latest;
+      if (!latest || new Date(p.last_accessed_at) > new Date(latest.last_accessed_at)) return p;
+      return latest;
+    }, null);
+    const lastCourseCompleted = progressesDedup.filter((p) => p.progress_status === 'Completed').reduce((latest, p) => {
+      if (!p.completed_at) return latest;
+      if (!latest || new Date(p.completed_at) > new Date(latest.completed_at)) return p;
+      return latest;
+    }, null);
+
     return {
       kpis: {
-        totalCourses: courseIdsPersonal.size,
+        totalCourses: courseIdsPersonal.size, // 1. total course assigned
+        completedCourses: statusCounts.Completed, // 2. completed course
+        avgTimeSpentPerCourse: total > 0 ? Math.round(totalTimeSpent / total) : 0, // 3. avg time spent per course
+        certificatesEarned: progressesDedup.filter((p) => p.certificate_issued).length, // 4. certificates earned
+        quizPassRate: null, // 5. quiz pass rate (to be filled by controller)
+        avgQuizScore: null, // 6. avg quiz score (to be filled by controller)
+        coursesInProgress: inProgressCourses.length, // 7. courses in progress
+        lastCourseViewed: lastCourseViewed ? {
+          courseTitle: lastCourseViewed.course?.title ?? 'Unknown',
+          lastAccessedAt: lastCourseViewed.last_accessed_at
+        } : null, // 8. last course view with time
+        lastCourseCompleted: lastCourseCompleted ? {
+          courseTitle: lastCourseCompleted.course?.title ?? 'Unknown',
+          completedAt: lastCourseCompleted.completed_at
+        } : null, // 9. last course completed with time
+        // Existing KPIs for compatibility
         totalEnrollments: total,
         completionRate,
         avgTimeSpentMinutes: avgTimeSpent,
         completedCourse: completed,
         dropOffCount: dropOffCountPersonal,
         dropOffRate: dropOffRatePersonal,
-        certificatesEarned: progressesDedup.filter((p) => p.certificate_issued).length,
       },
       statusDistribution: Object.entries(statusCounts).map(([name, value]) => ({ name, value })),
       categoryDistribution: Object.entries(categoryCounts).map(([name, value]) => ({ name, value })),

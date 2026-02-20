@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import { Box, Typography, Button, Flex } from '@strapi/design-system';
 import { useAnalytics } from '../hooks/useAnalytics';
 
-export function EmployeeSearch({ value, onChange, onEmployeeFound }) {
+
+export function EmployeeSearch({ value, onChange, onEmployeeFound, company }) {
   const { fetchEmployees } = useAnalytics();
   const [searchInput, setSearchInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -21,12 +22,39 @@ export function EmployeeSearch({ value, onChange, onEmployeeFound }) {
     setNotFound(false);
     setFoundEmployee(null);
     try {
-      const employees = await fetchEmployees({ search: q });
-      if (employees?.length > 0) {
-        const emp = employees[0];
-        setFoundEmployee(emp);
-        onChange(emp.id);
-        onEmployeeFound?.(emp);
+      const employees = await fetchEmployees({ search: q, ...(company ? { company } : {}) });
+      let found = null;
+      if (Array.isArray(employees) && employees.length > 0) {
+        // Enhanced search logic: match by name, emp_code, emp_id, id, email, and company-specific patterns
+        const qLower = q.toLowerCase();
+        const isAIA = company && company.toLowerCase() === 'aia';
+        const isVega = company && company.toLowerCase() === 'vega';
+        found = employees.find(emp => {
+          const name = (emp.employee_name || emp.username || emp.email || '').toLowerCase();
+          const empCode = (emp.emp_code || '').toLowerCase();
+          const empId = (emp.emp_id || '').toLowerCase();
+          const idStr = String(emp.id || '').toLowerCase();
+          const email = (emp.email || '').toLowerCase();
+          // Company-specific strictness
+          if (isAIA && /^\d+$/.test(qLower)) {
+            return empCode.includes(qLower);
+          } else if (isVega && /^emp\d+$/i.test(q)) {
+            return empId.includes(qLower);
+          }
+          // Otherwise, allow match by any of the above
+          return (
+            name.includes(qLower) ||
+            empCode.includes(qLower) ||
+            empId.includes(qLower) ||
+            idStr === qLower ||
+            email.includes(qLower)
+          );
+        });
+      }
+      if (found) {
+        setFoundEmployee(found);
+        onChange(found.id);
+        onEmployeeFound?.(found);
         setNotFound(false);
       } else {
         setFoundEmployee(null);
@@ -59,10 +87,22 @@ export function EmployeeSearch({ value, onChange, onEmployeeFound }) {
     }
   };
 
+  // Dynamic placeholder based on company
+  let placeholder = 'Search Employee';
+  if (company && company.toLowerCase() === 'aia') {
+    placeholder = 'Search AIA Employee';
+  } else if (company && company.toLowerCase() === 'vega') {
+    placeholder = 'Search VEGA Employee';
+  }
+
   return (
     <Box style={{ minWidth: 260 }}>
       <Typography variant="pi" textColor="neutral600" style={{ marginBottom: 4 }}>
-        Search Employee (ID or Email)
+        {company && company.toLowerCase() === 'aia'
+          ? 'Search AIA Employee'
+          : company && company.toLowerCase() === 'vega'
+          ? 'Search VEGA Employee'
+          : 'Search Employee'}
       </Typography>
       <Flex gap={2} alignItems="stretch">
         <input
@@ -70,7 +110,7 @@ export function EmployeeSearch({ value, onChange, onEmployeeFound }) {
           value={searchInput}
           onChange={(e) => setSearchInput(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="Enter ID or email"
+          placeholder={placeholder}
           disabled={loading}
           style={{
             flex: 1,

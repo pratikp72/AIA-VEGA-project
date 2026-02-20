@@ -109,10 +109,16 @@ module.exports = ({ strapi }) => {
         const data = await service.getLearningPersonal(userId, params) || emptyLearningPersonal();
         try {
           data.quiz = await service.getQuizPersonal(userId, params);
-          if (data.kpis) data.kpis.avgQuizScore = data.quiz?.avgScore ?? 0;
+          if (data.kpis) {
+            data.kpis.avgQuizScore = data.quiz?.avgScore ?? 0;
+            data.kpis.quizPassRate = data.quiz?.passRate ?? 0;
+          }
         } catch (_) {
           data.quiz = { passRate: 0, avgScore: 0, totalAttempts: 0, passed: 0, failed: 0 };
-          if (data.kpis) data.kpis.avgQuizScore = 0;
+          if (data.kpis) {
+            data.kpis.avgQuizScore = 0;
+            data.kpis.quizPassRate = 0;
+          }
         }
         try {
           const moduleVideoData = await service.getLearningPersonalModuleVideoProgress(userId, params);

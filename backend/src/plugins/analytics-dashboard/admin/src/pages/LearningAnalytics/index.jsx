@@ -300,7 +300,37 @@ export default function LearningAnalyticsPage() {
             filterFeedbackGiven={filterFeedbackGiven}
             setFilterFeedbackGiven={setFilterFeedbackGiven}
           >
-            <EmployeeSearch value={employeeId} onChange={setEmployeeId} onEmployeeFound={setEmployeeDetail} />
+            <EmployeeSearch value={employeeId} onChange={setEmployeeId} onEmployeeFound={setEmployeeDetail} company={company} />
+            {/* Course filter always visible in filter bar */}
+            <Box style={{ minWidth: 200, maxWidth: 300, display: 'flex', flexDirection: 'column' }}>
+              <Typography variant="pi" textColor="neutral600" style={{ fontWeight: 400, marginBottom: 4 }}>
+                Course:
+              </Typography>
+              <select
+                id="personal-course-filter"
+                value={filterCourse}
+                onChange={e => setFilterCourse(e.target.value)}
+                style={{
+                  padding: '8px 12px',
+                  border: '1px solid #dcdce4',
+                  borderRadius: '4px',
+                  fontSize: '14px',
+                  minWidth: 200,
+                  maxWidth: 300
+                }}
+                disabled={viewMode === 'personal' && (!employeeId || !data?.courseProgress?.length)}
+              >
+                <option value="">{viewMode === 'personal' && employeeId ? 'All Enrolled Courses' : 'All Courses'}</option>
+                {(viewMode === 'personal' && employeeId
+                  ? (data?.courseProgress || [])
+                  : courses
+                ).map((c) => (
+                  <option key={c.id ?? c.courseId ?? c.courseTitle} value={c.id ?? c.courseId ?? c.courseTitle}>
+                    {c.title ?? c.courseTitle}
+                  </option>
+                ))}
+              </select>
+            </Box>
           </Filters>
 
           {loading && (
@@ -444,37 +474,63 @@ export default function LearningAnalyticsPage() {
               )}
               {/* KPI cards: 1.Total course 2.Total enrollments 3.Completion rate 4.Avg learning time 5.Avg quiz score 6.Completed course 7.Drop off rate */}
               <Flex gap={4} marginBottom={6} wrap="wrap">
-                <Box style={{ flex: '1 1 200px', minWidth: 160 }}>
-                  <StatCard label="Total Course" value={kpis.totalCourses ?? 0} colorIndex={0} />
-                </Box>
-                <Box style={{ flex: '1 1 200px', minWidth: 160 }}>
-                  <StatCard label="Total Enrollments" value={kpis.totalEnrollments ?? kpis.totalAssignments ?? 0} colorIndex={1} />
-                </Box>
-                <Box style={{ flex: '1 1 200px', minWidth: 160 }}>
-                  <StatCard label="Completion Rate" value={`${kpis.completionRate ?? 0}%`} colorIndex={2} />
-                </Box>
-                <Box style={{ flex: '1 1 200px', minWidth: 160 }}>
-                  <StatCard
-                    label="Avg Learning Time"
-                    value={`${kpis.avgTimeSpentMinutes ?? 0} min`}
-                    subtext="per enrollment"
-                    colorIndex={3}
-                  />
-                </Box>
-                <Box style={{ flex: '1 1 200px', minWidth: 160 }}>
-                  <StatCard label="Avg Quiz Score" value={kpis.avgQuizScore ?? quiz?.avgScore ?? 0} colorIndex={4} />
-                </Box>
-                <Box style={{ flex: '1 1 200px', minWidth: 160 }}>
-                  <StatCard label="Completed Course" value={kpis.completedCourse ?? 0} colorIndex={5} />
-                </Box>
-                <Box style={{ flex: '1 1 200px', minWidth: 160 }}>
-                  <StatCard
-                    label="Drop Off Rate"
-                    value={`${kpis.dropOffRate ?? 0}%`}
-                    subtext={kpis.dropOffCount != null ? `${kpis.dropOffCount} enrollments inactive 14+ days` : undefined}
-                    colorIndex={6}
-                  />
-                </Box>
+                {isPersonal ? (
+                  <>
+                    {/* 1. Employee detail is shown above via EmployeeDetailCard */}
+                    <Box style={{ flex: '1 1 200px', minWidth: 160 }}>
+                      <StatCard label="Total Course Assigned" value={kpis.totalCourses ?? 0} colorIndex={0} />
+                    </Box>
+                    <Box style={{ flex: '1 1 200px', minWidth: 160 }}>
+                      <StatCard label="Total Course Completed" value={kpis.completedCourses ?? kpis.completedCourse ?? 0} colorIndex={1} />
+                    </Box>
+                    <Box style={{ flex: '1 1 200px', minWidth: 160 }}>
+                      <StatCard label="Avg Time Spent / Course" value={`${kpis.avgTimeSpentPerCourse ?? kpis.avgTimeSpentMinutes ?? 0} min`} colorIndex={2} />
+                    </Box>
+                    <Box style={{ flex: '1 1 200px', minWidth: 160 }}>
+                      <StatCard label="Certificates Earned" value={kpis.certificatesEarned ?? 0} colorIndex={3} />
+                    </Box>
+                    <Box style={{ flex: '1 1 200px', minWidth: 160 }}>
+                      <StatCard label="Quiz Pass Rate" value={`${kpis.quizPassRate ?? 0}%`} colorIndex={4} />
+                    </Box>
+                    <Box style={{ flex: '1 1 200px', minWidth: 160 }}>
+                      <StatCard label="Avg Quiz Score" value={kpis.avgQuizScore ?? quiz?.avgScore ?? 0} colorIndex={5} />
+                    </Box>
+                    <Box style={{ flex: '1 1 200px', minWidth: 160 }}>
+                      <StatCard label="Courses In Progress" value={kpis.coursesInProgress ?? 0} colorIndex={6} />
+                    </Box>
+                    <Box style={{ flex: '1 1 200px', minWidth: 160 }}>
+                      <StatCard label="Last Course Viewed" value={kpis.lastCourseViewed?.courseTitle ?? '—'} subtext={kpis.lastCourseViewed?.lastAccessedAt ? `at ${kpis.lastCourseViewed.lastAccessedAt}` : undefined} colorIndex={7} />
+                    </Box>
+                    <Box style={{ flex: '1 1 200px', minWidth: 160 }}>
+                      <StatCard label="Last Course Completed" value={kpis.lastCourseCompleted?.courseTitle ?? '—'} subtext={kpis.lastCourseCompleted?.completedAt ? `at ${kpis.lastCourseCompleted.completedAt}` : undefined} colorIndex={8} />
+                    </Box>
+                  </>
+                ) : (
+                  <>
+                    <Box style={{ flex: '1 1 200px', minWidth: 160 }}>
+                      <StatCard label="Total Course" value={kpis.totalCourses ?? 0} colorIndex={0} />
+                    </Box>
+                    <Box style={{ flex: '1 1 200px', minWidth: 160 }}>
+                      <StatCard label="Total Enrollment" value={kpis.totalEnrollments ?? kpis.totalAssignments ?? 0} colorIndex={1} />
+                    </Box>
+                    <Box style={{ flex: '1 1 200px', minWidth: 160 }}>
+                      <StatCard label="Completion Rate" value={`${kpis.completionRate ?? 0}%`} colorIndex={2} />
+                    </Box>
+                    <Box style={{ flex: '1 1 200px', minWidth: 160 }}>
+                      <StatCard label="Avg Learning Time" value={`${kpis.avgTimeSpentMinutes ?? 0} min`} subtext="per enrollment" colorIndex={2} />
+                    </Box>
+                    <Box style={{ flex: '1 1 200px', minWidth: 160 }}>
+                      <StatCard label="Avg Quiz Score" value={kpis.avgQuizScore ?? quiz?.avgScore ?? 0} colorIndex={3} />
+                    </Box>
+                    <Box style={{ flex: '1 1 200px', minWidth: 160 }}>
+                      <StatCard label="Drop Off Rate" value={`${kpis.dropOffRate ?? 0}%`} subtext={kpis.dropOffCount != null ? `${kpis.dropOffCount} enrollments inactive 14+ days` : undefined} colorIndex={4} />
+                    </Box>
+                    <Box style={{ flex: '1 1 200px', minWidth: 160 }}>
+                      <StatCard label="Completed Course" value={kpis.completedCourse ?? 0} colorIndex={5} />
+                    </Box>
+                  </>
+                )}
+                {/* Personal view only: new KPIs */}
               </Flex>
 
               {/* Content view only: Statistics (charts) or Table view */}
@@ -597,22 +653,39 @@ export default function LearningAnalyticsPage() {
                       Download 
                     </Button>
                   </Flex>
+                  {/* New: Bar chart for course/time */}
                   <Flex gap={4} marginBottom={6} wrap="wrap">
                     <Box style={{ flex: '1 1 350px', minWidth: 280 }}>
                       <BarChart
-                        data={Array.isArray(data?.categoryDistribution) ? data.categoryDistribution : []}
-                        title="Courses by Category"
+                        data={Array.isArray(data?.courseProgress) ? data.courseProgress.map(c => ({ name: c.courseTitle, value: c.timeSpentMinutes ?? 0 })) : []}
+                        title="Time Spent per Course"
                         nameKey="name"
                         dataKey="value"
                         height={260}
+                        valueLabel="Total Time Spent"
+                        valueUnit="min"
+                        layout="horizontal"
                       />
                     </Box>
-                    <Box style={{ flex: '1 1 400px', minWidth: 320 }}>
-                      <AreaChart
-                        data={Array.isArray(data?.monthlyCompletions) ? data.monthlyCompletions : []}
-                        title="Completion Trend Over Time"
-                        nameKey="month"
-                        dataKey="value"
+                    {/* New: Pie chart for course distribution */}
+                    <Box style={{ flex: '1 1 350px', minWidth: 280 }}>
+                      <DonutChart
+                        data={(() => {
+                          if (!Array.isArray(data?.courseProgress)) return [];
+                          const completed = data.courseProgress.filter(c => c.status === 'completed').length;
+                          const inProgress = data.courseProgress.filter(c => c.status === 'in_progress' || c.status === 'in progress').length;
+                          const certificate = data.courseProgress.filter(c => c.certificateIssued).length;
+                          const quizPass = data.courseProgress.filter(c => c.quizPassed).length;
+                          const feedbackPending = data.courseProgress.filter(c => c.feedbackGiven === false || c.feedbackPending).length;
+                          return [
+                            { name: 'Completed', value: completed },
+                            { name: 'In Progress', value: inProgress },
+                            { name: 'Certificate Earned', value: certificate },
+                            { name: 'Quiz Pass', value: quizPass },
+                            { name: 'Feedback Pending', value: feedbackPending },
+                          ];
+                        })()}
+                        title="Course Distribution"
                         height={260}
                       />
                     </Box>
