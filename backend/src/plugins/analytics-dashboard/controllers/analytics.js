@@ -32,6 +32,8 @@ module.exports = ({ strapi }) => {
     // Content view (global) filters
     quizStatus: ctx.query.quizStatus || ctx.query.quiz_status,
     feedbackGiven: ctx.query.feedbackGiven || ctx.query.feedback_given,
+    moduleTitle: ctx.query.moduleTitle || ctx.query.module_title,
+    moduleIndex: ctx.query.moduleIndex ?? ctx.query.module_index,
   });
 
   return {
@@ -56,9 +58,14 @@ module.exports = ({ strapi }) => {
         learningActivityByWeek: [],
         completionFunnel: [],
         quiz: { passRate: 0, avgScore: 0, totalAttempts: 0, passed: 0, failed: 0 },
+        moduleDetailTable: [],
       });
       try {
         const params = getQueryParams(ctx);
+        if (params.moduleTitle) params.moduleTitle = String(params.moduleTitle).trim();
+        if (params.moduleIndex !== undefined && params.moduleIndex !== null && params.moduleIndex !== '') {
+          params.moduleIndex = Number(params.moduleIndex);
+        }
         const service = getAnalyticsService();
         const data = await service.getLearningGlobal(params) || emptyLearning();
         try {
@@ -256,6 +263,23 @@ module.exports = ({ strapi }) => {
         ctx.body = data || [];
       } catch (error) {
         strapi.log.error('Analytics coursesByDepartment error:', error?.message || error);
+        ctx.body = [];
+        ctx.status = 200;
+      }
+    },
+
+    async courseModules(ctx) {
+      try {
+        const courseId = ctx.query.courseId || ctx.query.course_id;
+        if (!courseId) {
+          ctx.body = [];
+          return;
+        }
+        const service = getAnalyticsService();
+        const data = await service.getCourseModules(courseId);
+        ctx.body = data || [];
+      } catch (error) {
+        strapi.log.error('Analytics courseModules error:', error?.message || error);
         ctx.body = [];
         ctx.status = 200;
       }

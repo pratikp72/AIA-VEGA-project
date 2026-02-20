@@ -7,8 +7,7 @@
   "attributes": {
     "question_id": {
       "type": "string",
-      "required": true,
-      "unique": true
+      "required": true
     },
     "question": {
       "type": "string",

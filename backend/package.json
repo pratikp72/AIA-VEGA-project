@@ -14,6 +14,7 @@
     "seed:all": "node ./scripts/seed-all-schemas.js",
     "seed:clear": "node ./scripts/seed-all-schemas.js --clear",
     "seed:reseed": "node ./scripts/seed-all-schemas.js --add",
+    "seed:analytics": "node scripts/analytics-seed.js",
     "check:employee-data": "node ./scripts/check-employee-table-data.js",
     "check:activity-log": "node ./scripts/check-activity-log-data.js",
     "start": "strapi start",

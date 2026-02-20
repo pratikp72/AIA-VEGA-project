@@ -61,9 +61,7 @@ export interface FeedbackFormAnswer extends Struct.ComponentSchema {
     > &
       Schema.Attribute.Required;
     question: Schema.Attribute.String & Schema.Attribute.Required;
-    question_id: Schema.Attribute.String &
-      Schema.Attribute.Required &
-      Schema.Attribute.Unique;
+    question_id: Schema.Attribute.String & Schema.Attribute.Required;
   };
 }
 

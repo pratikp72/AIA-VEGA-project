@@ -58,6 +58,7 @@ export function useAnalytics() {
     fetchDepartments: (company) => fetchApi('/api/analytics/departments', company ? { company } : {}),
     fetchUnitLocations: (company) => fetchApi('/api/analytics/unit-locations', company ? { company } : {}),
     fetchCoursesByDepartment: (departmentId, company) => fetchApi('/api/analytics/courses-by-department', { ...(departmentId ? { departmentId } : {}), ...(company ? { company } : {}) }),
+    fetchCourseModules: (courseId) => fetchApi('/api/analytics/course-modules', { courseId }),
     fetchActivityTimeByTypeAndDay: (params) => fetchApi('/api/analytics/activity/time-by-type-and-day', params),
     fetchActivityLog: (params) => fetchApi('/api/analytics/activity/log', params),
   };

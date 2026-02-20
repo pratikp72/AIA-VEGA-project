@@ -1,3 +1,6 @@
+
+
+
 import React, { useCallback } from 'react';
 import { Box, Flex, Typography, SingleSelect, SingleSelectOption } from '@strapi/design-system';
 import DateRangeInput from './DateRangeInput';
@@ -42,6 +45,9 @@ export function Filters({
   setFilterQuizStatus = null,
   filterFeedbackGiven = '',
   setFilterFeedbackGiven = null,
+  filterModule = '',
+  setFilterModule = null,
+  moduleOptions = [],
 }) {
   const activityTypeOptions = [
     { value: '', label: 'All Pages' },
@@ -163,7 +169,10 @@ export function Filters({
               </Typography>
               <select
                 value={filterCourse || ''}
-                onChange={(e) => setFilterCourse(e.target.value)}
+                onChange={(e) => {
+                  setFilterCourse(e.target.value);
+                  if (setFilterModule) setFilterModule('');
+                }}
                 style={{
                   padding: '8px 12px',
                   border: '1px solid #dcdce4',
@@ -178,6 +187,31 @@ export function Filters({
                 ))}
               </select>
             </Box>
+            {filterCourse && setFilterModule && moduleOptions && (
+              <Box style={{ minWidth: 180 }}>
+                <Typography variant="pi" textColor="neutral600" style={{ marginBottom: 4 }}>
+                  Module
+                </Typography>
+                <select
+                  value={filterModule || ''}
+                  onChange={(e) => setFilterModule(e.target.value)}
+                  style={{
+                    padding: '8px 12px',
+                    border: '1px solid #dcdce4',
+                    borderRadius: '4px',
+                    fontSize: '14px',
+                    minWidth: '100%',
+                  }}
+                >
+                  <option value="">All Modules</option>
+                  {moduleOptions.map((m) => (
+                    <option key={m.value || m.title || m} value={m.value ?? m.title ?? m}>
+                      {m.label ?? m.title ?? m.value ?? m}
+                    </option>
+                  ))}
+                </select>
+              </Box>
+            )}
             {!filterCourse && (
               <Box style={{ minWidth: 160 }}>
                 <Typography variant="pi" textColor="neutral600" style={{ marginBottom: 4 }}>
@@ -372,25 +406,78 @@ export function Filters({
             </Box>
           </>
         )}
-        {/* Date Range and Department for personal view only (course view has its own block above) */}
+        {/* Date Range and Course/Module for personal view */}
         {viewMode === 'personal' && (
-          <Box style={{ display: 'flex', flexDirection: 'column', minWidth: 260 }}>
-            <Typography variant="pi" textColor="neutral600" style={{ marginBottom: 4 }}>
-              Date Range
-            </Typography>
-            <DateRangeInput
-              value={{ start: dateFrom ? new Date(dateFrom) : null, end: dateTo ? new Date(dateTo) : null }}
-              onChange={({ start, end }) => {
-                if (!start && !end) {
-                  onDateFromChange(null);
-                  onDateToChange(null);
-                } else if (start && end && start.getTime() !== end.getTime()) {
-                  onDateFromChange(start ? start.toISOString().slice(0, 10) : null);
-                  onDateToChange(end ? end.toISOString().slice(0, 10) : null);
-                }
-              }}
-            />
-          </Box>
+          <>
+            <Box style={{ display: 'flex', flexDirection: 'column', minWidth: 260 }}>
+              <Typography variant="pi" textColor="neutral600" style={{ marginBottom: 4 }}>
+                Date Range
+              </Typography>
+              <DateRangeInput
+                value={{ start: dateFrom ? new Date(dateFrom) : null, end: dateTo ? new Date(dateTo) : null }}
+                onChange={({ start, end }) => {
+                  if (!start && !end) {
+                    onDateFromChange(null);
+                    onDateToChange(null);
+                  } else if (start && end && start.getTime() !== end.getTime()) {
+                    onDateFromChange(start ? start.toISOString().slice(0, 10) : null);
+                    onDateToChange(end ? end.toISOString().slice(0, 10) : null);
+                  }
+                }}
+              />
+            </Box>
+            {courses && courses.length > 0 && (
+              <Box style={{ minWidth: 180 }}>
+                <Typography variant="pi" textColor="neutral600" style={{ marginBottom: 4 }}>
+                  Course
+                </Typography>
+                <select
+                  value={filterCourse || ''}
+                  onChange={(e) => {
+                    setFilterCourse?.(e.target.value);
+                    if (setFilterModule) setFilterModule('');
+                  }}
+                  style={{
+                    padding: '8px 12px',
+                    border: '1px solid #dcdce4',
+                    borderRadius: '4px',
+                    fontSize: '14px',
+                    minWidth: '100%',
+                  }}
+                >
+                  <option value="">All Courses</option>
+                  {courses.map((c) => (
+                    <option key={c.id} value={c.id}>{c.title}</option>
+                  ))}
+                </select>
+              </Box>
+            )}
+            {viewMode === 'personal' && filterCourse && setFilterModule && moduleOptions && moduleOptions.length > 0 && (
+              <Box style={{ minWidth: 180 }}>
+                <Typography variant="pi" textColor="neutral600" style={{ marginBottom: 4 }}>
+                  Module
+                </Typography>
+                <select
+                  value={filterModule || ''}
+                  onChange={(e) => setFilterModule(e.target.value)}
+                  style={{
+                    padding: '8px 12px',
+                    border: '1px solid #dcdce4',
+                    borderRadius: '4px',
+                    fontSize: '14px',
+                    minWidth: '100%',
+                  }}
+                >
+                  <option value="">All Modules</option>
+                  {moduleOptions.map((m) => (
+                    <option key={m.value || m.title || m} value={m.value ?? m.title ?? m}>
+                      {m.label ?? m.title ?? m.value ?? m}
+                    </option>
+                  ))}
+                </select>
+              </Box>
+            )}
+          </>
         )}
         {showActivityTracking && viewMode === 'activityTracking' && (
           <Box style={{ minWidth: 180 }}>

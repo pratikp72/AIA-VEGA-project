@@ -92,6 +92,48 @@ module.exports = ({ strapi }) => ({
   },
 
   /**
+   * Get modules for a course (for module filter dropdown). Returns array of { title, module_id, index }.
+   */
+  async getCourseModules(courseId) {
+    if (!courseId) return [];
+    try {
+      const idStr = String(courseId);
+      const isNumeric = /^\d+$/.test(idStr);
+      let course = null;
+      if (isNumeric) {
+        course = await strapi.db.query('api::course.course').findOne({
+          where: { id: Number(courseId) },
+          populate: { modules: true },
+        });
+      }
+      if (!course) {
+        course = await strapi.db.query('api::course.course').findOne({
+          where: { documentId: idStr },
+          populate: { modules: true },
+        });
+      }
+      if (!course) {
+        try {
+          course = await strapi.db.query('api::course.course').findOne({
+            where: { document_id: idStr },
+            populate: { modules: true },
+          });
+        } catch (_) {}
+      }
+      const mods = course?.modules ?? course?.attributes?.modules ?? [];
+      if (!Array.isArray(mods)) return [];
+      return mods.map((m, idx) => ({
+        title: m.title ?? m.attributes?.title ?? `Module ${idx + 1}`,
+        module_id: m.module_id ?? m.attributes?.module_id ?? String(idx),
+        index: m.index ?? idx,
+      }));
+    } catch (e) {
+      strapi.log.warn('getCourseModules failed:', e?.message);
+      return [];
+    }
+  },
+
+  /**
    * LEARNING ANALYTICS - Global (all employees)
    */
   async getLearningGlobal(params = {}) {
@@ -448,7 +490,7 @@ module.exports = ({ strapi }) => ({
       value: statusCounts[name] || 0,
     }));
 
-    return {
+    const result = {
       kpis: {
         totalCourses: courseIdsSet.size,
         totalEnrollments: total,
@@ -470,10 +512,107 @@ module.exports = ({ strapi }) => ({
       learningActivityByWeek: learningActivityByWeekArr,
       completionFunnel,
     };
+    // When course + module filter: add module detail table (all users) for Course view
+    const wantModule = (params.moduleTitle && String(params.moduleTitle).trim()) || (params.moduleIndex != null && params.moduleIndex !== '');
+    if (wantCourseId && wantModule) {
+      try {
+        result.moduleDetailTable = await this.getModuleDetailTableForCourseAndModule(
+          params.courseId,
+          params.moduleTitle ? String(params.moduleTitle).trim() : null,
+          params.moduleIndex != null && params.moduleIndex !== '' ? Number(params.moduleIndex) : null
+        );
+      } catch (e) {
+        strapi.log.warn('Learning global moduleDetailTable failed:', e?.message);
+        result.moduleDetailTable = [];
+      }
+    } else {
+      result.moduleDetailTable = [];
+    }
+    return result;
     } catch (err) {
       strapi.log.error('Learning global error:', err?.message || err);
       return emptyResponse();
     }
+  },
+
+  /**
+   * Module video progress for a given course + module (all users). For Course view module detail table.
+   */
+  async getModuleDetailTableForCourseAndModule(courseId, moduleTitle, moduleIndex) {
+    const rows = [];
+    try {
+      let numericCourseId = typeof courseId === 'number' ? courseId : null;
+      if (numericCourseId == null && /^\d+$/.test(String(courseId))) numericCourseId = Number(courseId);
+      if (numericCourseId == null) {
+        const c = await strapi.db.query('api::course.course').findOne({
+          where: { documentId: String(courseId) },
+          select: ['id'],
+        });
+        if (!c?.id) {
+          const c2 = await strapi.db.query('api::course.course').findOne({
+            where: { document_id: String(courseId) },
+            select: ['id'],
+          });
+          if (c2?.id) numericCourseId = c2.id;
+        } else {
+          numericCourseId = c.id;
+        }
+      }
+      if (numericCourseId == null) return [];
+      const where = { course: { id: numericCourseId } };
+      if (moduleTitle) {
+        where.module_title = moduleTitle;
+      } else if (moduleIndex != null && !Number.isNaN(Number(moduleIndex))) {
+        where.module_index = Number(moduleIndex);
+      } else {
+        return [];
+      }
+      const raw = await strapi.db.query('api::module-video-progress.module-video-progress').findMany({
+        where,
+        limit: 2000,
+        populate: { user: true, course: true },
+      });
+      if (!Array.isArray(raw)) return [];
+      const courseById = {};
+      const userById = {};
+      const courseIds = [...new Set(raw.map((r) => r.course_id ?? r.course?.id ?? r.course?.documentId).filter(Boolean))];
+      const userIds = [...new Set(raw.map((r) => r.user_id ?? r.user?.id).filter(Boolean))];
+      if (courseIds.length > 0) {
+        const courses = await strapi.db.query('api::course.course').findMany({
+          where: { id: { $in: courseIds.filter((x) => typeof x === 'number' || /^\d+$/.test(String(x))).map(Number) } },
+        });
+        (courses || []).forEach((c) => { courseById[c.id] = c; if (c.documentId) courseById[c.documentId] = c; });
+      }
+      if (userIds.length > 0) {
+        const users = await strapi.db.query('plugin::users-permissions.user').findMany({
+          where: { id: { $in: userIds.map(Number) } },
+        });
+        (users || []).forEach((u) => { userById[u.id] = u; });
+      }
+      raw.forEach((r) => {
+        const uid = r.user_id ?? r.user?.id;
+        const cid = r.course_id ?? r.course?.id ?? r.course?.documentId;
+        const course = (cid != null && courseById[cid]) ? courseById[cid] : r.course;
+        const user = (uid != null && userById[uid]) ? userById[uid] : r.user;
+        const userName = user?.username ?? user?.employee_name ?? user?.name ?? (user?.email || '—');
+        const courseTitle = course?.title ?? '—';
+        const modTitle = r.module_title ?? r.moduleTitle ?? (r.module_index != null ? `Module ${r.module_index + 1}` : '—');
+        const type = r.video_completion_type ?? r.videoCompletionType ?? 'not_started';
+        const timeWat = r.time_watched_seconds ?? r.timeWatchedSeconds ?? 0;
+        const duration = r.video_duration_seconds ?? r.videoDurationSeconds;
+        rows.push({
+          userName,
+          courseTitle,
+          moduleTitle: modTitle,
+          videoCompletionType: type,
+          timeWatchedMinutes: Math.round(timeWat / 60),
+          videoDurationMinutes: duration != null ? Math.round(duration / 60) : null,
+        });
+      });
+    } catch (e) {
+      strapi.log.warn('getModuleDetailTableForCourseAndModule failed:', e?.message);
+    }
+    return rows;
   },
 
   /**
@@ -658,6 +797,51 @@ module.exports = ({ strapi }) => ({
     const categoryCounts = {};
     const departmentCounts = {};
 
+    // --- Quiz/Feedback lookup for all courses for this user ---
+    // Build sets for quick lookup
+    let quizPassedByCourse = new Set();
+    let feedbackGivenByCourse = new Set();
+    let feedbackPendingByCourse = new Set();
+    try {
+      const userIdNum = progressesDedup[0]?.user?.id ?? progressesDedup[0]?.user_id ?? progressesDedup[0]?.userId ?? null;
+      const courseIds = progressesDedup.map(p => p.course?.id ?? p.course_id ?? p.courseId).filter(Boolean);
+      if (userIdNum && courseIds.length > 0) {
+        // Quiz submissions
+        const quizSubs = await strapi.db.query('api::quiz-submission.quiz-submission').findMany({
+          where: {
+            submitted_by: { id: userIdNum },
+            course: { id: { $in: courseIds } },
+          },
+          select: ['course', 'passed'],
+        });
+        (quizSubs || []).forEach(q => {
+          const cid = q.course?.id ?? q.course;
+          if (cid != null && q.passed === true) quizPassedByCourse.add(String(cid));
+        });
+        // Feedback submissions
+        const feedbackSubs = await strapi.db.query('api::feedback-submission.feedback-submission').findMany({
+          where: {
+            users_permissions_user: { id: userIdNum },
+            course: { id: { $in: courseIds } },
+          },
+          select: ['course'],
+        });
+        (feedbackSubs || []).forEach(f => {
+          const cid = f.course?.id ?? f.course;
+          if (cid != null) feedbackGivenByCourse.add(String(cid));
+        });
+        // Mark feedback pending for courses that are completed but have no feedback
+        progressesDedup.forEach(p => {
+          const cid = p.course?.id ?? p.course_id ?? p.courseId;
+          if (cid && p.progress_status === 'Completed' && !feedbackGivenByCourse.has(String(cid))) {
+            feedbackPendingByCourse.add(String(cid));
+          }
+        });
+      }
+    } catch (e) {
+      strapi.log.warn('Learning personal: quiz/feedback lookup failed:', e?.message);
+    }
+
     progressesDedup.forEach((p) => {
       statusCounts[p.progress_status] = (statusCounts[p.progress_status] || 0) + 1;
       totalTimeSpent += p.time_spent_minutes || 0;
@@ -676,6 +860,9 @@ module.exports = ({ strapi }) => ({
         timeSpentMinutes: p.time_spent_minutes ?? 0,
         completedAt: p.completed_at,
         certificateIssued: p.certificate_issued ?? false,
+        quizPassed: courseId && quizPassedByCourse.has(String(courseId)),
+        feedbackGiven: courseId && feedbackGivenByCourse.has(String(courseId)),
+        feedbackPending: courseId && feedbackPendingByCourse.has(String(courseId)),
       });
 
       if (p.completed_at && p.progress_status === 'Completed') {

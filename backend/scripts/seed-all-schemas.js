@@ -138,7 +138,7 @@ async function run() {
     console.log('Adding seed data (no delete)...');
   }
 
-  const totalDays = Math.max(1, Math.floor((ANALYTICS_DATE_END - ANALYTICS_DATE_START) / 86400000));
+  const totalDays = Math.max(1, Math.floor((Number(ANALYTICS_DATE_END) - Number(ANALYTICS_DATE_START)) / 86400000));
 
   const imageFile = await getOrUploadImage('default-image.png');
   const imageId = imageFile?.id ?? imageFile?.documentId ?? null;
@@ -505,12 +505,16 @@ async function run() {
     if (userIds.length === 0) break;
     const dayOffset = (i * 11) % Math.max(1, totalDays);
     try {
+      /**
+       * @type {'News_Reading' | 'Event_Info' | 'Townhall_Video' | 'Townhall_PDF' | 'Holiday_View'}
+       */
+      const activityType = ['News_Reading', 'Event_Info', 'Townhall_Video', 'Townhall_PDF', 'Holiday_View'][i % 5];
       await strapi.documents('api::activity-log.activity-log').create({
         data: {
-          user: connectUser(i),
+          user: userIds[i % userIds.length],
           company: connectCompany(i),
-          activity_type: actTypes[i % actTypes.length] as 'News_Reading' | 'Event_Info' | 'Townhall_Video' | 'Townhall_PDF' | 'Holiday_View',
-          activity_description: `Activity ${i + 1} (${actTypes[i % actTypes.length]})`,
+          activity_type: activityType,
+          activity_description: `Activity ${i + 1} (${activityType})`,
           activity_duration: 1,
           timestamp: dateInRange(dayOffset),
         },

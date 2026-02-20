@@ -119,6 +119,15 @@ module.exports = {
           policies: [],
         },
       },
+      {
+        method: 'GET',
+        path: '/api/analytics/course-modules',
+        handler: controller.courseModules,
+        config: {
+          auth: false,
+          policies: [],
+        },
+      },
       // ============ ACTIVITY TRACKING ============
       {
         method: 'GET',

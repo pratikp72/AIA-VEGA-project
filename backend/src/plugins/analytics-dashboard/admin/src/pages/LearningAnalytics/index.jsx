@@ -12,12 +12,72 @@ import { Filters } from '../../components/Filters';
 import { EmployeeSearch } from '../../components/EmployeeSearch';
 import { EmployeeDetailCard } from '../../components/EmployeeDetailCard';
 
+const dedupeList = (arr) => (Array.isArray(arr) ? arr.filter((x, i, a) => a.findIndex((y) => String(y?.id ?? y) === String(x?.id ?? x)) === i) : []);
+
 export default function LearningAnalyticsPage() {
-    // Additional filter states for Filters component
-    const [filterStatus, setFilterStatus] = useState('');
-    const [filterTimeMin, setFilterTimeMin] = useState('');
-    const [filterTimeMax, setFilterTimeMax] = useState('');
-  const { fetchLearningGlobal, fetchLearningPersonal, fetchLearningEmployeeTable, fetchDepartments, fetchUnitLocations, fetchCoursesByDepartment } = useAnalytics();
+  const [viewMode, setViewMode] = useState('global');
+  const [courseContentViewType, setCourseContentViewType] = useState('statistics');
+  const [dateFrom, setDateFrom] = useState(null);
+  const [dateTo, setDateTo] = useState(null);
+  const [department, setDepartment] = useState('');
+  const [company, setCompany] = useState('');
+  const [employeeId, setEmployeeId] = useState(null);
+  const [employeeDetail, setEmployeeDetail] = useState(null);
+  const [departments, setDepartments] = useState([]);
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [search, setSearch] = useState('');
+  const [searchDebounced, setSearchDebounced] = useState('');
+  const [sortOrder, setSortOrder] = useState('desc');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const [courseProgressPage, setCourseProgressPage] = useState(1);
+  const [courseProgressPageSize, setCourseProgressPageSize] = useState(10);
+  const [moduleVideoPage, setModuleVideoPage] = useState(1);
+  const [moduleVideoPageSize, setModuleVideoPageSize] = useState(10);
+  const [selectedCourseForModules, setSelectedCourseForModules] = useState('');
+  const [filterCourse, setFilterCourse] = useState('');
+  const [courses, setCourses] = useState([]);
+  const [filterCourseCategory, setFilterCourseCategory] = useState('');
+  const [unitLocation, setUnitLocation] = useState('');
+  const [unitLocations, setUnitLocations] = useState([]);
+  const [filterQuizStatus, setFilterQuizStatus] = useState('');
+  const [filterFeedbackGiven, setFilterFeedbackGiven] = useState('');
+  const [filterModule, setFilterModule] = useState('');
+  const [courseModules, setCourseModules] = useState([]);
+  const searchTimeoutRef = useRef(null);
+
+  const { fetchLearningGlobal, fetchLearningPersonal, fetchLearningEmployeeTable, fetchDepartments, fetchUnitLocations, fetchCoursesByDepartment, fetchCourseModules } = useAnalytics();
+
+  const moduleOptions = React.useMemo(() => {
+    return (courseModules || []).map((m) => ({ value: m.title, label: m.title }));
+  }, [courseModules]);
+
+  useEffect(() => {
+    if (!filterCourse) {
+      setCourseModules([]);
+      setFilterModule('');
+      return;
+    }
+    fetchCourseModules(filterCourse)
+      .then((list) => setCourseModules(Array.isArray(list) ? list : []))
+      .catch(() => setCourseModules([]));
+  }, [filterCourse, fetchCourseModules]);
+
+  useEffect(() => {
+    if (viewMode === 'personal') {
+      if (company) {
+        fetchCoursesByDepartment('', company).then(setCourses).catch(() => setCourses([]));
+      } else {
+        fetchAllCourses();
+      }
+    }
+  }, [viewMode, company, fetchCoursesByDepartment]);
+
+  const [filterStatus, setFilterStatus] = useState('');
+  const [filterTimeMin, setFilterTimeMin] = useState('');
+  const [filterTimeMax, setFilterTimeMax] = useState('');
   // Fetch all courses for dropdown (when no department selected)
   const fetchAllCourses = async () => {
     try {
@@ -32,46 +92,9 @@ export default function LearningAnalyticsPage() {
       setCourses([]);
     }
   };
-  const [viewMode, setViewMode] = useState('global');
-  const [courseContentViewType, setCourseContentViewType] = useState('statistics'); // 'statistics' | 'table' (Course view only)
-  const [dateFrom, setDateFrom] = useState(null);
-  const [dateTo, setDateTo] = useState(null);
-  const [department, setDepartment] = useState('');
-  const [company, setCompany] = useState('');
-  const [employeeId, setEmployeeId] = useState(null);
-  const [employeeDetail, setEmployeeDetail] = useState(null);
-  const [departments, setDepartments] = useState([]);
-  const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  // Employee Table specific
-  const [search, setSearch] = useState('');
-  const [searchDebounced, setSearchDebounced] = useState('');
-  const [sortOrder, setSortOrder] = useState('desc');
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
-  const [courseProgressPage, setCourseProgressPage] = useState(1);
-  const [courseProgressPageSize, setCourseProgressPageSize] = useState(10);
-  const [moduleVideoPage, setModuleVideoPage] = useState(1);
-  const [moduleVideoPageSize, setModuleVideoPageSize] = useState(10);
-  const [selectedCourseForModules, setSelectedCourseForModules] = useState('');
-  const [filterCourse, setFilterCourse] = useState('');
-  const [courses, setCourses] = useState([]);
-  const searchTimeoutRef = useRef(null);
-  // Content view (global) filters
-  const [filterCourseCategory, setFilterCourseCategory] = useState('');
-  const [unitLocation, setUnitLocation] = useState('');
-  const [unitLocations, setUnitLocations] = useState([]);
-  const [filterQuizStatus, setFilterQuizStatus] = useState('');
-  const [filterFeedbackGiven, setFilterFeedbackGiven] = useState('');
-
   const handleExportAllPersonalData = useCallback(() => {
     if (!data || !employeeDetail) return;
-
-    // Create workbook with multiple sheets
     const wb = XLSX.utils.book_new();
-
-    // Sheet 1: Employee Personal Details
     const employeeData = [{
       'Employee ID': employeeDetail.id ?? employeeId ?? '',
       'Name': employeeDetail.employee_name || employeeDetail.username || employeeDetail.name || '',
@@ -81,8 +104,6 @@ export default function LearningAnalyticsPage() {
     }];
     const ws1 = XLSX.utils.json_to_sheet(employeeData);
     XLSX.utils.book_append_sheet(wb, ws1, 'Employee Details');
-
-    // Sheet 2: My Course Progress
     const courseProgressData = (data.courseProgress || []).map((c) => ({
       'Course': c.courseTitle ?? '',
       'Category': c.courseCategory ?? '',
@@ -94,8 +115,6 @@ export default function LearningAnalyticsPage() {
     }));
     const ws2 = XLSX.utils.json_to_sheet(courseProgressData);
     XLSX.utils.book_append_sheet(wb, ws2, 'My Course Progress');
-
-    // Sheet 3: Module Video Details
     const moduleVideoData = (data.moduleVideoProgress || []).map((m) => ({
       'Course': m.courseTitle ?? '',
       'Module': m.moduleTitle ?? '',
@@ -105,51 +124,11 @@ export default function LearningAnalyticsPage() {
     }));
     const ws3 = XLSX.utils.json_to_sheet(moduleVideoData);
     XLSX.utils.book_append_sheet(wb, ws3, 'Module Video Details');
-
-    // Download file
-    const fileName = `learning-analytics-${employeeDetail.employee_name || employeeDetail.username || 'user'}-${new Date().toISOString().split('T')[0]}.xlsx`;
-    XLSX.writeFile(wb, fileName);
+    XLSX.writeFile(wb, 'learning-personal.xlsx');
   }, [data, employeeDetail, employeeId]);
 
   useEffect(() => {
-    if (viewMode !== 'table') return;
-    if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
-    searchTimeoutRef.current = setTimeout(() => {
-      setSearchDebounced(search);
-    }, 400);
-    return () => {
-      if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
-    };
-  }, [search, viewMode]);
-
-  // Dedupe dropdown lists by id and name so the same option never appears twice
-  const dedupeList = useCallback((list, nameKey = 'name') => {
-    if (!Array.isArray(list)) return [];
-    const seenId = new Set();
-    const seenName = new Set();
-    return list.filter((item) => {
-      const id = item.id ?? item.documentId;
-      const name = (item[nameKey] != null ? String(item[nameKey]).trim().toLowerCase() : '') || `_${id}`;
-      if (id == null || seenId.has(String(id)) || seenName.has(name)) return false;
-      seenId.add(String(id));
-      seenName.add(name);
-      return true;
-    });
-  }, []);
-
-  // Initial load: all departments, locations, courses (for table view or before company is selected)
-  useEffect(() => {
-    fetchDepartments().then((data) => setDepartments(dedupeList(data || []))).catch(() => setDepartments([]));
-    fetchUnitLocations().then((data) => setUnitLocations(dedupeList(data || []))).catch(() => setUnitLocations([]));
-    fetchAllCourses();
-  }, []);
-
-  // When company changes: reset dependent filters and refetch department/location/course lists (so dropdowns show company-scoped or all)
-  useEffect(() => {
     if (company) {
-      setDepartment('');
-      setFilterCourse('');
-      setUnitLocation('');
       fetchDepartments(company).then((data) => setDepartments(dedupeList(data || []))).catch(() => setDepartments([]));
       fetchUnitLocations(company).then((data) => setUnitLocations(dedupeList(data || []))).catch(() => setUnitLocations([]));
       fetchCoursesByDepartment('', company).then(setCourses).catch(() => setCourses([]));
@@ -185,6 +164,7 @@ export default function LearningAnalyticsPage() {
         params.courseId = filterCourse;
         if (filterQuizStatus) params.quizStatus = filterQuizStatus;
         if (filterFeedbackGiven) params.feedbackGiven = filterFeedbackGiven;
+        if (filterModule) params.moduleTitle = filterModule;
       }
       if (filterCourseCategory) params.courseCategory = filterCourseCategory;
       if (unitLocation) params.unitLocation = unitLocation;
@@ -218,7 +198,7 @@ export default function LearningAnalyticsPage() {
       .then(setData)
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
-  }, [viewMode, employeeId, dateFrom, dateTo, department, company, searchDebounced, sortOrder, page, pageSize, filterCourse, filterStatus, filterTimeMin, filterTimeMax, filterCourseCategory, unitLocation, filterQuizStatus, filterFeedbackGiven]);
+  }, [viewMode, employeeId, dateFrom, dateTo, department, company, searchDebounced, sortOrder, page, pageSize, filterCourse, filterModule, filterStatus, filterTimeMin, filterTimeMax, filterCourseCategory, unitLocation, filterQuizStatus, filterFeedbackGiven]);
 
   useEffect(() => {
     if (viewMode === 'table') setPage(1);
@@ -249,7 +229,7 @@ export default function LearningAnalyticsPage() {
       setData(null);
       setLoading(false);
     }
-  }, [viewMode, employeeId, dateFrom, dateTo, department, company, searchDebounced, sortOrder, page, pageSize, filterCourse, filterStatus, filterTimeMin, filterTimeMax, filterCourseCategory, unitLocation, filterQuizStatus, filterFeedbackGiven]);
+  }, [viewMode, employeeId, dateFrom, dateTo, department, company, searchDebounced, sortOrder, page, pageSize, filterCourse, filterModule, filterStatus, filterTimeMin, filterTimeMax, filterCourseCategory, unitLocation, filterQuizStatus, filterFeedbackGiven]);
 
   const kpis = data?.kpis || {};
   const quiz = data?.quiz || {};
@@ -283,6 +263,9 @@ export default function LearningAnalyticsPage() {
             onSearchChange={setSearch}
             filterCourse={filterCourse}
             setFilterCourse={setFilterCourse}
+            filterModule={filterModule}
+            setFilterModule={setFilterModule}
+            moduleOptions={moduleOptions}
             courses={courses}
             filterStatus={filterStatus}
             setFilterStatus={setFilterStatus}
@@ -301,36 +284,6 @@ export default function LearningAnalyticsPage() {
             setFilterFeedbackGiven={setFilterFeedbackGiven}
           >
             <EmployeeSearch value={employeeId} onChange={setEmployeeId} onEmployeeFound={setEmployeeDetail} company={company} />
-            {/* Course filter always visible in filter bar */}
-            <Box style={{ minWidth: 200, maxWidth: 300, display: 'flex', flexDirection: 'column' }}>
-              <Typography variant="pi" textColor="neutral600" style={{ fontWeight: 400, marginBottom: 4 }}>
-                Course:
-              </Typography>
-              <select
-                id="personal-course-filter"
-                value={filterCourse}
-                onChange={e => setFilterCourse(e.target.value)}
-                style={{
-                  padding: '8px 12px',
-                  border: '1px solid #dcdce4',
-                  borderRadius: '4px',
-                  fontSize: '14px',
-                  minWidth: 200,
-                  maxWidth: 300
-                }}
-                disabled={viewMode === 'personal' && (!employeeId || !data?.courseProgress?.length)}
-              >
-                <option value="">{viewMode === 'personal' && employeeId ? 'All Enrolled Courses' : 'All Courses'}</option>
-                {(viewMode === 'personal' && employeeId
-                  ? (data?.courseProgress || [])
-                  : courses
-                ).map((c) => (
-                  <option key={c.id ?? c.courseId ?? c.courseTitle} value={c.id ?? c.courseId ?? c.courseTitle}>
-                    {c.title ?? c.courseTitle}
-                  </option>
-                ))}
-              </select>
-            </Box>
           </Filters>
 
           {loading && (
@@ -472,7 +425,8 @@ export default function LearningAnalyticsPage() {
                   </select>
                 </Flex>
               )}
-              {/* KPI cards: 1.Total course 2.Total enrollments 3.Completion rate 4.Avg learning time 5.Avg quiz score 6.Completed course 7.Drop off rate */}
+              {/* KPI cards: hide when Personal + module selected (only tables shown) */}
+              {!(isPersonal && filterModule) && (
               <Flex gap={4} marginBottom={6} wrap="wrap">
                 {isPersonal ? (
                   <>
@@ -532,6 +486,7 @@ export default function LearningAnalyticsPage() {
                 )}
                 {/* Personal view only: new KPIs */}
               </Flex>
+              )}
 
               {/* Content view only: Statistics (charts) or Table view */}
               {!isPersonal && (
@@ -640,52 +595,99 @@ export default function LearningAnalyticsPage() {
                 </>
               )}
 
-              {/* Personal view: Course by category + Completion trend over time – always show so layout is visible */}
+              {/* Personal view: when module selected only tables; otherwise KPIs/charts + tables */}
               {isPersonal && (
                 <>
-                  <Flex justifyContent="flex-end" marginBottom={4}>
-                    <Button
-                      variant="secondary"
-                      size="M"
-                      onClick={handleExportAllPersonalData}
-                      disabled={!data?.courseProgress?.length || !employeeDetail}
-                    >
-                      Download 
-                    </Button>
-                  </Flex>
-                  {/* New: Bar chart for course/time */}
-                  {/* Bar chart in its own row */}
-                  <Box marginBottom={6}>
-                    <BarChart
-                      data={Array.isArray(data?.courseProgress) ? data.courseProgress.map(c => ({ name: c.courseTitle, value: c.timeSpentMinutes ?? 0, category: c.courseCategory || '' })) : []}
-                      title="Time Spent per Course"
-                      nameKey="name"
-                      dataKey="value"
-                      height={260}
-                      valueLabel="Total Time Spent"
-                      valueUnit="min"
-                      layout="horizontal"
-                      tooltipFormatter={(value, name, props) => {
-                        const category = props && props.payload && props.payload.category ? props.payload.category : '';
-                        return [value + ' min', category ? `Category: ${category}` : undefined];
-                      }}
-                    />
-                  </Box>
-                  {/* Pie chart in its own row */}
-                  <Box marginBottom={6}>
-                    {(() => {
-                      if (Array.isArray(data?.courseProgress)) {
-                        // eslint-disable-next-line no-console
-                        console.log('courseProgress for distribution:', data.courseProgress);
-                      }
-                      return (
+                  {filterModule ? (
+                    <>
+                      {/* Module selected: only My course progress + Module detail table */}
+                      <Box marginBottom={6}>
+                        {data?.courseProgress && data.courseProgress.length > 0 ? (
+                          <DataTable
+                            data={data.courseProgress}
+                            title="My Course Progress"
+                            fontSize="16px"
+                            columns={[
+                              { key: 'courseTitle', label: 'Course' },
+                              { key: 'courseCategory', label: 'Category' },
+                              { key: 'status', label: 'Status' },
+                              { key: 'percentage', label: 'Progress %', render: (v) => `${v}%` },
+                              { key: 'timeSpentMinutes', label: 'Time (min)' },
+                              { key: 'certificateIssued', label: 'Certificate', render: (v) => (v ? 'Yes' : 'No') },
+                            ]}
+                          />
+                        ) : (
+                          <Box padding={6} background="neutral100" hasRadius>
+                            <Typography variant="sigma" textColor="neutral600" fontWeight="semiBold" style={{ marginBottom: 8 }}>My Course Progress</Typography>
+                            <Typography textColor="neutral600">No course progress data for this employee yet.</Typography>
+                          </Box>
+                        )}
+                      </Box>
+                      <Box marginBottom={6}>
+                        {(() => {
+                          const moduleRows = (data?.moduleVideoProgress || []).filter((m) => m.moduleTitle === filterModule);
+                          const formatCompletionType = (v) => {
+                            if (!v) return '—';
+                            const labels = { full_watch: 'Watched fully', skipped_to_end: 'Skipped to end', in_progress: 'In progress', not_started: 'Not started' };
+                            return labels[v] || v;
+                          };
+                          return moduleRows.length > 0 ? (
+                            <DataTable
+                              data={moduleRows}
+                              title="Module detail"
+                              fontSize="16px"
+                              columns={[
+                                { key: 'courseTitle', label: 'Course' },
+                                { key: 'moduleTitle', label: 'Module' },
+                                { key: 'videoCompletionType', label: 'Completion', render: formatCompletionType },
+                                { key: 'timeWatchedMinutes', label: 'Time watched (min)' },
+                                { key: 'videoDurationMinutes', label: 'Duration (min)' },
+                              ]}
+                            />
+                          ) : (
+                            <Box padding={6} background="neutral100" hasRadius>
+                              <Typography variant="sigma" textColor="neutral600" fontWeight="semiBold" style={{ marginBottom: 8 }}>Module detail</Typography>
+                              <Typography textColor="neutral600">No module video data for the selected module.</Typography>
+                            </Box>
+                          );
+                        })()}
+                      </Box>
+                    </>
+                  ) : (
+                    <>
+                      <Flex justifyContent="flex-end" marginBottom={4}>
+                        <Button
+                          variant="secondary"
+                          size="M"
+                          onClick={handleExportAllPersonalData}
+                          disabled={!data?.courseProgress?.length || !employeeDetail}
+                        >
+                          Download
+                        </Button>
+                      </Flex>
+                      <Box marginBottom={6}>
+                        <BarChart
+                          data={Array.isArray(data?.courseProgress) ? data.courseProgress.map(c => ({ name: c.courseTitle, value: c.timeSpentMinutes ?? 0, category: c.courseCategory || '' })) : []}
+                          title="Time Spent per Course"
+                          nameKey="name"
+                          dataKey="value"
+                          height={260}
+                          valueLabel="Total Time Spent"
+                          valueUnit="min"
+                          layout="horizontal"
+                          tooltipFormatter={(value, name, props) => {
+                            const category = props?.payload?.category ?? '';
+                            return [value + ' min', category ? `Category: ${category}` : undefined];
+                          }}
+                        />
+                      </Box>
+                      <Box marginBottom={6}>
                         <DonutChart
                           data={(() => {
                             if (!Array.isArray(data?.courseProgress)) return [];
                             const completed = data.courseProgress.filter(c => c.status === 'Completed').length;
                             const inProgress = data.courseProgress.filter(c => c.status === 'In_progress').length;
                             const certificate = data.courseProgress.filter(c => c.certificateIssued).length;
-                            // Only show quiz/feedback if present in data
                             const quizPass = data.courseProgress.filter(c => c.quizPassed).length;
                             const feedbackPending = data.courseProgress.filter(c => c.feedbackGiven === false || c.feedbackPending).length;
                             const segments = [
@@ -693,9 +695,7 @@ export default function LearningAnalyticsPage() {
                               { name: 'In Progress', value: inProgress },
                               { name: 'Certificate Earned', value: certificate },
                             ];
-                            if (data.courseProgress.some(c => c.quizPassed !== undefined)) {
-                              segments.push({ name: 'Quiz Pass', value: quizPass });
-                            }
+                            if (quizPass > 0) segments.push({ name: 'Quiz Pass', value: quizPass });
                             if (data.courseProgress.some(c => c.feedbackGiven !== undefined || c.feedbackPending !== undefined)) {
                               segments.push({ name: 'Feedback Pending', value: feedbackPending });
                             }
@@ -704,184 +704,61 @@ export default function LearningAnalyticsPage() {
                           title="Course Distribution"
                           height={260}
                         />
-                      );
-                    })()}
-                  </Box>
-
-                  {/* Course Progress Table (Personal) – show table or placeholder */}
-                  {data?.courseProgress && data.courseProgress.length > 0 ? (() => {
-                    const total = data.courseProgress.length;
-                    const start = (courseProgressPage - 1) * courseProgressPageSize;
-                    const paginatedData = data.courseProgress.slice(start, start + courseProgressPageSize);
-                    return (
-                      <Box marginBottom={6}>
-                        <DataTable
-                          data={paginatedData}
-                          title="My Course Progress"
-                          fontSize="16px"
-                          pagination={{
-                            page: courseProgressPage,
-                            pageSize: courseProgressPageSize,
-                            total,
-                            onPageChange: setCourseProgressPage,
-                            onPageSizeChange: (v) => {
-                              setCourseProgressPageSize(Number(v));
-                              setCourseProgressPage(1);
-                            },
-                          }}
-                          columns={[
-                            { key: 'courseTitle', label: 'Course' },
-                            { key: 'courseCategory', label: 'Category' },
-                            { key: 'status', label: 'Status' },
-                            { key: 'percentage', label: 'Progress %', render: (v) => `${v}%` },
-                            { key: 'timeSpentMinutes', label: 'Time (min)' },
-                            {
-                              key: 'certificateIssued',
-                              label: 'Certificate',
-                              render: (v) => (v ? 'Yes' : 'No'),
-                            },
-                          ]}
-                        />
                       </Box>
-                    );
-                  })() : (
-                    <Box marginBottom={6} padding={6} background="neutral100" hasRadius>
-                      <Typography variant="sigma" textColor="neutral600" fontWeight="semiBold" style={{ marginBottom: 8 }}>My Course Progress</Typography>
-                      <Typography textColor="neutral600">No course progress data for this employee yet.</Typography>
-                    </Box>
-                  )}
-
-                  {/* Module video details by course (Personal) – course dropdown + table or placeholder */}
-                  {data?.courseProgress && data.courseProgress.length > 0 ? (
-                <Box marginBottom={6}>
-                  <Flex justifyContent="space-between" alignItems="center" marginBottom={4} wrap="wrap" gap={2}>
-                    <Typography variant="sigma" textColor="neutral600" fontWeight="semiBold">
-                      Module video details
-                    </Typography>
-                    <Flex alignItems="center" gap={2}>
-                      <Typography variant="pi" textColor="neutral600">Course:</Typography>
-                      <select
-                        value={selectedCourseForModules}
-                        onChange={(e) => {
-                          setSelectedCourseForModules(e.target.value);
-                          setModuleVideoPage(1);
-                        }}
-                        style={{
-                          padding: '6px 12px',
-                          border: '1px solid #dcdce4',
-                          borderRadius: '4px',
-                          fontSize: '14px',
-                          minWidth: 200,
-                        }}
-                      >
-                        {data.courseProgress.map((c) => {
-                          const value = c.courseId != null ? c.courseId : c.courseTitle;
-                          return (
-                            <option key={value} value={value}>
-                              {c.courseTitle}
-                            </option>
-                          );
-                        })}
-                      </select>
-                    </Flex>
-                  </Flex>
-                  {selectedCourseForModules ? (() => {
-                    const moduleVideoProgress = data.moduleVideoProgress || [];
-                    const rows = moduleVideoProgress.filter((p) =>
-                      (p.courseId != null && p.courseId === selectedCourseForModules) ||
-                      (p.courseId == null && p.courseTitle === selectedCourseForModules)
-                    );
-                    const selectedCourseLabel = data.courseProgress?.find((c) => {
-                      const v = c.courseId != null ? c.courseId : c.courseTitle;
-                      return v === selectedCourseForModules;
-                    })?.courseTitle || selectedCourseForModules;
-                    const formatCompletionType = (v) => {
-                      if (!v) return '—';
-                      const labels = { full_watch: 'Watched fully', skipped_to_end: 'Skipped to end', in_progress: 'In progress', not_started: 'Not started' };
-                      return labels[v] || v;
-                    };
-                    const counts = { full_watch: 0, skipped_to_end: 0, in_progress: 0, not_started: 0 };
-                    rows.forEach((r) => {
-                      const t = r.videoCompletionType || 'not_started';
-                      if (t in counts) counts[t] += 1;
-                    });
-                    return (
-                      <>
-                        {rows.length === 0 ? (
-                          <Box padding={6} background="neutral100" hasRadius>
-                            <Typography textColor="neutral600">
-                              No module video data for this course yet.
-                            </Typography>
-                          </Box>
-                        ) : (
+                      {data?.courseProgress && data.courseProgress.length > 0 ? (
+                        <Box marginBottom={6}>
                           <DataTable
-                            data={rows.slice(
-                              (moduleVideoPage - 1) * moduleVideoPageSize,
-                              (moduleVideoPage - 1) * moduleVideoPageSize + moduleVideoPageSize
-                            )}
-                            title={`Modules: ${selectedCourseLabel}`}
+                            data={data.courseProgress.slice((courseProgressPage - 1) * courseProgressPageSize, courseProgressPage * courseProgressPageSize)}
+                            title="My Course Progress"
                             fontSize="16px"
                             pagination={{
-                              page: moduleVideoPage,
-                              pageSize: moduleVideoPageSize,
-                              total: rows.length,
-                              onPageChange: setModuleVideoPage,
-                              onPageSizeChange: (v) => {
-                                setModuleVideoPageSize(Number(v));
-                                setModuleVideoPage(1);
-                              },
+                              page: courseProgressPage,
+                              pageSize: courseProgressPageSize,
+                              total: data.courseProgress.length,
+                              onPageChange: setCourseProgressPage,
+                              onPageSizeChange: (v) => { setCourseProgressPageSize(Number(v)); setCourseProgressPage(1); },
                             }}
                             columns={[
-                              { key: 'moduleTitle', label: 'Module' },
-                              {
-                                key: 'videoCompletionType',
-                                label: 'Video completion',
-                                render: formatCompletionType,
-                              },
-                              {
-                                key: 'timeWatchedMinutes',
-                                label: 'Time watched (min)',
-                                render: (v) => (v != null ? v : '—'),
-                              },
-                              {
-                                key: 'videoDurationMinutes',
-                                label: 'Video duration (min)',
-                                render: (v) => (v != null ? v : '—'),
-                              },
+                              { key: 'courseTitle', label: 'Course' },
+                              { key: 'courseCategory', label: 'Category' },
+                              { key: 'status', label: 'Status' },
+                              { key: 'percentage', label: 'Progress %', render: (v) => `${v}%` },
+                              { key: 'timeSpentMinutes', label: 'Time (min)' },
+                              { key: 'certificateIssued', label: 'Certificate', render: (v) => (v ? 'Yes' : 'No') },
                             ]}
-                          />
-                        )}
-                        <Box marginTop={4}>
-                          <AreaChart
-                            data={[
-                              { name: 'Watched fully', value: counts.full_watch },
-                              { name: 'Skipped to end', value: counts.skipped_to_end },
-                              { name: 'In progress', value: counts.in_progress },
-                              { name: 'Not started', value: counts.not_started },
-                            ]}
-                            title={`Module video completion for ${selectedCourseLabel}`}
-                            nameKey="name"
-                            dataKey="value"
-                            height={220}
                           />
                         </Box>
-                      </>
-                    );
-                  })() : (
-                    <Box padding={6} background="neutral100" hasRadius>
-                      <Typography textColor="neutral600">
-                        Select a course to see module video details.
-                      </Typography>
-                    </Box>
+                      ) : (
+                        <Box marginBottom={6} padding={6} background="neutral100" hasRadius>
+                          <Typography variant="sigma" textColor="neutral600" fontWeight="semiBold" style={{ marginBottom: 8 }}>My Course Progress</Typography>
+                          <Typography textColor="neutral600">No course progress data for this employee yet.</Typography>
+                        </Box>
+                      )}
+                    </>
                   )}
-                </Box>
-              ) : (
-                <Box marginBottom={6} padding={6} background="neutral100" hasRadius>
-                  <Typography variant="sigma" textColor="neutral600" fontWeight="semiBold" style={{ marginBottom: 8 }}>Module video details</Typography>
-                  <Typography textColor="neutral600">No course progress – complete a course to see module details.</Typography>
-                </Box>
-              )}
                 </>
+              )}
+
+              {/* Course view: when module selected, show module detail table (all users) */}
+              {!isPersonal && filterModule && Array.isArray(data?.moduleDetailTable) && data.moduleDetailTable.length > 0 && (
+                <Box marginBottom={6}>
+                  <DataTable
+                    data={data.moduleDetailTable}
+                    title="Module detail (all users)"
+                    fontSize="16px"
+                    columns={[
+                      { key: 'userName', label: 'User' },
+                      { key: 'courseTitle', label: 'Course' },
+                      { key: 'moduleTitle', label: 'Module' },
+                      { key: 'videoCompletionType', label: 'Completion', render: (v) => {
+                        const labels = { full_watch: 'Watched fully', skipped_to_end: 'Skipped to end', in_progress: 'In progress', not_started: 'Not started' };
+                        return labels[v] || v || '—';
+                      }},
+                      { key: 'timeWatchedMinutes', label: 'Time watched (min)' },
+                      { key: 'videoDurationMinutes', label: 'Duration (min)' },
+                    ]}
+                  />
+                </Box>
               )}
 
             </>
