@@ -47,6 +47,9 @@ export default function LearningAnalyticsPage() {
   const [filterModule, setFilterModule] = useState('');
   const [courseModules, setCourseModules] = useState([]);
   const searchTimeoutRef = useRef(null);
+  const coursesFetchKeyRef = useRef('');
+  const coursesFetchInFlightRef = useRef(false);
+  const departmentsFetchCompanyRef = useRef(null);
 
   const { fetchLearningGlobal, fetchLearningPersonal, fetchLearningEmployeeTable, fetchDepartments, fetchUnitLocations, fetchCoursesByDepartment, fetchCourseModules } = useAnalytics();
 
@@ -54,32 +57,25 @@ export default function LearningAnalyticsPage() {
     return (courseModules || []).map((m) => ({ value: m.title, label: m.title }));
   }, [courseModules]);
 
-  useEffect(() => {
-    if (!filterCourse) {
-      setCourseModules([]);
-      setFilterModule('');
-      return;
+  // Personal view: course dropdown shows only courses the searched user is enrolled in (from data.courseProgress)
+  const personalCourseOptions = React.useMemo(() => {
+    if (viewMode !== 'personal') return null;
+    if (!Array.isArray(data?.courseProgress)) return null;
+    const seen = new Set();
+    const list = [];
+    for (const c of data.courseProgress) {
+      const id = c.courseId ?? c.course?.id ?? c.course?.documentId;
+      const title = c.courseTitle ?? c.course?.title ?? `Course ${id}`;
+      const key = String(id ?? title);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      list.push({ id, title });
     }
-    fetchCourseModules(filterCourse)
-      .then((list) => setCourseModules(Array.isArray(list) ? list : []))
-      .catch(() => setCourseModules([]));
-  }, [filterCourse, fetchCourseModules]);
+    return list;
+  }, [viewMode, data?.courseProgress]);
 
-  useEffect(() => {
-    if (viewMode === 'personal') {
-      if (company) {
-        fetchCoursesByDepartment('', company).then(setCourses).catch(() => setCourses([]));
-      } else {
-        fetchAllCourses();
-      }
-    }
-  }, [viewMode, company, fetchCoursesByDepartment]);
-
-  const [filterStatus, setFilterStatus] = useState('');
-  const [filterTimeMin, setFilterTimeMin] = useState('');
-  const [filterTimeMax, setFilterTimeMax] = useState('');
-  // Fetch all courses for dropdown (when no department selected)
-  const fetchAllCourses = async () => {
+  // Fetch all courses (for dropdown when no department/company filter). Called only from one place.
+  const fetchAllCourses = useCallback(async () => {
     try {
       const res = await fetch('/api/courses?pagination[limit]=1000');
       if (!res.ok) throw new Error('Failed to fetch courses');
@@ -91,7 +87,61 @@ export default function LearningAnalyticsPage() {
     } catch (err) {
       setCourses([]);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    if (!filterCourse) {
+      setCourseModules([]);
+      setFilterModule('');
+      return;
+    }
+    fetchCourseModules(filterCourse)
+      .then((list) => setCourseModules(Array.isArray(list) ? list : []))
+      .catch(() => setCourseModules([]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only when filterCourse changes
+  }, [filterCourse]);
+
+  // Single effect: load courses when viewMode, company, or department change. Skip only if same key (avoid refetch loop).
+  useEffect(() => {
+    const key = `${viewMode}-${company || ''}-${department || ''}`;
+    if (coursesFetchKeyRef.current === key) return;
+    coursesFetchKeyRef.current = key;
+    coursesFetchInFlightRef.current = true;
+
+    const done = () => {
+      coursesFetchInFlightRef.current = false;
+    };
+
+    if (viewMode === 'global') {
+      setFilterCourse('');
+      if (department) {
+        fetchCoursesByDepartment(department, company || '').then(setCourses).catch(() => setCourses([])).finally(done);
+      } else if (company) {
+        fetchCoursesByDepartment('', company).then(setCourses).catch(() => setCourses([])).finally(done);
+      } else {
+        fetchAllCourses().finally(done);
+      }
+    } else if (viewMode === 'personal') {
+      if (company) {
+        fetchCoursesByDepartment('', company).then(setCourses).catch(() => setCourses([])).finally(done);
+      } else {
+        fetchAllCourses().finally(done);
+      }
+    } else if (viewMode === 'table') {
+      if (company) {
+        fetchCoursesByDepartment('', company).then(setCourses).catch(() => setCourses([])).finally(done);
+      } else {
+        fetchAllCourses().finally(done);
+      }
+    } else {
+      done();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only re-run when viewMode/company/department change; fetchers from useAnalytics() would cause extra runs
+  }, [viewMode, company, department]);
+
+  const [filterStatus, setFilterStatus] = useState('');
+  const [filterTimeMin, setFilterTimeMin] = useState('');
+  const [filterTimeMax, setFilterTimeMax] = useState('');
   const handleExportAllPersonalData = useCallback(() => {
     if (!data || !employeeDetail) return;
     const wb = XLSX.utils.book_new();
@@ -127,30 +177,20 @@ export default function LearningAnalyticsPage() {
     XLSX.writeFile(wb, 'learning-personal.xlsx');
   }, [data, employeeDetail, employeeId]);
 
+  // Load departments and unit locations when company changes. Ref guard prevents duplicate fetches even if effect runs repeatedly.
   useEffect(() => {
+    const key = company || '__empty__';
+    if (departmentsFetchCompanyRef.current === key) return;
+    departmentsFetchCompanyRef.current = key;
     if (company) {
       fetchDepartments(company).then((data) => setDepartments(dedupeList(data || []))).catch(() => setDepartments([]));
       fetchUnitLocations(company).then((data) => setUnitLocations(dedupeList(data || []))).catch(() => setUnitLocations([]));
-      fetchCoursesByDepartment('', company).then(setCourses).catch(() => setCourses([]));
     } else {
       fetchDepartments().then((data) => setDepartments(dedupeList(data || []))).catch(() => setDepartments([]));
       fetchUnitLocations().then((data) => setUnitLocations(dedupeList(data || []))).catch(() => setUnitLocations([]));
-      fetchAllCourses();
     }
-  }, [company, dedupeList]);
-
-  // When department changes (content view): fetch courses for that department (and company if set), or company's courses, or all
-  useEffect(() => {
-    if (viewMode !== 'global') return;
-    setFilterCourse('');
-    if (department) {
-      fetchCoursesByDepartment(department, company || '').then(setCourses).catch(() => setCourses([]));
-    } else if (company) {
-      fetchCoursesByDepartment('', company).then(setCourses).catch(() => setCourses([]));
-    } else {
-      fetchAllCourses();
-    }
-  }, [department, company, viewMode]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only re-run when company changes
+  }, [company]);
 
   const loadData = useCallback(() => {
     setLoading(true);
@@ -266,7 +306,7 @@ export default function LearningAnalyticsPage() {
             filterModule={filterModule}
             setFilterModule={setFilterModule}
             moduleOptions={moduleOptions}
-            courses={courses}
+            courses={viewMode === 'personal' ? (employeeId && personalCourseOptions !== null ? personalCourseOptions : []) : courses}
             filterStatus={filterStatus}
             setFilterStatus={setFilterStatus}
             filterTimeMin={filterTimeMin}
@@ -625,7 +665,9 @@ export default function LearningAnalyticsPage() {
                       </Box>
                       <Box marginBottom={6}>
                         {(() => {
-                          const moduleRows = (data?.moduleVideoProgress || []).filter((m) => m.moduleTitle === filterModule);
+                          const moduleRows = (data?.moduleVideoProgress || []).filter((m) =>
+                            (String(m.moduleTitle || '').trim().toLowerCase()) === (String(filterModule || '').trim().toLowerCase())
+                          );
                           const formatCompletionType = (v) => {
                             if (!v) return '—';
                             const labels = { full_watch: 'Watched fully', skipped_to_end: 'Skipped to end', in_progress: 'In progress', not_started: 'Not started' };
@@ -739,11 +781,11 @@ export default function LearningAnalyticsPage() {
                 </>
               )}
 
-              {/* Course view: when module selected, show module detail table (all users) */}
-              {!isPersonal && filterModule && Array.isArray(data?.moduleDetailTable) && data.moduleDetailTable.length > 0 && (
+              {/* Course view: when course + module selected, show module detail table (all users); show even if empty */}
+              {!isPersonal && filterCourse && filterModule && (
                 <Box marginBottom={6}>
                   <DataTable
-                    data={data.moduleDetailTable}
+                    data={Array.isArray(data?.moduleDetailTable) ? data.moduleDetailTable : []}
                     title="Module detail (all users)"
                     fontSize="16px"
                     columns={[

@@ -542,15 +542,16 @@ module.exports = ({ strapi }) => ({
     const rows = [];
     try {
       let numericCourseId = typeof courseId === 'number' ? courseId : null;
-      if (numericCourseId == null && /^\d+$/.test(String(courseId))) numericCourseId = Number(courseId);
+      const courseIdStr = String(courseId || '');
+      if (numericCourseId == null && /^\d+$/.test(courseIdStr)) numericCourseId = Number(courseId);
       if (numericCourseId == null) {
         const c = await strapi.db.query('api::course.course').findOne({
-          where: { documentId: String(courseId) },
+          where: { documentId: courseIdStr },
           select: ['id'],
         });
         if (!c?.id) {
           const c2 = await strapi.db.query('api::course.course').findOne({
-            where: { document_id: String(courseId) },
+            where: { document_id: courseIdStr },
             select: ['id'],
           });
           if (c2?.id) numericCourseId = c2.id;
@@ -559,20 +560,83 @@ module.exports = ({ strapi }) => ({
         }
       }
       if (numericCourseId == null) return [];
-      const where = { course: { id: numericCourseId } };
-      if (moduleTitle) {
-        where.module_title = moduleTitle;
-      } else if (moduleIndex != null && !Number.isNaN(Number(moduleIndex))) {
-        where.module_index = Number(moduleIndex);
-      } else {
-        return [];
+
+      const moduleTitleTrim = moduleTitle ? String(moduleTitle).trim() : '';
+      const moduleIndexNum = moduleIndex != null && moduleIndex !== '' && !Number.isNaN(Number(moduleIndex)) ? Number(moduleIndex) : null;
+      if (!moduleTitleTrim && moduleIndexNum === null) return [];
+
+      const runQuery = async (whereClause) => {
+        try {
+          return await strapi.db.query('api::module-video-progress.module-video-progress').findMany({
+            where: whereClause,
+            limit: 2000,
+            populate: { user: true, course: true },
+          });
+        } catch (e) {
+          return [];
+        }
+      };
+
+      // Fetch by course only (no module filter) — try multiple where variants for different Strapi/DB setups
+      let raw = [];
+      const whereVariants = [
+        { course: { id: { $eq: numericCourseId } } },
+        { course: { id: numericCourseId } },
+        { course_id: numericCourseId },
+      ];
+      if (typeof courseId === 'string' && courseId.length > 10) {
+        whereVariants.push({ course: { documentId: courseId } });
       }
-      const raw = await strapi.db.query('api::module-video-progress.module-video-progress').findMany({
-        where,
-        limit: 2000,
-        populate: { user: true, course: true },
-      });
-      if (!Array.isArray(raw)) return [];
+      for (const where of whereVariants) {
+        raw = await runQuery(where);
+        if (Array.isArray(raw) && raw.length > 0) break;
+      }
+      // Fallback: entityService (different API in some Strapi versions)
+      if ((!Array.isArray(raw) || raw.length === 0) && typeof strapi.entityService !== 'undefined') {
+        try {
+          const list = await strapi.entityService.findMany('api::module-video-progress.module-video-progress', {
+            filters: { course: { id: numericCourseId } },
+            populate: { user: true, course: true },
+            limit: 2000,
+          });
+          raw = Array.isArray(list) ? list : [];
+        } catch (_) {
+          raw = [];
+        }
+      }
+      // Last resort: fetch all and filter in memory by course id (handles any DB/Strapi schema difference)
+      if ((!Array.isArray(raw) || raw.length === 0)) {
+        try {
+          const all = await runQuery({});
+          if (Array.isArray(all) && all.length > 0) {
+            raw = all.filter((r) => {
+              const cid = r.course_id ?? r.course?.id ?? r.course?.documentId;
+              return Number(cid) === Number(numericCourseId) || String(cid) === String(numericCourseId) || String(cid) === courseIdStr;
+            });
+          }
+        } catch (_) {
+          raw = [];
+        }
+      }
+
+      // Filter in memory by module (flexible: title or index)
+      if (Array.isArray(raw) && raw.length > 0) {
+        const matchModule = (r) => {
+          const rTitle = (r.module_title || r.moduleTitle || '').trim().toLowerCase();
+          const rIdx = r.module_index ?? r.moduleIndex;
+          if (moduleTitleTrim) {
+            if (rTitle === moduleTitleTrim.toLowerCase()) return true;
+            const match = moduleTitleTrim.match(/^Module\s*(\d+)$/i);
+            const idx = match ? parseInt(match[1], 10) - 1 : null;
+            if (idx !== null && idx >= 0 && rIdx === idx) return true;
+            return false;
+          }
+          if (moduleIndexNum !== null) return rIdx === moduleIndexNum;
+          return true;
+        };
+        raw = raw.filter(matchModule);
+      }
+      if (!Array.isArray(raw)) raw = [];
       const courseById = {};
       const userById = {};
       const courseIds = [...new Set(raw.map((r) => r.course_id ?? r.course?.id ?? r.course?.documentId).filter(Boolean))];
@@ -986,38 +1050,47 @@ module.exports = ({ strapi }) => ({
     }
 
     let records = [];
-    // 1) Document Service with user filter
+    // 1) Document Service with user filter (try published first, then draft so draft entries show)
     if (numericUserId != null) {
-      try {
-        const filters = { user: { id: numericUserId } };
-        if (params.dateFrom || params.dateTo) {
-          filters.last_updated = {};
-          if (params.dateFrom) filters.last_updated.$gte = params.dateFrom;
-          if (params.dateTo) filters.last_updated.$lte = params.dateTo;
+      for (const status of ['published', 'draft']) {
+        try {
+          const filters = { user: { id: numericUserId } };
+          if (params.dateFrom || params.dateTo) {
+            filters.last_updated = {};
+            if (params.dateFrom) filters.last_updated.$gte = params.dateFrom;
+            if (params.dateTo) filters.last_updated.$lte = params.dateTo;
+          }
+          const docRecords = await strapi.documents('api::module-video-progress.module-video-progress').findMany({
+            status,
+            filters,
+            populate: ['course'],
+            limit: 1000,
+            start: 0,
+          });
+          if (Array.isArray(docRecords) && docRecords.length > 0) {
+            records = docRecords;
+            break;
+          }
+        } catch (e2) {
+          strapi.log.warn('Module video progress document findMany failed:', e2?.message || String(e2));
         }
-        const docRecords = await strapi.documents('api::module-video-progress.module-video-progress').findMany({
-          status: 'published',
-          filters,
-          populate: ['course'],
-          limit: 1000,
-          start: 0,
-        });
-        if (Array.isArray(docRecords) && docRecords.length > 0) records = docRecords;
-      } catch (e2) {
-        strapi.log.warn('Module video progress document findMany failed:', e2?.message || String(e2));
       }
     }
-    // 2) Fallback: db.query (try user_id then user) with course populated
+    // 2) Fallback: db.query (try user_id then user relation with $eq) with course populated
     if (records.length === 0 && numericUserId != null) {
-      for (const userKey of ['user_id', 'user']) {
+      const userWhereVariants = [
+        { user_id: numericUserId },
+        { user: { id: numericUserId } },
+        { user: { id: { $eq: numericUserId } } },
+      ];
+      for (const whereVariant of userWhereVariants) {
         try {
-          const where = { [userKey]: userKey === 'user' ? { id: numericUserId } : numericUserId };
+          const where = { ...whereVariant };
           if (params.dateFrom || params.dateTo) {
             const dateFilter = {};
             if (params.dateFrom) dateFilter.$gte = params.dateFrom;
             if (params.dateTo) dateFilter.$lte = params.dateTo;
-            // @ts-ignore - Dynamic query builder
-            where['last_updated'] = dateFilter;
+            where.last_updated = dateFilter;
           }
           const raw = await strapi.db.query('api::module-video-progress.module-video-progress').findMany({
             where,
@@ -1072,7 +1145,7 @@ module.exports = ({ strapi }) => ({
             break;
           }
         } catch (e) {
-          strapi.log.warn('Module video progress db.query failed (userKey=' + userKey + '):', e?.message || String(e));
+          strapi.log.warn('Module video progress db.query failed:', e?.message || String(e));
         }
       }
     }
@@ -1921,37 +1994,62 @@ module.exports = ({ strapi }) => ({
 
   /**
    * Get employee list for filter dropdown and personal view search
+   * User schema: department is string, company is enum ["AIA","Vega"]
    */
   async getEmployeesList(params = {}) {
     const where = { blocked: { $eq: false } };
-    // Only filter by company/department when meaningful (not "All Companies" / empty)
     const companyVal = params.company && String(params.company).trim() && !/^all\s*companies?$/i.test(String(params.company));
+    if (companyVal) {
+      const c = String(params.company).trim();
+      where.company = c === 'vega' ? 'Vega' : c === 'aia' ? 'AIA' : c;
+    }
     const deptVal = params.department && String(params.department).trim() && String(params.department).toLowerCase() !== 'all';
-    if (companyVal) where.company = params.company;
-    if (deptVal) where.department = { id: params.department };
+    if (deptVal) {
+      const deptId = params.department;
+      const isNumeric = typeof deptId === 'number' || /^\d+$/.test(String(deptId));
+      if (isNumeric) {
+        try {
+          const deptRow = await strapi.db.query('api::department.department').findOne({
+            where: { id: Number(deptId) },
+            select: ['name'],
+          });
+          if (deptRow?.name) where.department = deptRow.name;
+        } catch (e) {
+          strapi.log.warn('getEmployeesList: resolve department failed', e?.message);
+        }
+      } else {
+        where.department = { $containsi: String(deptId) };
+      }
+    }
 
-    // Search by ID, email, or employee_name (for personal view)
+    // Search by ID, emp_code, emp_id, email, username, or employee_name (for personal view)
     if (params.search && String(params.search).trim()) {
       const search = String(params.search).trim();
       const numericId = parseInt(search, 10);
-      if (!Number.isNaN(numericId) && String(numericId) === search) {
-        where.id = numericId;
+      const isNumericSearch = !Number.isNaN(numericId) && String(numericId) === search;
+      if (isNumericSearch) {
+        // Match by numeric id OR emp_code (AIA) OR emp_id (Vega)
+        where.$or = [
+          { id: numericId },
+          { emp_code: search },
+          { emp_id: search },
+        ];
       } else {
-        // Search by email first (most common); fallback to employee_name via $or if supported
         where.$or = [
           { email: { $containsi: search } },
           { employee_name: { $containsi: search } },
+          { username: { $containsi: search } },
+          { emp_code: { $containsi: search } },
+          { emp_id: { $containsi: search } },
         ];
       }
     }
 
     try {
-      // designation is a string on user schema, not a relation - do not populate
       const users = await strapi.db.query('plugin::users-permissions.user').findMany({
         where,
-        populate: ['department'],
         orderBy: { employee_name: 'ASC' },
-        limit: params.search ? 20 : 500,
+        limit: params.search ? 100 : 500,
       });
 
       const list = Array.isArray(users) ? users : [];
@@ -1959,8 +2057,11 @@ module.exports = ({ strapi }) => ({
         id: u.id,
         documentId: u.documentId ?? u.document_id ?? null,
         employee_name: u.employee_name || u.username || u.email || '—',
+        username: u.username ?? '—',
         email: u.email || '—',
-        department: u.department?.name ?? '—',
+        emp_code: u.emp_code ?? '—',
+        emp_id: u.emp_id ?? '—',
+        department: typeof u.department === 'object' && u.department?.name != null ? u.department.name : (u.department ?? '—'),
         designation: typeof u.designation === 'string' ? u.designation : (u.designation?.title ?? '—'),
         company: u.company ?? '—',
       }));

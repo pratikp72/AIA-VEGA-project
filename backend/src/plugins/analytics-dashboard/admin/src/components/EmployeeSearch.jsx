@@ -25,31 +25,34 @@ export function EmployeeSearch({ value, onChange, onEmployeeFound, company }) {
       const employees = await fetchEmployees({ search: q, ...(company ? { company } : {}) });
       let found = null;
       if (Array.isArray(employees) && employees.length > 0) {
-        // Enhanced search logic: match by name, emp_code, emp_id, id, email, and company-specific patterns
         const qLower = q.toLowerCase();
         const isAIA = company && company.toLowerCase() === 'aia';
         const isVega = company && company.toLowerCase() === 'vega';
-        found = employees.find(emp => {
-          const name = (emp.employee_name || emp.username || emp.email || '').toLowerCase();
-          const empCode = (emp.emp_code || '').toLowerCase();
-          const empId = (emp.emp_id || '').toLowerCase();
-          const idStr = String(emp.id || '').toLowerCase();
-          const email = (emp.email || '').toLowerCase();
-          // Company-specific strictness
-          if (isAIA && /^\d+$/.test(qLower)) {
-            return empCode.includes(qLower);
-          } else if (isVega && /^emp\d+$/i.test(q)) {
-            return empId.includes(qLower);
-          }
-          // Otherwise, allow match by any of the above
-          return (
-            name.includes(qLower) ||
-            empCode.includes(qLower) ||
-            empId.includes(qLower) ||
-            idStr === qLower ||
-            email.includes(qLower)
-          );
-        });
+        // If API returned exactly one user for a search, use it (backend already filtered)
+        if (employees.length === 1) {
+          found = employees[0];
+        } else {
+          found = employees.find(emp => {
+            const name = (emp.employee_name || emp.username || emp.email || '').toLowerCase();
+            const empCode = String(emp.emp_code ?? '').toLowerCase();
+            const empId = String(emp.emp_id ?? '').toLowerCase();
+            const idStr = String(emp.id ?? '').toLowerCase();
+            const email = (emp.email || '').toLowerCase();
+            if (isAIA && /^\d+$/.test(qLower)) {
+              return idStr === qLower || empCode.includes(qLower);
+            }
+            if (isVega && /^emp\d+$/i.test(q)) {
+              return idStr === qLower || empId.includes(qLower);
+            }
+            return (
+              name.includes(qLower) ||
+              empCode.includes(qLower) ||
+              empId.includes(qLower) ||
+              idStr === qLower ||
+              email.includes(qLower)
+            );
+          });
+        }
       }
       if (found) {
         setFoundEmployee(found);
