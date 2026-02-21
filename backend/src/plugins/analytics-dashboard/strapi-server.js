@@ -8,6 +8,8 @@
  */
 
 const analyticsController = require('./controllers/analytics');
+const learningController = require('./controllers/learning');
+const overallController = require('./controllers/overall');
 
 module.exports = {
   register({ strapi }) {
@@ -23,14 +25,16 @@ module.exports = {
   },
 
   bootstrap({ strapi }) {
-    const controller = analyticsController({ strapi });
+    const analytics = analyticsController({ strapi });
+    const learning = learningController({ strapi });
+    const overall = overallController({ strapi });
 
     strapi.server.routes([
       // ============ LEARNING ANALYTICS ============
       {
         method: 'GET',
         path: '/api/analytics/learning/global',
-        handler: controller.learningGlobal,
+        handler: learning.learningGlobal,
         config: {
           auth: false, // Enable auth for production if needed
           policies: [],
@@ -39,7 +43,7 @@ module.exports = {
       {
         method: 'GET',
         path: '/api/analytics/learning/personal',
-        handler: controller.learningPersonal,
+        handler: learning.learningPersonal,
         config: {
           auth: false,
           policies: [],
@@ -48,7 +52,7 @@ module.exports = {
       {
         method: 'GET',
         path: '/api/analytics/learning/employee-table',
-        handler: controller.learningEmployeeTable,
+        handler: learning.learningEmployeeTable,
         config: {
           auth: false,
           policies: [],
@@ -57,7 +61,7 @@ module.exports = {
       {
         method: 'GET',
         path: '/api/analytics/learning/employee-table/export',
-        handler: controller.learningEmployeeTableExport,
+        handler: learning.learningEmployeeTableExport,
         config: {
           auth: false,
           policies: [],
@@ -67,7 +71,7 @@ module.exports = {
       {
         method: 'GET',
         path: '/api/analytics/overall/global',
-        handler: controller.overallGlobal,
+        handler: overall.overallGlobal,
         config: {
           auth: false,
           policies: [],
@@ -76,7 +80,7 @@ module.exports = {
       {
         method: 'GET',
         path: '/api/analytics/overall/personal',
-        handler: controller.overallPersonal,
+        handler: overall.overallPersonal,
         config: {
           auth: false,
           policies: [],
@@ -86,7 +90,7 @@ module.exports = {
       {
         method: 'GET',
         path: '/api/analytics/employees',
-        handler: controller.employeesList,
+        handler: analytics.employeesList,
         config: {
           auth: false,
           policies: [],
@@ -95,7 +99,7 @@ module.exports = {
       {
         method: 'GET',
         path: '/api/analytics/departments',
-        handler: controller.departmentsList,
+        handler: analytics.departmentsList,
         config: {
           auth: false,
           policies: [],
@@ -104,7 +108,7 @@ module.exports = {
       {
         method: 'GET',
         path: '/api/analytics/unit-locations',
-        handler: controller.unitLocationsList,
+        handler: analytics.unitLocationsList,
         config: {
           auth: false,
           policies: [],
@@ -113,7 +117,7 @@ module.exports = {
       {
         method: 'GET',
         path: '/api/analytics/courses-by-department',
-        handler: controller.coursesByDepartment,
+        handler: learning.coursesByDepartment,
         config: {
           auth: false,
           policies: [],
@@ -122,7 +126,7 @@ module.exports = {
       {
         method: 'GET',
         path: '/api/analytics/course-modules',
-        handler: controller.courseModules,
+        handler: learning.courseModules,
         config: {
           auth: false,
           policies: [],
@@ -132,7 +136,7 @@ module.exports = {
       {
         method: 'GET',
         path: '/api/analytics/activity/time-by-type-and-day',
-        handler: controller.activityTimeByTypeAndDay,
+        handler: analytics.activityTimeByTypeAndDay,
         config: {
           auth: false,
           policies: [],
@@ -141,7 +145,7 @@ module.exports = {
       {
         method: 'GET',
         path: '/api/analytics/activity/log',
-        handler: controller.activityLog,
+        handler: analytics.activityLog,
         config: {
           auth: false,
           policies: [],
@@ -150,7 +154,7 @@ module.exports = {
       {
         method: 'POST',
         path: '/api/analytics/activity/track',
-        handler: controller.activityTrack,
+        handler: analytics.activityTrack,
         config: {
           auth: { scope: ['authenticated'] },
           policies: [],
