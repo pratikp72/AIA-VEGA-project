@@ -84,6 +84,9 @@ module.exports = ({ strapi }) => {
         if (!userId) {
           return ctx.badRequest('userId is required for personal analytics');
         }
+        if (params.moduleIndex !== undefined && params.moduleIndex !== null && params.moduleIndex !== '') {
+          params.moduleIndex = Number(params.moduleIndex);
+        }
         const service = getAnalyticsService();
         const data = await service.getLearningPersonal(userId, params) || emptyLearningPersonal();
         try {

@@ -78,7 +78,6 @@ export function LearningTableView({
           setSortOrder(order);
           setPage(1);
         }}
-        fontSize="16px"
         columns={[
           { key: 'employeeName', label: 'Employee Name' },
           { key: 'company', label: 'Company' },

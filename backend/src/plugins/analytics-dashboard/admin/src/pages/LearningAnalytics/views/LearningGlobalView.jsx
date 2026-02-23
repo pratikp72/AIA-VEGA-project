@@ -8,7 +8,8 @@ import { DataTable } from '../../../components/DataTable';
 
 /**
  * Learning Analytics – Course (global) view.
- * Renders KPIs, statistics/table toggle, charts or tables, and module detail table when course+module selected.
+ * Statistics view: charts (Learning Activity, Completion Funnel, Status Distribution).
+ * Table view: Module detail table only (all modules of all courses, or all modules of selected course).
  */
 export function LearningGlobalView({
   data,
@@ -18,6 +19,10 @@ export function LearningGlobalView({
   quiz,
   filterCourse,
   filterModule,
+  moduleDetailPage,
+  moduleDetailPageSize,
+  setModuleDetailPage,
+  setModuleDetailPageSize,
 }) {
   return (
     <>
@@ -96,100 +101,80 @@ export function LearningGlobalView({
         </>
       )}
 
-      {courseContentViewType === 'table' && (
-        <>
+      {courseContentViewType === 'table' && (() => {
+        const hasCourse = Boolean(filterCourse);
+        if (hasCourse) {
+          const pivot = data?.moduleDetailPivot ?? { moduleColumns: [], rows: [] };
+          const rows = Array.isArray(pivot.rows) ? pivot.rows : [];
+          const moduleCols = Array.isArray(pivot.moduleColumns) ? pivot.moduleColumns : [];
+          const columns = [
+            { key: 'userName', label: 'User' },
+            ...moduleCols.map((c) => ({
+              key: c.key,
+              label: c.label,
+              exportLabel: `${c.label} (watched/duration min)`,
+              header: (
+                <Flex direction="column" gap={0} alignItems="flex-start">
+                  <Typography variant="sigma" textColor="neutral600">{c.label}</Typography>
+                  <Typography variant="pi" textColor="neutral500" style={{ fontSize: '11px', fontWeight: 'normal' }}>
+                    watched/duration min
+                  </Typography>
+                </Flex>
+              ),
+            })),
+          ];
+          const paginatedData = rows.length ? rows.slice((moduleDetailPage - 1) * moduleDetailPageSize, moduleDetailPage * moduleDetailPageSize) : [];
+          return (
+            <Box marginBottom={6}>
+              <DataTable
+                data={paginatedData}
+                title="Module detail by user"
+                exportFileName="module-detail-by-user.xlsx"
+                emptyMessage="No module video data for this course."
+                pagination={rows.length ? {
+                  page: moduleDetailPage,
+                  pageSize: moduleDetailPageSize,
+                  total: rows.length,
+                  onPageChange: setModuleDetailPage,
+                  onPageSizeChange: (v) => {
+                    setModuleDetailPageSize(Number(v));
+                    setModuleDetailPage(1);
+                  },
+                } : null}
+                columns={columns}
+              />
+            </Box>
+          );
+        }
+        const rows = Array.isArray(data?.moduleDetailTable) ? data.moduleDetailTable : [];
+        const paginatedData = rows.length ? rows.slice((moduleDetailPage - 1) * moduleDetailPageSize, moduleDetailPage * moduleDetailPageSize) : [];
+        return (
           <Box marginBottom={6}>
             <DataTable
-              data={data?.learningActivityByWeek || []}
-              title="Learning Activity by Week"
-              fontSize="16px"
+              data={paginatedData}
+              title="Module detail (all users)"
+              exportFileName="module-detail.xlsx"
+              pagination={rows.length ? {
+                page: moduleDetailPage,
+                pageSize: moduleDetailPageSize,
+                total: rows.length,
+                onPageChange: setModuleDetailPage,
+                onPageSizeChange: (v) => {
+                  setModuleDetailPageSize(Number(v));
+                  setModuleDetailPage(1);
+                },
+              } : null}
               columns={[
-                { key: 'week', label: 'Week' },
-                { key: 'enrollments', label: 'Enrollments' },
+                { key: 'userName', label: 'User' },
+                { key: 'courseTitle', label: 'Course' },
+                { key: 'moduleTitle', label: 'Module' },
+                { key: 'timeWatchedMinutes', label: 'Time watched (min)' },
+                { key: 'videoDurationMinutes', label: 'Duration (min)' },
               ]}
             />
           </Box>
-          <Flex gap={4} marginBottom={6} wrap="wrap">
-            <Box style={{ flex: '1 1 340px', minWidth: 280 }}>
-              <DataTable
-                data={data?.completionFunnel || []}
-                title="Completion Funnel"
-                fontSize="16px"
-                columns={[
-                  { key: 'stage', label: 'Stage' },
-                  { key: 'value', label: 'Count' },
-                ]}
-              />
-            </Box>
-            <Box style={{ flex: '1 1 300px', minWidth: 280 }}>
-              <DataTable
-                data={data?.statusDistribution || []}
-                title="Course Status Distribution"
-                fontSize="16px"
-                columns={[
-                  { key: 'name', label: 'Status' },
-                  { key: 'value', label: 'Count' },
-                ]}
-              />
-            </Box>
-          </Flex>
-          {(data?.departmentDistribution?.length > 0 || data?.monthlyCompletions?.length > 0) && (
-            <Flex gap={4} marginBottom={6} wrap="wrap">
-              {data?.departmentDistribution?.length > 0 && (
-                <Box style={{ flex: '1 1 340px', minWidth: 280 }}>
-                  <DataTable
-                    data={data.departmentDistribution}
-                    title="Department Distribution"
-                    fontSize="16px"
-                    columns={[
-                      { key: 'name', label: 'Department' },
-                      { key: 'value', label: 'Count' },
-                    ]}
-                  />
-                </Box>
-              )}
-              {Array.isArray(data?.monthlyCompletions) && data.monthlyCompletions.length > 0 && (
-                <Box style={{ flex: '1 1 340px', minWidth: 280 }}>
-                  <DataTable
-                    data={data.monthlyCompletions}
-                    title="Monthly Completions"
-                    fontSize="16px"
-                    columns={[
-                      { key: 'month', label: 'Month' },
-                      { key: 'value', label: 'Count' },
-                    ]}
-                  />
-                </Box>
-              )}
-            </Flex>
-          )}
-        </>
-      )}
-
-      {filterCourse && filterModule && (
-        <Box marginBottom={6}>
-          <DataTable
-            data={Array.isArray(data?.moduleDetailTable) ? data.moduleDetailTable : []}
-            title="Module detail (all users)"
-            fontSize="16px"
-            columns={[
-              { key: 'userName', label: 'User' },
-              { key: 'courseTitle', label: 'Course' },
-              { key: 'moduleTitle', label: 'Module' },
-              {
-                key: 'videoCompletionType',
-                label: 'Completion',
-                render: (v) => {
-                  const labels = { full_watch: 'Watched fully', skipped_to_end: 'Skipped to end', in_progress: 'In progress', not_started: 'Not started' };
-                  return labels[v] || v || '—';
-                },
-              },
-              { key: 'timeWatchedMinutes', label: 'Time watched (min)' },
-              { key: 'videoDurationMinutes', label: 'Duration (min)' },
-            ]}
-          />
-        </Box>
-      )}
+        );
+      })()}
     </>
   );
 }

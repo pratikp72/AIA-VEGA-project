@@ -178,16 +178,30 @@ module.exports = ({ strapi }) => {
         strapi.log.warn('Learning global: company user lookup failed:', e?.message);
       }
     }
-    const progressWhere = {};
-    if (companyUserIds && companyUserIds.length > 0) {
-      progressWhere.user = { id: { $in: companyUserIds } };
-    }
+    // user-progress has no company field; filter via user relation (user has company)
+    // Note: Strapi 5 may not use user_id column - use user relation only
     try {
-      const raw = (companyUserIds && companyUserIds.length === 0) ? [] : await strapi.db.query('api::user-progress.user-progress').findMany({
-        where: Object.keys(progressWhere).length > 0 ? progressWhere : undefined,
-        limit: 5000,
-        populate: { course: true, user: true },
-      });
+      let raw = [];
+      if (companyUserIds && companyUserIds.length > 0) {
+        try {
+          raw = await strapi.db.query('api::user-progress.user-progress').findMany({
+            where: { user: { id: { $in: companyUserIds } } },
+            limit: 5000,
+            populate: { course: true, user: true },
+          });
+        } catch (_) {}
+        if (!Array.isArray(raw) || raw.length === 0) {
+          raw = await strapi.db.query('api::user-progress.user-progress').findMany({
+            limit: 5000,
+            populate: { course: true, user: true },
+          });
+        }
+      } else {
+        raw = await strapi.db.query('api::user-progress.user-progress').findMany({
+          limit: 5000,
+          populate: { course: true, user: true },
+        });
+      }
       if (Array.isArray(raw) && raw.length > 0) {
         const courseIds = [...new Set(raw.map((r) => {
           const c = r.course;
@@ -559,27 +573,266 @@ module.exports = ({ strapi }) => {
       learningActivityByWeek: learningActivityByWeekArr,
       completionFunnel,
     };
-    // When course + module filter: add module detail table (all users) for Course view
-    const wantModule = (params.moduleTitle && String(params.moduleTitle).trim()) || (params.moduleIndex != null && params.moduleIndex !== '');
-    if (wantCourseId && wantModule) {
-      try {
-        result.moduleDetailTable = await this.getModuleDetailTableForCourseAndModule(
-          params.courseId,
-          params.moduleTitle ? String(params.moduleTitle).trim() : null,
-          params.moduleIndex != null && params.moduleIndex !== '' ? Number(params.moduleIndex) : null
-        );
-      } catch (e) {
-        strapi.log.warn('Learning global moduleDetailTable failed:', e?.message);
-        result.moduleDetailTable = [];
+    // Module detail: when no course selected = flat table (all users, all modules); when course selected = pivot table (users x modules)
+    try {
+      if (wantCourseId) {
+        const pivot = await this.getModuleDetailPivotTable(params.courseId);
+        result.moduleDetailPivot = pivot;
+        result.moduleDetailTable = []; // Not used when course selected
+      } else {
+        result.moduleDetailTable = await this.getModuleDetailTable(null);
+        result.moduleDetailPivot = { moduleColumns: [], rows: [] };
       }
-    } else {
-      result.moduleDetailTable = [];
+    } catch (e) {
+      strapi.log.warn('Learning global module detail failed:', e?.message);
+      result.moduleDetailTable = result.moduleDetailTable ?? [];
+      result.moduleDetailPivot = result.moduleDetailPivot ?? { moduleColumns: [], rows: [] };
     }
     return result;
     } catch (err) {
       strapi.log.error('Learning global error:', err?.message || err);
       return emptyResponse();
     }
+  },
+
+  /**
+   * Module video progress for Course view module detail table.
+   * When courseId is null: all modules of all courses. When courseId provided: all modules of that course only.
+   */
+  async getModuleDetailTable(courseId) {
+    const rows = [];
+    try {
+      const runQuery = async (whereClause) => {
+        try {
+          return await strapi.db.query('api::module-video-progress.module-video-progress').findMany({
+            where: whereClause,
+            limit: 2000,
+            populate: { user: true, course: true },
+          });
+        } catch (e) {
+          return [];
+        }
+      };
+
+      let raw = [];
+      if (!courseId || String(courseId).trim() === '') {
+        raw = await runQuery({});
+      } else {
+        let numericCourseId = typeof courseId === 'number' ? courseId : null;
+        const courseIdStr = String(courseId || '').trim();
+        if (numericCourseId == null && /^\d+$/.test(courseIdStr)) numericCourseId = Number(courseId);
+        if (numericCourseId == null && courseIdStr.length > 10) {
+          const c = await strapi.db.query('api::course.course').findOne({
+            where: { documentId: courseIdStr },
+            select: ['id'],
+          });
+          if (!c?.id) {
+            const c2 = await strapi.db.query('api::course.course').findOne({
+              where: { document_id: courseIdStr },
+              select: ['id'],
+            });
+            if (c2?.id) numericCourseId = c2.id;
+          } else {
+            numericCourseId = c.id;
+          }
+        }
+        if (numericCourseId == null) return [];
+
+        const whereVariants = [
+          { course: { id: { $eq: numericCourseId } } },
+          { course: { id: numericCourseId } },
+          { course_id: numericCourseId },
+        ];
+        if (courseIdStr.length > 10) {
+          // @ts-expect-error - documentId valid for Strapi 5 course relation
+          whereVariants.push({ course: { documentId: courseIdStr } });
+        }
+        for (const where of whereVariants) {
+          raw = await runQuery(where);
+          if (Array.isArray(raw) && raw.length > 0) break;
+        }
+        if ((!Array.isArray(raw) || raw.length === 0) && typeof strapi.entityService !== 'undefined') {
+          try {
+            const list = await strapi.entityService.findMany('api::module-video-progress.module-video-progress', {
+              filters: { course: { id: numericCourseId } },
+              populate: { user: true, course: true },
+              limit: 2000,
+            });
+            raw = Array.isArray(list) ? list : [];
+          } catch (_) {
+            raw = [];
+          }
+        }
+        if ((!Array.isArray(raw) || raw.length === 0)) {
+          try {
+            const all = await runQuery({});
+            if (Array.isArray(all) && all.length > 0) {
+              raw = all.filter((r) => {
+                const cid = r.course_id ?? r.course?.id ?? r.course?.documentId;
+                return Number(cid) === Number(numericCourseId) || String(cid) === String(numericCourseId) || String(cid) === courseIdStr;
+              });
+            }
+          } catch (_) {
+            raw = [];
+          }
+        }
+      }
+
+      if (!Array.isArray(raw)) raw = [];
+      const courseById = {};
+      const userById = {};
+      const courseIds = [...new Set(raw.map((r) => r.course_id ?? r.course?.id ?? r.course?.documentId).filter(Boolean))];
+      const userIds = [...new Set(raw.map((r) => r.user_id ?? r.user?.id).filter(Boolean))];
+      if (courseIds.length > 0) {
+        const numericIds = courseIds.filter((x) => typeof x === 'number' || /^\d+$/.test(String(x))).map(Number);
+        if (numericIds.length > 0) {
+          const courses = await strapi.db.query('api::course.course').findMany({
+            where: { id: { $in: numericIds } },
+          });
+          (courses || []).forEach((c) => { courseById[c.id] = c; if (c.documentId) courseById[c.documentId] = c; });
+        }
+      }
+      if (userIds.length > 0) {
+        const users = await strapi.db.query('plugin::users-permissions.user').findMany({
+          where: { id: { $in: userIds.map(Number) } },
+        });
+        (users || []).forEach((u) => { userById[u.id] = u; });
+      }
+      raw.forEach((r) => {
+        const uid = r.user_id ?? r.user?.id;
+        const cid = r.course_id ?? r.course?.id ?? r.course?.documentId;
+        const course = (cid != null && courseById[cid]) ? courseById[cid] : r.course;
+        const user = (uid != null && userById[uid]) ? userById[uid] : r.user;
+        const userName = user?.username ?? user?.employee_name ?? user?.name ?? (user?.email || '—');
+        const courseTitle = course?.title ?? '—';
+        const modTitle = r.module_title ?? r.moduleTitle ?? (r.module_index != null ? `Module ${r.module_index + 1}` : '—');
+        const type = r.video_completion_type ?? r.videoCompletionType ?? 'not_started';
+        const timeWat = r.time_watched_seconds ?? r.timeWatchedSeconds ?? 0;
+        const duration = r.video_duration_seconds ?? r.videoDurationSeconds;
+        rows.push({
+          userName,
+          courseTitle,
+          moduleTitle: modTitle,
+          videoCompletionType: type,
+          timeWatchedMinutes: Math.round(timeWat / 60),
+          videoDurationMinutes: duration != null ? Math.round(duration / 60) : null,
+        });
+      });
+    } catch (e) {
+      strapi.log.warn('getModuleDetailTable failed:', e?.message);
+    }
+    return rows;
+  },
+
+  /**
+   * Pivoted module detail table when a course is selected.
+   * Rows = users, Columns = modules. Each cell shows "Time watched (min) / Duration (min)".
+   */
+  async getModuleDetailPivotTable(courseId) {
+    const result = { moduleColumns: [], rows: [] };
+    if (!courseId || String(courseId).trim() === '') return result;
+    try {
+      const courseModules = await this.getCourseModules(courseId);
+      const numModules = courseModules.length;
+      if (numModules === 0) return result;
+
+      const runQuery = async (whereClause) => {
+        try {
+          return await strapi.db.query('api::module-video-progress.module-video-progress').findMany({
+            where: whereClause,
+            limit: 2000,
+            populate: { user: true, course: true },
+          });
+        } catch (e) {
+          return [];
+        }
+      };
+
+      let numericCourseId = typeof courseId === 'number' ? courseId : null;
+      const courseIdStr = String(courseId || '').trim();
+      if (numericCourseId == null && /^\d+$/.test(courseIdStr)) numericCourseId = Number(courseId);
+      if (numericCourseId == null && courseIdStr.length > 10) {
+        const c = await strapi.db.query('api::course.course').findOne({
+          where: { documentId: courseIdStr },
+          select: ['id'],
+        });
+        if (c?.id) numericCourseId = c.id;
+        else {
+          const c2 = await strapi.db.query('api::course.course').findOne({
+            where: { document_id: courseIdStr },
+            select: ['id'],
+          });
+          if (c2?.id) numericCourseId = c2.id;
+        }
+      }
+      if (numericCourseId == null) return result;
+
+      const whereVariants = [
+        { course: { id: { $eq: numericCourseId } } },
+        { course: { id: numericCourseId } },
+        { course_id: numericCourseId },
+      ];
+      if (courseIdStr.length > 10) {
+        // @ts-expect-error - documentId valid for Strapi 5 course relation
+        whereVariants.push({ course: { documentId: courseIdStr } });
+      }
+      let raw = [];
+      for (const where of whereVariants) {
+        raw = await runQuery(where);
+        if (Array.isArray(raw) && raw.length > 0) break;
+      }
+      if ((!Array.isArray(raw) || raw.length === 0)) {
+        const all = await runQuery({});
+        if (Array.isArray(all) && all.length > 0) {
+          raw = all.filter((r) => {
+            const cid = r.course_id ?? r.course?.id ?? r.course?.documentId;
+            return Number(cid) === Number(numericCourseId) || String(cid) === String(numericCourseId) || String(cid) === courseIdStr;
+          });
+        }
+      }
+      if (!Array.isArray(raw)) raw = [];
+
+      const users = await strapi.db.query('plugin::users-permissions.user').findMany({
+        where: { id: { $in: [...new Set(raw.map((r) => r.user_id ?? r.user?.id).filter(Boolean))].map(Number) } },
+      });
+      const userById = {};
+      (users || []).forEach((u) => { userById[u.id] = u; });
+
+      const userModuleMap = {};
+      raw.forEach((r) => {
+        const uid = r.user_id ?? r.user?.id;
+        if (uid == null) return;
+        const mIdx = r.module_index ?? r.moduleIndex ?? 0;
+        const timeWat = r.time_watched_seconds ?? r.timeWatchedSeconds ?? 0;
+        const duration = r.video_duration_seconds ?? r.videoDurationSeconds;
+        const timeMin = Math.round(timeWat / 60);
+        const durMin = duration != null ? Math.round(duration / 60) : null;
+        const cellVal = durMin != null ? `${timeMin} / ${durMin}` : String(timeMin);
+        if (!userModuleMap[uid]) userModuleMap[uid] = {};
+        userModuleMap[uid][mIdx] = cellVal;
+      });
+
+      result.moduleColumns = courseModules.map((m, idx) => ({
+        key: `module_${m.index ?? idx}`,
+        label: m.title ?? `Module ${(m.index ?? idx) + 1}`,
+      }));
+
+      const userIds = Object.keys(userModuleMap);
+      result.rows = userIds.map((uid) => {
+        const user = userById[Number(uid)] || raw.find((r) => (r.user_id ?? r.user?.id) === Number(uid))?.user;
+        const userName = user?.username ?? user?.employee_name ?? user?.name ?? (user?.email || '—');
+        const row = { userName };
+        courseModules.forEach((m, idx) => {
+          const key = `module_${m.index ?? idx}`;
+          row[key] = userModuleMap[uid][m.index ?? idx] ?? '—';
+        });
+        return row;
+      });
+      result.rows.sort((a, b) => (a.userName || '').localeCompare(b.userName || ''));
+    } catch (e) {
+      strapi.log.warn('getModuleDetailPivotTable failed:', e?.message);
+    }
+    return result;
   },
 
   /**
@@ -883,6 +1136,40 @@ module.exports = ({ strapi }) => {
       const fullCourse = (cid != null && courseById[cid]) || (cdocId != null && courseByDocId[cdocId]) || (p.course && typeof p.course === 'object' && (p.course.title != null || p.course.id != null) ? p.course : null);
       return { ...p, course: fullCourse || p.course };
     });
+
+    // Filter by course when params.courseId is set (Personal view course filter)
+    const wantCourseId = params.courseId && String(params.courseId).trim();
+    if (wantCourseId) {
+      const courseIdStr = String(params.courseId).trim();
+      let resolvedNumericId = null;
+      if (courseIdStr.length > 10 && !/^\d+$/.test(courseIdStr)) {
+        try {
+          const row = await strapi.db.query('api::course.course').findOne({
+            where: { documentId: courseIdStr },
+            select: ['id'],
+          });
+          if (!row?.id) {
+            const row2 = await strapi.db.query('api::course.course').findOne({
+              where: { document_id: courseIdStr },
+              select: ['id'],
+            });
+            if (row2?.id) resolvedNumericId = row2.id;
+          } else {
+            resolvedNumericId = row.id;
+          }
+        } catch (_) {}
+      } else if (/^\d+$/.test(courseIdStr)) {
+        resolvedNumericId = Number(courseIdStr);
+      }
+      progresses = progresses.filter((p) => {
+        const cid = p.course?.id ?? p.course_id ?? p.courseId ?? p.course?.documentId ?? p.course?.document_id ?? p.course;
+        if (cid == null) return false;
+        if (String(cid) === courseIdStr) return true;
+        if (resolvedNumericId != null && (Number(cid) === resolvedNumericId || cid === resolvedNumericId)) return true;
+        if (Number(cid) === Number(courseIdStr)) return true;
+        return false;
+      });
+    }
 
     // Deduplicate by course: one row per course in "My Course" table (prefer Completed, then most recent last_accessed_at)
     const courseKey = (p) => (p.course?.documentId ?? p.course?.document_id ?? p.course?.id ?? p.course_id ?? p.courseId ?? p.course ?? '').toString();
@@ -1204,9 +1491,63 @@ module.exports = ({ strapi }) => {
       return { ...r, course: fullCourse || r.course };
     });
 
+    // Filter by course and/or module when params specify (Personal view course/module filter)
+    let filteredRecords = recordsWithCourse || [];
+    const wantCourseId = params.courseId && String(params.courseId).trim();
+    const wantModuleTitle = params.moduleTitle && String(params.moduleTitle).trim();
+    let resolvedCourseNumericId = null;
+    if (wantCourseId) {
+      const courseIdStr = String(params.courseId).trim();
+      if (courseIdStr.length > 10 && !/^\d+$/.test(courseIdStr)) {
+        try {
+          const row = await strapi.db.query('api::course.course').findOne({ where: { documentId: courseIdStr }, select: ['id'] });
+          if (row?.id) resolvedCourseNumericId = row.id;
+          else {
+            const row2 = await strapi.db.query('api::course.course').findOne({ where: { document_id: courseIdStr }, select: ['id'] });
+            if (row2?.id) resolvedCourseNumericId = row2.id;
+          }
+        } catch (_) {}
+      } else if (/^\d+$/.test(courseIdStr)) {
+        resolvedCourseNumericId = Number(courseIdStr);
+      }
+    }
+    const wantModuleIndex = params.moduleIndex !== undefined && params.moduleIndex !== null && params.moduleIndex !== '';
+    const moduleIndexNum = wantModuleIndex ? Number(params.moduleIndex) : null;
+    const hasValidModuleIndex = wantModuleIndex && !Number.isNaN(moduleIndexNum);
+
+    if (wantCourseId || wantModuleTitle || hasValidModuleIndex) {
+      filteredRecords = filteredRecords.filter((r) => {
+        if (wantCourseId) {
+          const cid = r.course?.id ?? r.course_id ?? r.courseId ?? r.course?.documentId ?? r.course?.document_id;
+          if (cid == null) return false;
+          const courseIdStr = String(params.courseId).trim();
+          const courseMatches = String(cid) === courseIdStr ||
+            (resolvedCourseNumericId != null && (Number(cid) === resolvedCourseNumericId || cid === resolvedCourseNumericId)) ||
+            Number(cid) === Number(courseIdStr);
+          if (!courseMatches) return false;
+        }
+        if (wantModuleTitle || hasValidModuleIndex) {
+          const mIdx = r.module_index ?? r.moduleIndex;
+          if (hasValidModuleIndex) {
+            if (mIdx !== moduleIndexNum) return false;
+          } else if (wantModuleTitle) {
+            const mTitle = (r.module_title ?? r.moduleTitle ?? '').trim().toLowerCase();
+            const paramTitle = wantModuleTitle.toLowerCase();
+            if (mTitle === paramTitle) return true;
+            const match = paramTitle.match(/module\s*(\d+)/i) || paramTitle.match(/^(\d+)$/);
+            const oneBased = match ? parseInt(match[1], 10) : null;
+            const idx = oneBased != null ? oneBased - 1 : null;
+            if (idx !== null && mIdx === idx) return true;
+            return false;
+          }
+        }
+        return true;
+      });
+    }
+
     const kpis = { watchedFully: 0, skippedToEnd: 0, inProgress: 0, notStarted: 0 };
     const typeToKpi = { full_watch: 'watchedFully', skipped_to_end: 'skippedToEnd', in_progress: 'inProgress', not_started: 'notStarted' };
-    const progress = (recordsWithCourse || []).map((r) => {
+    const progress = filteredRecords.map((r) => {
       const type = r.video_completion_type ?? r.videoCompletionType ?? 'not_started';
       const kpiKey = typeToKpi[type];
       if (kpiKey) kpis[kpiKey] += 1;

@@ -179,7 +179,7 @@ module.exports = ({ strapi }) => {
     const list = Array.isArray(logs) ? logs : [];
     const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
     const byDate = {};
-    const pageTypes = ['News', 'Event', 'Course', 'Quiz', 'Feedback', 'Location', 'Routes', 'People', 'Gallery', 'Home'];
+    const pageTypes = ['News', 'Event', 'Location', 'Routes', 'People', 'Gallery', 'Home'];
     list.forEach((log) => {
       if (!log.timestamp) return;
       const d = new Date(log.timestamp);
@@ -213,9 +213,13 @@ module.exports = ({ strapi }) => {
     return str;
   }
 
-  /** Build shared where for activity log queries (date, company, department, unitLocation, activityType, userId). Uses relation "user" and activity_log.company so filters work with Strapi 5. */
+  /** Activity types to exclude from Overall Analytics (Course, Quiz, Feedback). */
+  const EXCLUDED_ACTIVITY_TYPES = ['Course', 'Quiz', 'Feedback'];
+
+  /** Build shared where for activity log queries (date, company, department, unitLocation, activityType, userId). Uses relation "user" and activity_log.company so filters work with Strapi 5. Excludes Course, Quiz, Feedback from all activity data. */
   self._buildActivityWhere = async function (params = {}) {
     const where = {};
+    where.activity_type = { $notIn: EXCLUDED_ACTIVITY_TYPES };
 
     if (params.dateFrom || params.dateTo) {
       const from = normalizeDateBound(params.dateFrom, false);
@@ -334,7 +338,7 @@ module.exports = ({ strapi }) => {
     return { totalUser, uniqueUser, timeSpentMin, avgTimeSpentMin };
   };
 
-  const ACTIVITY_PAGES = ['News', 'Event', 'Course', 'Quiz', 'Feedback', 'Location', 'Routes', 'People', 'Gallery', 'Home', 'Company policy', 'Form & Templates', 'Calendar'];
+  const ACTIVITY_PAGES = ['News', 'Event', 'Location', 'Routes', 'People', 'Gallery', 'Home', 'Company policy', 'Form & Templates', 'Calendar'];
 
   /**
    * Top pages by time (desc) and least used pages by time (asc) for Activity Tracking charts.

@@ -140,7 +140,6 @@ export function OverallActivityTrackingView({
       <Box>
         <DataTable
           data={activityLogData.rows}
-          fontSize={16}
           columns={[
             { key: 'userName', label: 'USER' },
             { key: 'company', label: 'COMPANY' },

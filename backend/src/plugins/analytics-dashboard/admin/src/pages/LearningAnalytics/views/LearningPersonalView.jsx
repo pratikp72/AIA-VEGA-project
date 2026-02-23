@@ -50,10 +50,10 @@ export function LearningPersonalView({
             <StatCard label="Courses In Progress" value={kpis.coursesInProgress ?? 0} colorIndex={6} />
           </Box>
           <Box style={{ flex: '1 1 200px', minWidth: 160 }}>
-            <StatCard label="Last Course Viewed" value={kpis.lastCourseViewed?.courseTitle ?? '—'} subtext={kpis.lastCourseViewed?.lastAccessedAt ? `at ${kpis.lastCourseViewed.lastAccessedAt}` : undefined} colorIndex={7} />
+            <StatCard label="Last Course Viewed" value={kpis.lastCourseViewed?.courseTitle ?? '—'}  />
           </Box>
           <Box style={{ flex: '1 1 200px', minWidth: 160 }}>
-            <StatCard label="Last Course Completed" value={kpis.lastCourseCompleted?.courseTitle ?? '—'} subtext={kpis.lastCourseCompleted?.completedAt ? `at ${kpis.lastCourseCompleted.completedAt}` : undefined} colorIndex={8} />
+            <StatCard label="Last Course Completed" value={kpis.lastCourseCompleted?.courseTitle ?? '—'} />
           </Box>
         </Flex>
       )}
@@ -61,57 +61,43 @@ export function LearningPersonalView({
       {isModuleSelected ? (
         <>
           <Box marginBottom={6}>
-            {data?.courseProgress && data.courseProgress.length > 0 ? (
-              <DataTable
-                data={data.courseProgress}
-                title="My Course Progress"
-                fontSize="16px"
-                columns={[
-                  { key: 'courseTitle', label: 'Course' },
-                  { key: 'courseCategory', label: 'Category' },
-                  { key: 'status', label: 'Status' },
-                  { key: 'percentage', label: 'Progress %', render: (v) => `${v}%` },
-                  { key: 'timeSpentMinutes', label: 'Time (min)' },
-                  { key: 'certificateIssued', label: 'Certificate', render: (v) => (v ? 'Yes' : 'No') },
-                ]}
-              />
-            ) : (
-              <Box padding={6} background="neutral100" hasRadius>
-                <Typography variant="sigma" textColor="neutral600" fontWeight="semiBold" style={{ marginBottom: 8 }}>My Course Progress</Typography>
-                <Typography textColor="neutral600">No course progress data for this employee yet.</Typography>
-              </Box>
-            )}
+            <DataTable
+              data={data?.courseProgress || []}
+              title="My Course Progress"
+              exportFileName="my-course-progress.xlsx"
+              emptyMessage="No course progress data for this employee yet."
+              columns={[
+                { key: 'courseTitle', label: 'Course' },
+                { key: 'courseCategory', label: 'Category' },
+                { key: 'status', label: 'Status' },
+                { key: 'percentage', label: 'Progress %', render: (v) => `${v}%` },
+                { key: 'timeSpentMinutes', label: 'Time (min)' },
+                { key: 'certificateIssued', label: 'Certificate', render: (v) => (v ? 'Yes' : 'No') },
+              ]}
+            />
           </Box>
           <Box marginBottom={6}>
-            {(() => {
-              const moduleRows = (data?.moduleVideoProgress || []).filter((m) =>
-                (String(m.moduleTitle || '').trim().toLowerCase()) === (String(filterModule || '').trim().toLowerCase())
-              );
-              const formatCompletionType = (v) => {
-                if (!v) return '—';
-                const labels = { full_watch: 'Watched fully', skipped_to_end: 'Skipped to end', in_progress: 'In progress', not_started: 'Not started' };
-                return labels[v] || v;
-              };
-              return moduleRows.length > 0 ? (
-                <DataTable
-                  data={moduleRows}
-                  title="Module detail"
-                  fontSize="16px"
-                  columns={[
-                    { key: 'courseTitle', label: 'Course' },
-                    { key: 'moduleTitle', label: 'Module' },
-                    { key: 'videoCompletionType', label: 'Completion', render: formatCompletionType },
-                    { key: 'timeWatchedMinutes', label: 'Time watched (min)' },
-                    { key: 'videoDurationMinutes', label: 'Duration (min)' },
-                  ]}
-                />
-              ) : (
-                <Box padding={6} background="neutral100" hasRadius>
-                  <Typography variant="sigma" textColor="neutral600" fontWeight="semiBold" style={{ marginBottom: 8 }}>Module detail</Typography>
-                  <Typography textColor="neutral600">No module video data for the selected module.</Typography>
-                </Box>
-              );
-            })()}
+            <DataTable
+              data={data?.moduleVideoProgress || []}
+              title="Module detail"
+              exportFileName="module-detail.xlsx"
+              emptyMessage="No module video data for the selected module."
+              columns={[
+                { key: 'courseTitle', label: 'Course' },
+                { key: 'moduleTitle', label: 'Module' },
+                {
+                  key: 'videoCompletionType',
+                  label: 'Completion',
+                  render: (v) => {
+                    if (!v) return '—';
+                    const labels = { full_watch: 'Watched fully', skipped_to_end: 'Skipped to end', in_progress: 'In progress', not_started: 'Not started' };
+                    return labels[v] || v;
+                  },
+                },
+                { key: 'timeWatchedMinutes', label: 'Time watched (min)' },
+                { key: 'videoDurationMinutes', label: 'Duration (min)' },
+              ]}
+            />
           </Box>
         </>
       ) : (
@@ -166,38 +152,36 @@ export function LearningPersonalView({
               height={260}
             />
           </Box>
-          {data?.courseProgress && data.courseProgress.length > 0 ? (
-            <Box marginBottom={6}>
-              <DataTable
-                data={data.courseProgress.slice((courseProgressPage - 1) * courseProgressPageSize, courseProgressPage * courseProgressPageSize)}
-                title="My Course Progress"
-                fontSize="16px"
-                pagination={{
-                  page: courseProgressPage,
-                  pageSize: courseProgressPageSize,
-                  total: data.courseProgress.length,
-                  onPageChange: setCourseProgressPage,
-                  onPageSizeChange: (v) => {
-                    setCourseProgressPageSize(Number(v));
-                    setCourseProgressPage(1);
-                  },
-                }}
-                columns={[
-                  { key: 'courseTitle', label: 'Course' },
-                  { key: 'courseCategory', label: 'Category' },
-                  { key: 'status', label: 'Status' },
-                  { key: 'percentage', label: 'Progress %', render: (v) => `${v}%` },
-                  { key: 'timeSpentMinutes', label: 'Time (min)' },
-                  { key: 'certificateIssued', label: 'Certificate', render: (v) => (v ? 'Yes' : 'No') },
-                ]}
-              />
-            </Box>
-          ) : (
-            <Box marginBottom={6} padding={6} background="neutral100" hasRadius>
-              <Typography variant="sigma" textColor="neutral600" fontWeight="semiBold" style={{ marginBottom: 8 }}>My Course Progress</Typography>
-              <Typography textColor="neutral600">No course progress data for this employee yet.</Typography>
-            </Box>
-          )}
+          <Box marginBottom={6}>
+            <DataTable
+              data={data?.courseProgress?.length
+                ? data.courseProgress.slice((courseProgressPage - 1) * courseProgressPageSize, courseProgressPage * courseProgressPageSize)
+                : []}
+              title="My Course Progress"
+              exportFileName="my-course-progress.xlsx"
+              emptyMessage="No course progress data for this employee yet."
+              pagination={data?.courseProgress?.length
+                ? {
+                    page: courseProgressPage,
+                    pageSize: courseProgressPageSize,
+                    total: data.courseProgress.length,
+                    onPageChange: setCourseProgressPage,
+                    onPageSizeChange: (v) => {
+                      setCourseProgressPageSize(Number(v));
+                      setCourseProgressPage(1);
+                    },
+                  }
+                : null}
+              columns={[
+                { key: 'courseTitle', label: 'Course' },
+                { key: 'courseCategory', label: 'Category' },
+                { key: 'status', label: 'Status' },
+                { key: 'percentage', label: 'Progress %', render: (v) => `${v}%` },
+                { key: 'timeSpentMinutes', label: 'Time (min)' },
+                { key: 'certificateIssued', label: 'Certificate', render: (v) => (v ? 'Yes' : 'No') },
+              ]}
+            />
+          </Box>
         </>
       )}
     </>
