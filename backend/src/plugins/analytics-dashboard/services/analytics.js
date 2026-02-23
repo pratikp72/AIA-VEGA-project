@@ -164,9 +164,27 @@ module.exports = ({ strapi }) => {
     });
     try {
     let progresses = [];
-    // Use db.query so we always have user_id and can populate user with company/department (required for filters)
+    const wantCompanyEarly = params.company && String(params.company).trim() && !/^all\s*companies?$/i.test(String(params.company));
+    const wantCompanyNormEarly = wantCompanyEarly ? (String(params.company).trim().toLowerCase() === 'vega' ? 'Vega' : String(params.company).trim().toLowerCase() === 'aia' ? 'AIA' : String(params.company).trim()) : null;
+    let companyUserIds = null;
+    if (wantCompanyNormEarly) {
+      try {
+        const companyUsers = await strapi.db.query('plugin::users-permissions.user').findMany({
+          where: { company: wantCompanyNormEarly, blocked: { $ne: true } },
+          select: ['id'],
+        });
+        companyUserIds = (companyUsers || []).map((u) => u.id).filter((id) => id != null);
+      } catch (e) {
+        strapi.log.warn('Learning global: company user lookup failed:', e?.message);
+      }
+    }
+    const progressWhere = {};
+    if (companyUserIds && companyUserIds.length > 0) {
+      progressWhere.user = { id: { $in: companyUserIds } };
+    }
     try {
-      const raw = await strapi.db.query('api::user-progress.user-progress').findMany({
+      const raw = (companyUserIds && companyUserIds.length === 0) ? [] : await strapi.db.query('api::user-progress.user-progress').findMany({
+        where: Object.keys(progressWhere).length > 0 ? progressWhere : undefined,
         limit: 5000,
         populate: { course: true, user: true },
       });
@@ -219,18 +237,40 @@ module.exports = ({ strapi }) => {
     const wantQuizStatus = params.quizStatus && String(params.quizStatus).trim().toLowerCase();
     const wantFeedbackGiven = params.feedbackGiven && String(params.feedbackGiven).trim().toLowerCase();
 
-    // Resolve unit location id to name for filtering by user.working_location (if applicable)
+    // Resolve unit location id/documentId to name for filtering by user.working_location (if applicable)
     let unitLocationName = wantUnitLocation ? String(params.unitLocation) : null;
-    if (wantUnitLocation && (typeof params.unitLocation === 'number' || /^\d+$/.test(String(params.unitLocation)))) {
+    if (wantUnitLocation) {
       try {
-        const loc = await strapi.db.query('api::unit-location.unit-location').findOne({
-          where: { id: Number(params.unitLocation) },
-        });
+        const isNumeric = typeof params.unitLocation === 'number' || /^\d+$/.test(String(params.unitLocation));
+        const loc = isNumeric
+          ? await strapi.db.query('api::unit-location.unit-location').findOne({ where: { id: Number(params.unitLocation) } })
+          : await strapi.db.query('api::unit-location.unit-location').findOne({ where: { documentId: String(params.unitLocation) } });
         if (loc?.name) unitLocationName = loc.name;
       } catch (e) {
         strapi.log.warn('Learning global: unit location resolve failed:', e?.message);
       }
     }
+
+    // Resolve department id/documentId to name for filtering (user.department is string, not relation)
+    let departmentNameForFilter = null;
+    if (wantDept) {
+      try {
+        const deptId = params.department;
+        const isNumeric = typeof deptId === 'number' || /^\d+$/.test(String(deptId));
+        const deptRow = isNumeric
+          ? await strapi.db.query('api::department.department').findOne({ where: { id: Number(deptId) }, select: ['name'] })
+          : await strapi.db.query('api::department.department').findOne({ where: { documentId: String(deptId) }, select: ['name'] });
+        if (deptRow?.name) departmentNameForFilter = deptRow.name;
+      } catch (e) {
+        strapi.log.warn('Learning global: department resolve failed:', e?.message);
+      }
+    }
+
+    // Normalize date bounds: start of day for from, end of day for to (so full day is included)
+    const wantDateFromNorm = wantDateFrom && /^\d{4}-\d{2}-\d{2}/.test(String(wantDateFrom))
+      ? String(wantDateFrom).slice(0, 10) + 'T00:00:00.000Z' : wantDateFrom;
+    const wantDateToNorm = wantDateTo && /^\d{4}-\d{2}-\d{2}/.test(String(wantDateTo))
+      ? String(wantDateTo).slice(0, 10) + 'T23:59:59.999Z' : wantDateTo;
 
     // Optional: load quiz and feedback submission sets for (userId, courseId) when filters requested
     let quizPassedByUserCourse = null;
@@ -312,17 +352,19 @@ module.exports = ({ strapi }) => {
     }
 
     if (wantCompany || wantDept || wantDateFrom || wantDateTo || wantCourseId || wantCategory || wantUnitLocation || wantQuizStatus || wantFeedbackGiven) {
+      const wantCompanyNorm = wantCompany ? (String(wantCompany).trim().toLowerCase() === 'vega' ? 'Vega' : String(wantCompany).trim().toLowerCase() === 'aia' ? 'AIA' : String(wantCompany).trim()) : null;
       progresses = progresses.filter((p) => {
-        if (wantDateFrom && p.last_accessed_at && p.last_accessed_at < wantDateFrom) return false;
-        if (wantDateTo && p.last_accessed_at && p.last_accessed_at > wantDateTo) return false;
-        if (wantCompany) {
-          const userCompany = p.user?.company;
-          if (userCompany !== wantCompany) return false;
+        if (wantDateFromNorm && p.last_accessed_at && String(p.last_accessed_at) < wantDateFromNorm) return false;
+        if (wantDateToNorm && p.last_accessed_at && String(p.last_accessed_at) > wantDateToNorm) return false;
+        if (wantCompanyNorm) {
+          const rawCompany = p.user?.company;
+          const userCompanyStr = (typeof rawCompany === 'object' && rawCompany != null) ? (rawCompany.name ?? rawCompany) : (rawCompany ?? '');
+          const userCompanyNorm = userCompanyStr ? (String(userCompanyStr).toLowerCase() === 'vega' ? 'Vega' : String(userCompanyStr).toLowerCase() === 'aia' ? 'AIA' : String(userCompanyStr).trim()) : null;
+          if (!userCompanyNorm || userCompanyNorm !== wantCompanyNorm) return false;
         }
-        if (wantDept) {
-          const deptId = p.user?.department?.id ?? p.user?.department;
-          const deptName = p.user?.department?.name;
-          if (deptId != params.department && deptName != params.department) return false;
+        if (wantDept && departmentNameForFilter) {
+          const userDeptName = (typeof p.user?.department === 'object' && p.user?.department?.name) ? p.user.department.name : (p.user?.department ?? '');
+          if (String(userDeptName).trim().toLowerCase() !== String(departmentNameForFilter).trim().toLowerCase()) return false;
         }
         if (wantCourseId) {
           const cid = p.course?.id ?? p.course_id ?? p.courseId ?? p.course?.documentId;
@@ -334,7 +376,7 @@ module.exports = ({ strapi }) => {
         }
         if (wantUnitLocation && unitLocationName) {
           const loc = p.user?.working_location ?? p.user?.unit_location ?? '';
-          if (String(loc) !== String(unitLocationName)) return false;
+          if (!String(loc || '').toLowerCase().includes(String(unitLocationName || '').toLowerCase())) return false;
         }
         if (wantQuizStatus === 'pass' || wantQuizStatus === 'fail') {
           const uid = p.user?.id ?? p.user_id ?? p.userId;
@@ -590,6 +632,7 @@ module.exports = ({ strapi }) => {
         { course_id: numericCourseId },
       ];
       if (typeof courseId === 'string' && courseId.length > 10) {
+        // @ts-expect-error - documentId valid for Strapi 5 course relation, not in inferred type
         whereVariants.push({ course: { documentId: courseId } });
       }
       for (const where of whereVariants) {
@@ -1090,13 +1133,10 @@ module.exports = ({ strapi }) => {
       ];
       for (const whereVariant of userWhereVariants) {
         try {
-          const where = { ...whereVariant };
-          if (params.dateFrom || params.dateTo) {
-            const dateFilter = {};
-            if (params.dateFrom) dateFilter.$gte = params.dateFrom;
-            if (params.dateTo) dateFilter.$lte = params.dateTo;
-            where.last_updated = dateFilter;
-          }
+          const dateFilter = {};
+          if (params.dateFrom) dateFilter.$gte = params.dateFrom;
+          if (params.dateTo) dateFilter.$lte = params.dateTo;
+          const where = (params.dateFrom || params.dateTo) ? { ...whereVariant, last_updated: dateFilter } : whereVariant;
           const raw = await strapi.db.query('api::module-video-progress.module-video-progress').findMany({
             where,
             limit: 1000,

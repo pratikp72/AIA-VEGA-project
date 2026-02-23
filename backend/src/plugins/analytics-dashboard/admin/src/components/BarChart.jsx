@@ -13,7 +13,7 @@ import { getBarColor } from './chartColors';
  * @param {number} [props.height]
  * @param {string} [props.valueLabel]
  * @param {string} [props.valueUnit]
- * @param {'horizontal'|'vertical'} [props.layout]
+ * @param {'horizontal'|'vertical'} [props.layout] - 'horizontal' = bars extend right (categories on Y); 'vertical' = bars extend up (categories on X)
  * @param {(value: any, name?: string, props?: any) => React.ReactNode} [props.tooltipFormatter]
  */
 export function BarChart({ data = [], title, dataKey = 'value', nameKey = 'name', height = 280, valueLabel = 'Value', valueUnit = '', layout = 'vertical', tooltipFormatter }) {
@@ -30,25 +30,29 @@ export function BarChart({ data = [], title, dataKey = 'value', nameKey = 'name'
     );
   }
 
-  // Remove horizontal scrolling and make bar width dynamic
-  // Use barCategoryGap and minPointSize to keep bars visible
-  const barCategoryGap = layout === 'horizontal' && data.length > 0 ? `${Math.max(10, 60 - data.length * 2)}%` : undefined;
-    const minBarSize = layout === 'horizontal' ? 18 : undefined; // Minimum bar thickness
-    const fixedBarSize = layout === 'horizontal' ? 36 : undefined; // Fixed bar thickness for horizontal layout
+  // Horizontal bars = categories on Y-axis, values on X-axis → Recharts uses layout="vertical" (category axis is vertical)
+  const isHorizontalBars = layout === 'horizontal';
+  const rechartsLayout = isHorizontalBars ? 'vertical' : 'horizontal';
+  const barCategoryGap = isHorizontalBars && data.length > 0 ? `${Math.max(8, 40 - data.length * 2)}%` : undefined;
+  const minBarSize = isHorizontalBars ? 16 : undefined;
+  const fixedBarSize = isHorizontalBars ? 28 : undefined;
+  // Minimal left margin so bars use more of the width; YAxis width only for labels
+  const margin = isHorizontalBars ? { left: 8, right: 16, top: 8, bottom: 28 } : { top: 20, bottom: 20, left: 5, right: 5 };
+  // Height for horizontal chart: fit all bars and labels (roughly 28px per category)
+  const chartHeight = isHorizontalBars && data.length > 6 ? Math.min(500, 120 + data.length * 28) : height;
 
   return (
     <Box padding={4} background="neutral0" hasRadius shadow="tableShadow" borderColor="neutral200" borderWidth="1px" borderStyle="solid">
       <Typography variant="sigma" textColor="neutral600" fontWeight="semiBold" style={{ marginBottom: 12 }}>
         {title}
       </Typography>
-      <ResponsiveContainer width="100%" height={height}>
-        {/* layout prop is a string, no type assertion needed */}
-        <RechartsBar data={data} layout={layout} margin={layout === 'vertical' ? { left: 80, right: 20 } : { top: 20, bottom: 20 }} barCategoryGap={barCategoryGap}>
+      <ResponsiveContainer width="100%" height={chartHeight}>
+        <RechartsBar data={data} layout={rechartsLayout} margin={margin} barCategoryGap={barCategoryGap}>
           <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
-          {layout === 'vertical' ? (
+          {isHorizontalBars ? (
             <>
               <XAxis type="number" label={{ value: valueLabel + (valueUnit ? ` (${valueUnit})` : ''), position: 'insideBottomRight', offset: 0 }} tickFormatter={v => valueUnit ? `${v} ${valueUnit}` : v} />
-              <YAxis type="category" dataKey={nameKey} width={70} tick={{ fontSize: 12 }} />
+              <YAxis type="category" dataKey={nameKey} width={88} tick={{ fontSize: 11 }} interval={0} />
             </>
           ) : (
             <>

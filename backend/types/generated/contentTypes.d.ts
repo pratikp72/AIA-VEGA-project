@@ -454,11 +454,19 @@ export interface ApiActivityLogActivityLog extends Struct.CollectionTypeSchema {
       >;
     activity_type: Schema.Attribute.Enumeration<
       [
-        'News_Reading',
-        'Event_Info',
-        'Townhall_Video',
-        'Townhall_PDF',
-        'Holiday_View',
+        'News',
+        'Event',
+        'Course',
+        'Quiz',
+        'Feedback',
+        'Location',
+        'Routes',
+        'People',
+        'Gallery',
+        'Home',
+        'Company policy',
+        'Form & Templates',
+        'Calendar',
       ]
     > &
       Schema.Attribute.Required;

@@ -75,6 +75,32 @@ module.exports = ({ strapi }) => {
       }
     },
 
+    async activityTrackingKpis(ctx) {
+      try {
+        const params = getQueryParams(ctx);
+        const service = getAnalyticsService();
+        const data = await service.getActivityTrackingKpis(params);
+        ctx.body = data || { totalUser: 0, uniqueUser: 0, timeSpentMin: 0, avgTimeSpentMin: 0 };
+      } catch (error) {
+        strapi.log.error('Analytics activityTrackingKpis error:', error?.message || error);
+        ctx.body = { totalUser: 0, uniqueUser: 0, timeSpentMin: 0, avgTimeSpentMin: 0 };
+        ctx.status = 200;
+      }
+    },
+
+    async activityPagesStats(ctx) {
+      try {
+        const params = getQueryParams(ctx);
+        const service = getAnalyticsService();
+        const data = await service.getActivityPagesStats(params);
+        ctx.body = data || { topPagesByVisit: [], leastUsedPages: [] };
+      } catch (error) {
+        strapi.log.error('Analytics activityPagesStats error:', error?.message || error);
+        ctx.body = { topPagesByVisit: [], leastUsedPages: [] };
+        ctx.status = 200;
+      }
+    },
+
     async activityTrack(ctx) {
       try {
         const user = ctx.state?.user;
@@ -83,7 +109,7 @@ module.exports = ({ strapi }) => {
         }
         const body = ctx.request?.body || {};
         const { activity_type, activity_description, duration_seconds } = body;
-        const validTypes = ['News_Reading', 'Event_Info', 'Townhall_Video', 'Townhall_PDF', 'Holiday_View'];
+        const validTypes = ['News', 'Event', 'Course', 'Quiz', 'Feedback', 'Location', 'Routes', 'People', 'Gallery', 'Home', 'Company policy', 'Form & Templates', 'Calendar'];
         if (!activity_type || !validTypes.includes(activity_type)) {
           return ctx.badRequest(`activity_type is required and must be one of: ${validTypes.join(', ')}`);
         }

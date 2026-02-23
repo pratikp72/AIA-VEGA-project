@@ -1,15 +1,19 @@
 'use strict';
 
 /**
- * Seed data focused on dashboard analytics (filters, charts, date ranges).
- * Re-running with --reset clears analytics data first so entries are not duplicated.
+ * Seed data for analytics dashboards: all enums, all relations, and enough variety
+ * so filters (company, view, date range, unit location, pages, department) and
+ * charts work in both Overall and Learning dashboards.
  *
  * Run:  npm run seed:all     (delete all seeded content, then add fresh data)
  *       npm run seed:clear   (only remove all seeded data)
  *       npm run seed:reseed  (only add seed data; does not delete)
  *
- * Analytics dates are spread from 2024-06-01 to 2025-02-04. In dashboard filters use:
- *   Date From: 2024-06-01   Date To: 2025-02-04   to see all data; narrow the range to test filters.
+ * Analytics dates: 2024-06-01 to 2025-02-04. Use Date From/To in dashboard to see data.
+ *
+ * Prerequisites: At least one user must exist (Content-Manager > Users & Permissions > User)
+ * and courses must be created successfully. Otherwise Feedback Submission, Course Assignments,
+ * Module Video Progress, Quiz Submissions, Quiz Reattempt Requests, and User Progress will have 0 entries.
  */
 
 const fs = require('fs-extra');
@@ -88,9 +92,8 @@ async function createAndPublish(uid, data) {
   return doc;
 }
 
-// Delete in dependency order (children first) so re-seed does not grow counts (e.g. 90 after 6 runs)
+// Delete in dependency order (children first) so re-seed does not grow counts
 async function resetSeedData() {
-  // Do not delete department – seed does not create department entries (analytics focus)
   const uids = [
     'api::feedback-submission.feedback-submission',
     'api::quiz-reattempt-request.quiz-reattempt-request',
@@ -111,6 +114,7 @@ async function resetSeedData() {
     'api::news.news',
     'api::news-category.news-category',
     'api::unit-location.unit-location',
+    'api::department.department',
     'api::city.city',
     'api::company.company',
   ];
@@ -145,13 +149,21 @@ async function run() {
 
   // --- Users: assign company (AIA/Vega) and department for filter/chart variety ---
   const users = await strapi.db.query('plugin::users-permissions.user').findMany({ limit: 20 });
-  const userIds = users.map((u) => u.id ?? u.documentId).filter(Boolean);
+  // Prefer documentId (Strapi 5); fallback to id for relations
+  const userIds = users.map((u) => u.documentId ?? u.document_id ?? u.id).filter(Boolean);
   const connectUser = (idx) => {
     if (userIds.length === 0) return undefined;
     const uid = userIds[idx % userIds.length];
-    return { connect: [{ documentId: uid }] };
+    // Strapi 5 document service expects documentId; plugin may use id for relations
+    const isNumeric = typeof uid === 'number' || (typeof uid === 'string' && /^\d+$/.test(uid));
+    return { connect: [isNumeric ? { id: Number(uid) } : { documentId: uid }] };
   };
   console.log('Using', userIds.length, 'user(s) for analytics (notifications, activity logs, progress).');
+  if (userIds.length === 0) {
+    console.warn(
+      'No users found. Feedback Submission, Course Assignments, Module Video Progress, Quiz Submissions, Quiz Reattempt Requests, and User Progress will have 0 entries. Create at least one user (Users & Permissions > User) then run the seed again.'
+    );
+  }
 
   // --- 1. Company (2: AIA, Vega) - use existing if already present to avoid "unique" publish error ---
   const companyIds = [];
@@ -222,9 +234,47 @@ async function run() {
   }
   console.log('Unit locations:', unitLocationIds.length);
 
-  // --- 4. Department: not created (analytics focus; do not create department entries) ---
+  // --- 4. Department (for dashboard Department filter: 2–3 per company, all relations) ---
+  const departmentIds = [];
+  const departmentNamesByCompany = { 0: [], 1: [] };
+  for (let cIdx = 0; cIdx < companyIds.length; cIdx++) {
+    const names = cIdx === 0 ? ['HR', 'Engineering', 'Operations'] : ['Sales', 'Support', 'Finance'];
+    for (const name of names) {
+      try {
+        const doc = await createAndPublish('api::department.department', {
+          name,
+          company: { connect: [{ documentId: companyIds[cIdx] }] },
+        });
+        if (doc?.documentId) {
+          departmentIds.push(doc.documentId);
+          if (!departmentNamesByCompany[cIdx]) departmentNamesByCompany[cIdx] = [];
+          departmentNamesByCompany[cIdx].push(name);
+        }
+      } catch (e) {
+        console.warn('Department create failed:', e?.message);
+      }
+    }
+  }
+  console.log('Departments:', departmentIds.length);
 
-  // --- 5. News-category (COUNT) ---
+  // Assign some users a department name so dashboard Department filter returns results (user.department is string)
+  // db.query uses integer id; userIds may be documentId (string), so use numeric id for update
+  const userNumericIds = users.map((u) => u.id).filter((id) => id != null && (typeof id === 'number' || (typeof id === 'string' && /^\d+$/.test(String(id)))));
+  const allDeptNames = departmentNamesByCompany[0]?.concat(departmentNamesByCompany[1] || []) || ['HR', 'Engineering', 'Operations', 'Sales', 'Support', 'Finance'];
+  for (let uIdx = 0; uIdx < Math.min(userNumericIds.length, 15); uIdx++) {
+    const uid = userNumericIds[uIdx];
+    if (uid == null) continue;
+    try {
+      await strapi.db.query('plugin::users-permissions.user').update({
+        where: { id: typeof uid === 'number' ? uid : Number(uid) },
+        data: { department: allDeptNames[uIdx % allDeptNames.length] },
+      });
+    } catch (e) {
+      console.warn('User department update skipped:', e?.message);
+    }
+  }
+
+  // --- 5. News-category (COUNT) - all companies ---
   const newsCategoryIds = [];
   for (let i = 0; i < COUNT; i++) {
     const doc = await createAndPublish('api::news-category.news-category', {
@@ -236,34 +286,39 @@ async function run() {
   }
   console.log('News categories:', newsCategoryIds.length);
 
-  // --- 7. News (COUNT) - description richtext, cover_image required, publish_date future ---
+  // --- 7. News (COUNT) - required: title, description, cover_image, active, visible_on_homepage; publish_date future ---
   const futureDate = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
-  for (let i = 0; i < COUNT; i++) {
-    const entry = {
-      title: `News Title ${i + 1}`,
-      description: `<p>News description for entry ${i + 1}.</p>`,
-      active: true,
-      visible_on_homepage: i % 3 === 0,
-      news_category: newsCategoryIds[i]
-        ? { connect: [{ documentId: newsCategoryIds[i] }] }
-        : undefined,
-      company: connectCompany(i),
-      publish_date: futureDate,
-    };
-    if (imageId) entry.cover_image = { connect: [{ id: imageId }] };
-    try {
-      await createAndPublish('api::news.news', entry);
-    } catch (e) {
-      console.warn('News create failed:', e?.message);
+  let newsCount = 0;
+  if (imageId) {
+    for (let i = 0; i < COUNT; i++) {
+      try {
+        await createAndPublish('api::news.news', {
+          title: `News Title ${i + 1}`,
+          description: `<p>News description for entry ${i + 1}.</p>`,
+          cover_image: { connect: [{ id: imageId }] },
+          active: true,
+          visible_on_homepage: i % 3 === 0,
+          news_category: newsCategoryIds[i] ? { connect: [{ documentId: newsCategoryIds[i] }] } : undefined,
+          company: connectCompany(i),
+          publish_date: futureDate,
+        });
+        newsCount++;
+      } catch (e) {
+        console.warn('News create failed:', e?.message);
+      }
     }
+  } else {
+    console.warn('News skipped: no image for required cover_image.');
   }
-  console.log('News:', COUNT);
+  console.log('News:', newsCount);
 
-  // --- 8. Event (COUNT) ---
+  // --- 8. Event (COUNT) - all enums: event_type (Training session, Conference, Workshop), event_created_for (All, department) ---
+  const eventTypes = ['Training session', 'Conference', 'Workshop'];
   const start = new Date();
   const end = new Date(Date.now() + 86400000 * 2);
   for (let i = 0; i < COUNT; i++) {
-    await createAndPublish('api::event.event', {
+    const useDept = i % 5 === 4 && departmentIds.length > 0;
+    const entry = {
       title: `Event ${i + 1}`,
       description: `<p>Event description ${i + 1}.</p>`,
       start_date: start.toISOString(),
@@ -272,24 +327,39 @@ async function run() {
       active: true,
       visible_on_homepage: i % 2 === 0,
       company: connectCompany(i),
-      event_created_for: 'All',
-      event_type: ['Training session', 'Conference', 'Workshop'][i % 3],
-    });
+      event_created_for: useDept ? 'department' : 'All',
+      event_type: eventTypes[i % eventTypes.length],
+    };
+    if (useDept) entry.department = { connect: [{ documentId: departmentIds[i % departmentIds.length] }] };
+    await createAndPublish('api::event.event', entry);
   }
   console.log('Events:', COUNT);
 
-  // --- 9. Holiday (COUNT) ---
-  for (let i = 0; i < COUNT; i++) {
-    const d = new Date(Date.now() + 86400000 * (i + 10));
-    await createAndPublish('api::holiday.holiday', {
-      title: `Holiday ${i + 1}`,
-      date: d.toISOString().slice(0, 10),
+  // --- 9. Holiday (COUNT) - all enums: holiday_for (All, Unit_location, City, Department) with relations ---
+  const holidayForOptions = ['All', 'Unit_location', 'City', 'Department'];
+  for (let i = 0; i < Math.max(COUNT, holidayForOptions.length * 2); i++) {
+    const holidayFor = holidayForOptions[i % holidayForOptions.length];
+    const entry = {
+      title: `Holiday ${i + 1} (${holidayFor})`,
+      date: new Date(Date.now() + 86400000 * (i + 10)).toISOString().slice(0, 10),
       active: true,
-      holiday_for: 'All',
+      holiday_for: holidayFor,
       companies: connectCompany(i),
-    });
+    };
+    if (holidayFor === 'Unit_location' && unitLocationIds.length > 0) {
+      entry.unit_location = { connect: [{ documentId: unitLocationIds[i % unitLocationIds.length] }] };
+    } else if (holidayFor === 'City' && cityIds.length > 0) {
+      entry.city = { connect: [{ documentId: cityIds[i % cityIds.length] }] };
+    } else if (holidayFor === 'Department' && departmentIds.length > 0) {
+      entry.departments = { connect: [{ documentId: departmentIds[i % departmentIds.length] }] };
+    }
+    try {
+      await createAndPublish('api::holiday.holiday', entry);
+    } catch (e) {
+      console.warn('Holiday create failed:', e?.message);
+    }
   }
-  console.log('Holidays:', COUNT);
+  console.log('Holidays: all holiday_for enums + relations');
 
   // --- 10. Company-policy (COUNT) ---
   for (let i = 0; i < COUNT; i++) {
@@ -302,7 +372,11 @@ async function run() {
   }
   console.log('Company policies:', COUNT);
 
-  // --- 11. Important-link (COUNT) - icon may be required by custom field ---
+  // --- 11. Important-link (COUNT) - required: title, url, active, icon (iconhub: iconName + iconData) ---
+  const minimalIcon = {
+    iconName: 'mdi:link',
+    iconData: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="currentColor" d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z"/></svg>',
+  };
   for (let i = 0; i < COUNT; i++) {
     try {
       await createAndPublish('api::important-link.important-link', {
@@ -310,7 +384,7 @@ async function run() {
         url: `https://example.com/link-${i + 1}`,
         active: true,
         company: connectCompany(i),
-        icon: {}, // custom field may require specific shape; adjust if needed
+        icon: minimalIcon,
       });
     } catch (e) {
       console.warn('Important-link create failed (icon?):', e?.message);
@@ -359,7 +433,7 @@ async function run() {
   }
   console.log('Townhalls:', COUNT);
 
-  // --- 14. Course (COUNT) - current schema: modules, quiz, feedback_question components; course_duration_min, min_passing_score, course_language ---
+  // --- 14. Course (COUNT) - required: title, description, active, course_category, modules, course_duration_min, min_passing_score, course_language, orientation_required; feedback = component with language + feedback_question ---
   const courseIds = [];
   const minimalModule = {
     language: 'English',
@@ -383,13 +457,18 @@ async function run() {
     quiz_instruction: [{ name: 'Instructions', description: 'Answer the question.' }],
     quiz_instruction_checklist: [{ discription: 'Complete the quiz.' }],
   };
-  const minimalFeedbackQuestion = {
-    language: 'English',
-    qestion: 'How would you rate this course?',
-    answer_type: 'Rating',
-    mandatory: true,
-  };
   for (let i = 0; i < COUNT; i++) {
+    const minimalFeedbackQuestion = {
+      question_id: `course-feedback-q-${i}`,
+      qestion: 'How would you rate this course?',
+      answer_type: 'Rating',
+      mandatory: true,
+      compulsory: true,
+    };
+    const minimalFeedbackForm = {
+      language: 'English',
+      feedback_question: [minimalFeedbackQuestion],
+    };
     try {
       const doc = await createAndPublish('api::course.course', {
         title: `Course ${i + 1}`,
@@ -399,9 +478,10 @@ async function run() {
         course_duration_min: 30 + (i % 5) * 10,
         min_passing_score: 60,
         course_language: ['English', 'Hindi', 'Gujarati'].slice(0, (i % 3) + 1),
+        orientation_required: i % 2 === 0,
         modules: [{ ...minimalModule, title: `Course ${i + 1} - Module 1` }],
         quiz: [minimalQuiz],
-        feedback_question: [minimalFeedbackQuestion],
+        feedback: [minimalFeedbackForm],
         company: connectCompany(i),
       });
       if (doc?.documentId) courseIds.push(doc.documentId);
@@ -410,8 +490,13 @@ async function run() {
     }
   }
   console.log('Courses:', courseIds.length);
+  if (courseIds.length === 0) {
+    console.warn(
+      'No courses created. Feedback Submission, Course Assignments, Module Video Progress, Quiz Submissions, Quiz Reattempt Requests, and User Progress will have 0 entries. Fix course creation errors above then run the seed again.'
+    );
+  }
 
-  // --- 14b. Feedback-submission (analytics: course + user + answers only; no feedback_question relation) ---
+  // --- 14b. Feedback-submission (requires: users + courses) ---
   let feedbackSubmissionCount = 0;
   const answerTypesSubmission = ['Rating', 'Text', 'AgreeOrDisagree', 'YesOrNo'];
   for (let uIdx = 0; uIdx < userIds.length; uIdx++) {
@@ -457,12 +542,15 @@ async function run() {
   }
   console.log('Quiz reattempt requests (analytics):', quizReattemptCount);
 
-  // --- 16. Gallery-item (COUNT) - media_type Image + image required ---
+  // --- 16. Gallery-item (COUNT) - required: title, media_type, visibility, description, date, location; when media_type Image: image required ---
   for (let i = 0; i < COUNT; i++) {
     const entry = {
       title: `Gallery ${i + 1}`,
       media_type: 'Image',
       visibility: true,
+      description: `Seed gallery item ${i + 1} description.`,
+      date: dateInRange(i % Math.max(1, totalDays)).slice(0, 10),
+      location: `Location ${(i % 5) + 1}`,
       company: connectCompany(i),
     };
     if (imageId) entry.image = { connect: [{ id: imageId }] };
@@ -474,21 +562,26 @@ async function run() {
   }
   console.log('Gallery items:', COUNT);
 
-  // --- 18. Form-template (COUNT) - form_type PDF/URL/Excel/Word, description required ---
+  // --- 18. Form-template (COUNT) - required: title, custom_yes_no, form_type, description, active; PDF/Excel/Word: form_* media + is_downloadable; URL: form_url ---
   for (let i = 0; i < COUNT; i++) {
     const formType = ['PDF', 'URL', 'Excel', 'Word'][i % 4];
     const entry = {
       title: `Form Template ${i + 1}`,
       description: `Form template description ${i + 1}.`,
+      custom_yes_no: i % 2 === 0,
       form_type: formType,
       active: true,
       company: connectCompany(i),
     };
-    if (formType === 'URL') entry.form_url = `https://example.com/form-${i + 1}`;
-    else if (imageId) {
-      if (formType === 'PDF') entry.form_pdf = { connect: [{ id: imageId }] };
-      else if (formType === 'Excel') entry.form_excel = { connect: [{ id: imageId }] };
-      else if (formType === 'Word') entry.form_word = { connect: [{ id: imageId }] };
+    if (formType === 'URL') {
+      entry.form_url = `https://example.com/form-${i + 1}`;
+    } else {
+      entry.is_downloadable = false;
+      if (imageId) {
+        if (formType === 'PDF') entry.form_pdf = { connect: [{ id: imageId }] };
+        else if (formType === 'Excel') entry.form_excel = { connect: [{ id: imageId }] };
+        else if (formType === 'Word') entry.form_word = { connect: [{ id: imageId }] };
+      }
     }
     try {
       await createAndPublish('api::form-template.form-template', entry);
@@ -498,24 +591,46 @@ async function run() {
   }
   console.log('Form templates:', COUNT);
 
-  // --- 19. Activity-log (analytics: activity_duration required; no draftAndPublish) ---
-  const actTypes = ['News_Reading', 'Event_Info', 'Townhall_Video', 'Townhall_PDF', 'Holiday_View'];
+  // --- 19. Activity-log: all enums (every page type) + all relations (both companies) so dashboard filters/charts work ---
+  const activityPageTypes = ['News', 'Event', 'Course', 'Quiz', 'Feedback', 'Location', 'Routes', 'People', 'Gallery', 'Home', 'Company policy', 'Form & Templates', 'Calendar'];
+  /** @typedef {'News'|'Event'|'Course'|'Quiz'|'Feedback'|'Location'|'Routes'|'People'|'Gallery'|'Home'|'Company policy'|'Form & Templates'|'Calendar'} ActivityPageType */
   let activityLogCount = 0;
-  for (let i = 0; i < COUNT * 2; i++) {
+  // Guarantee at least one log per (activity_type, company) so Pages + Company filters always have data
+  if (userIds.length > 0) {
+    for (let tIdx = 0; tIdx < activityPageTypes.length; tIdx++) {
+      for (let cIdx = 0; cIdx < companyIds.length; cIdx++) {
+        try {
+          const pageType = /** @type {ActivityPageType} */ (activityPageTypes[tIdx]);
+          await strapi.documents('api::activity-log.activity-log').create({
+            data: {
+              user: userIds[(tIdx + cIdx) % userIds.length],
+              company: { connect: [{ documentId: companyIds[cIdx] }] },
+              activity_type: pageType,
+              activity_description: `Seed ${pageType} activity (company ${cIdx + 1})`,
+              activity_duration: Math.max(1, (tIdx % 5) + 1),
+              timestamp: dateInRange((tIdx * 7 + cIdx) % Math.max(1, totalDays)),
+            },
+          });
+          activityLogCount++;
+        } catch (e) {
+          console.warn('Activity-log create failed:', e?.message);
+        }
+      }
+    }
+  }
+  // Extra volume across date range for charts
+  for (let i = 0; i < COUNT * 3; i++) {
     if (userIds.length === 0) break;
     const dayOffset = (i * 11) % Math.max(1, totalDays);
+    const activityType = /** @type {ActivityPageType} */ (activityPageTypes[i % activityPageTypes.length]);
     try {
-      /**
-       * @type {'News_Reading' | 'Event_Info' | 'Townhall_Video' | 'Townhall_PDF' | 'Holiday_View'}
-       */
-      const activityType = ['News_Reading', 'Event_Info', 'Townhall_Video', 'Townhall_PDF', 'Holiday_View'][i % 5];
       await strapi.documents('api::activity-log.activity-log').create({
         data: {
           user: userIds[i % userIds.length],
           company: connectCompany(i),
           activity_type: activityType,
           activity_description: `Activity ${i + 1} (${activityType})`,
-          activity_duration: 1,
+          activity_duration: Math.max(1, (i % 5) + 1),
           timestamp: dateInRange(dayOffset),
         },
       });

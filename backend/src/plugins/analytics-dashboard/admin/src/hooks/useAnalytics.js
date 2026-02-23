@@ -61,6 +61,8 @@ export function useAnalytics() {
     fetchCourseModules: (courseId) => fetchApi('/api/analytics/course-modules', { courseId }),
     fetchActivityTimeByTypeAndDay: (params) => fetchApi('/api/analytics/activity/time-by-type-and-day', params),
     fetchActivityLog: (params) => fetchApi('/api/analytics/activity/log', params),
+    fetchActivityTrackingKpis: (params) => fetchApi('/api/analytics/activity/kpis', params),
+    fetchActivityPagesStats: (params) => fetchApi('/api/analytics/activity/pages-stats', params),
   };
 }
 

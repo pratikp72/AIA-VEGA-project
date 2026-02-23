@@ -152,6 +152,24 @@ module.exports = {
         },
       },
       {
+        method: 'GET',
+        path: '/api/analytics/activity/kpis',
+        handler: analytics.activityTrackingKpis,
+        config: {
+          auth: false,
+          policies: [],
+        },
+      },
+      {
+        method: 'GET',
+        path: '/api/analytics/activity/pages-stats',
+        handler: analytics.activityPagesStats,
+        config: {
+          auth: false,
+          policies: [],
+        },
+      },
+      {
         method: 'POST',
         path: '/api/analytics/activity/track',
         handler: analytics.activityTrack,
