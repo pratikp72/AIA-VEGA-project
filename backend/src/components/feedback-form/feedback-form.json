@@ -18,6 +18,13 @@
         "English",
         "Gujarati"
       ]
+    },
+    "compulsory": {
+      "type": "customField",
+      "customField": "global::yes-no-toggle",
+      "options": {
+        "required": true
+      }
     }
   },
   "config": {}

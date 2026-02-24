@@ -28,13 +28,6 @@
       "type": "boolean",
       "required": true,
       "default": true
-    },
-    "compulsory": {
-      "type": "customField",
-      "customField": "global::yes-no-toggle",
-      "options": {
-        "required": true
-      }
     }
   },
   "config": {}

@@ -14,7 +14,6 @@
     "progress_status": {
       "type": "enumeration",
       "required": true,
-      "description": "Not started, In progress, Completed, or Failed",
       "enum": [
         "Not_started",
         "In_progress",
@@ -39,14 +38,12 @@
     },
     "last_accessed_at": {
       "type": "datetime",
-      "required": true,
-      "description": "Last time user opened this course"
+      "required": true
     },
     "time_spent_minutes": {
       "type": "integer",
       "required": true,
-      "default": 0,
-      "description": "Total time spent on course (minutes)"
+      "default": 0
     },
     "certificate_issued": {
       "type": "boolean",
@@ -65,6 +62,21 @@
       "type": "relation",
       "relation": "manyToOne",
       "target": "plugin::users-permissions.user"
+    },
+    "selected_language": {
+      "type": "string"
+    },
+    "quiz_submission": {
+      "type": "relation",
+      "relation": "oneToOne",
+      "target": "api::quiz-submission.quiz-submission",
+      "mappedBy": "user_progress"
+    },
+    "feedback_submission": {
+      "type": "relation",
+      "relation": "oneToOne",
+      "target": "api::feedback-submission.feedback-submission",
+      "mappedBy": "user_progress"
     }
   }
 }
