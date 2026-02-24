@@ -2,11 +2,14 @@ import React from 'react';
 import { Box, Typography, Table, Thead, Tbody, Tr, Th, Td, Button, Flex } from '@strapi/design-system';
 import * as XLSX from 'xlsx';
 
-export function DataTable({ data = [], columns = [], title, pagination = null, sortBy = null, sortOrder = 'asc', onSortChange = null, fontSize, exportFileName = null }) {
+const DEFAULT_FONT_SIZE = '16px';
+
+export function DataTable({ data = [], columns = [], title, pagination = null, sortBy = null, sortOrder = 'asc', onSortChange = null, fontSize = DEFAULT_FONT_SIZE, exportFileName = null, emptyMessage = 'No data available' }) {
   const handleExportToExcel = () => {
     if (!data || data.length === 0) return;
 
     // Prepare data for Excel export
+    const exportLabel = (col) => col.exportLabel ?? col.label;
     const exportData = data.map((row) => {
       const exportRow = {};
       columns.forEach((col) => {
@@ -21,7 +24,7 @@ export function DataTable({ data = [], columns = [], title, pagination = null, s
             value = rendered;
           }
         }
-        exportRow[col.label] = value ?? '—';
+        exportRow[exportLabel(col)] = value ?? '—';
       });
       return exportRow;
     });
@@ -33,9 +36,10 @@ export function DataTable({ data = [], columns = [], title, pagination = null, s
     // Auto-size columns
     const maxWidth = 50;
     const wscols = columns.map((col) => {
+      const lbl = exportLabel(col);
       const maxLen = Math.max(
-        col.label.length,
-        ...exportData.map((row) => String(row[col.label] || '').length)
+        lbl.length,
+        ...exportData.map((row) => String(row[lbl] || '').length)
       );
       return { wch: Math.min(maxLen + 2, maxWidth) };
     });
@@ -59,7 +63,7 @@ export function DataTable({ data = [], columns = [], title, pagination = null, s
           </Typography>
         )}
         <Typography variant="pi" textColor="neutral500">
-          No data available
+          {emptyMessage}
         </Typography>
       </Box>
     );
@@ -79,7 +83,7 @@ export function DataTable({ data = [], columns = [], title, pagination = null, s
               {title}
             </Typography>
           )}
-          {exportFileName && (
+          {data?.length > 0 && (
             <Button
               variant="secondary"
               size="S"
@@ -136,8 +140,8 @@ export function DataTable({ data = [], columns = [], title, pagination = null, s
           </Flex>
         )}
       </Flex>
-      <Box style={fontSize ? { fontSize } : undefined}>
-        <Table colCount={columns.length} rowCount={data.length}>
+      <Box style={{ fontSize, overflowX: 'auto' }}>
+        <Table colCount={columns.length} rowCount={data.length} style={{ tableLayout: 'auto', width: 'fit-content', minWidth: '100%' }}>
           <Thead>
             <Tr>
               {columns.map((col) => {
@@ -154,6 +158,7 @@ export function DataTable({ data = [], columns = [], title, pagination = null, s
                     ? 'Sorted ascending (click to sort descending)'
                     : 'Sorted descending (click to sort ascending)'
                   : 'Click to sort by this column';
+                const headerContent = col.header != null ? col.header : <Typography variant="sigma" textColor="neutral600">{col.label}</Typography>;
                 return (
                   <Th key={col.key}>
                     <Flex
@@ -163,10 +168,10 @@ export function DataTable({ data = [], columns = [], title, pagination = null, s
                       onClick={handleSort}
                       title={isSortable ? sortLabel : undefined}
                     >
-                      <Typography variant="sigma" textColor="neutral600">{col.label}</Typography>
+                      {headerContent}
                       {isSortable && (
                         <span
-                          style={{ fontSize: 11, color: isActive ? '#4945ff' : '#666' }}
+                          style={{ fontSize: 11, color: isActive ? '#2563eb' : '#3b82f6' }}
                           title={sortLabel}
                         >
                           {isActive ? (sortOrder === 'asc' ? ' ▲' : ' ▼') : ' ↕'}

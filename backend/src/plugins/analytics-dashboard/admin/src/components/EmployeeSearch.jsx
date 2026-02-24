@@ -101,11 +101,8 @@ export function EmployeeSearch({ value, onChange, onEmployeeFound, company }) {
   return (
     <Box style={{ minWidth: 260 }}>
       <Typography variant="pi" textColor="neutral600" style={{ marginBottom: 4 }}>
-        {company && company.toLowerCase() === 'aia'
-          ? 'Search AIA Employee'
-          : company && company.toLowerCase() === 'vega'
-          ? 'Search VEGA Employee'
-          : 'Search Employee'}
+       Search Employee
+       
       </Typography>
       <Flex gap={2} alignItems="stretch">
         <input

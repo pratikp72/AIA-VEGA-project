@@ -34,6 +34,8 @@ export default function LearningAnalyticsPage() {
   const [courseProgressPageSize, setCourseProgressPageSize] = useState(10);
   const [moduleVideoPage, setModuleVideoPage] = useState(1);
   const [moduleVideoPageSize, setModuleVideoPageSize] = useState(10);
+  const [moduleDetailPage, setModuleDetailPage] = useState(1);
+  const [moduleDetailPageSize, setModuleDetailPageSize] = useState(10);
   const [selectedCourseForModules, setSelectedCourseForModules] = useState('');
   const [filterCourse, setFilterCourse] = useState('');
   const [courses, setCourses] = useState([]);
@@ -48,29 +50,56 @@ export default function LearningAnalyticsPage() {
   const coursesFetchKeyRef = useRef('');
   const coursesFetchInFlightRef = useRef(false);
   const departmentsFetchCompanyRef = useRef(null);
+  // Personal view: full list of enrolled courses so course dropdown shows all even when one course is selected
+  const [personalEnrolledCourses, setPersonalEnrolledCourses] = useState([]);
 
   const { fetchLearningGlobal, fetchLearningPersonal, fetchLearningEmployeeTable, fetchDepartments, fetchUnitLocations, fetchCoursesByDepartment, fetchCourseModules } = useAnalytics();
 
   const moduleOptions = React.useMemo(() => {
-    return (courseModules || []).map((m) => ({ value: m.title, label: m.title }));
+    return (courseModules || []).map((m) => ({
+      value: String(m.index ?? 0),
+      label: m.title ?? `Module ${(m.index ?? 0) + 1}`,
+      index: m.index ?? 0,
+    }));
   }, [courseModules]);
 
-  // Personal view: course dropdown shows only courses the searched user is enrolled in (from data.courseProgress)
-  const personalCourseOptions = React.useMemo(() => {
-    if (viewMode !== 'personal') return null;
-    if (!Array.isArray(data?.courseProgress)) return null;
-    const seen = new Set();
-    const list = [];
-    for (const c of data.courseProgress) {
+  // Clear enrolled courses list when employee or view changes so we don't show previous employee's courses
+  useEffect(() => {
+    if (viewMode !== 'personal' || !employeeId) setPersonalEnrolledCourses([]);
+  }, [viewMode, employeeId]);
+
+  // Merge courseProgress into enrolled list whenever we get data (so dropdown always has full list even when one course is selected)
+  useEffect(() => {
+    if (viewMode !== 'personal' || !employeeId) return;
+    const fromData = Array.isArray(data?.courseProgress) ? data.courseProgress : [];
+    if (fromData.length === 0) return;
+    const byKey = new Map();
+    fromData.forEach((c) => {
       const id = c.courseId ?? c.course?.id ?? c.course?.documentId;
       const title = c.courseTitle ?? c.course?.title ?? `Course ${id}`;
       const key = String(id ?? title);
-      if (seen.has(key)) continue;
-      seen.add(key);
-      list.push({ id, title });
+      if (key) byKey.set(key, { id, title });
+    });
+    setPersonalEnrolledCourses((prev) => {
+      const next = new Map(prev.map((c) => [String(c.id), c]));
+      byKey.forEach((v, k) => next.set(k, { ...next.get(k), ...v }));
+      return Array.from(next.values());
+    });
+  }, [viewMode, employeeId, data?.courseProgress]);
+
+  // Personal view: course dropdown shows all enrolled courses (from merged list)
+  const personalCourseOptions = React.useMemo(() => {
+    if (viewMode !== 'personal') return null;
+    const fromData = Array.isArray(data?.courseProgress) ? data.courseProgress : [];
+    const list = personalEnrolledCourses.length > 0 ? [...personalEnrolledCourses] : fromData.map((c) => ({
+      id: c.courseId ?? c.course?.id ?? c.course?.documentId,
+      title: c.courseTitle ?? c.course?.title ?? `Course ${c.courseId ?? c.course?.id ?? ''}`,
+    })).filter((c, i, a) => a.findIndex((x) => String(x.id) === String(c.id)) === i);
+    if (filterCourse && list.length > 0 && !list.some((c) => String(c.id) === String(filterCourse))) {
+      list.push({ id: filterCourse, title: `Course (${filterCourse})` });
     }
-    return list;
-  }, [viewMode, data?.courseProgress]);
+    return list.length ? list : null;
+  }, [viewMode, data?.courseProgress, filterCourse, personalEnrolledCourses]);
 
   // Fetch all courses (for dropdown when no department/company filter). Called only from one place.
   const fetchAllCourses = useCallback(async () => {
@@ -93,11 +122,17 @@ export default function LearningAnalyticsPage() {
       setFilterModule('');
       return;
     }
+    setFilterModule(''); // Reset module when course changes
     fetchCourseModules(filterCourse)
       .then((list) => setCourseModules(Array.isArray(list) ? list : []))
       .catch(() => setCourseModules([]));
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only when filterCourse changes
   }, [filterCourse]);
+
+  // Clear course filter when view mode, company, or department change (course list changes)
+  useEffect(() => {
+    setFilterCourse('');
+  }, [viewMode, company, department]);
 
   // Single effect: load courses when viewMode, company, or department change. Skip only if same key (avoid refetch loop).
   useEffect(() => {
@@ -111,7 +146,6 @@ export default function LearningAnalyticsPage() {
     };
 
     if (viewMode === 'global') {
-      setFilterCourse('');
       if (department) {
         fetchCoursesByDepartment(department, company || '').then(setCourses).catch(() => setCourses([])).finally(done);
       } else if (company) {
@@ -202,10 +236,21 @@ export default function LearningAnalyticsPage() {
         params.courseId = filterCourse;
         if (filterQuizStatus) params.quizStatus = filterQuizStatus;
         if (filterFeedbackGiven) params.feedbackGiven = filterFeedbackGiven;
-        if (filterModule) params.moduleTitle = filterModule;
+        if (filterModule !== '' && filterModule != null) {
+          const idx = Number(filterModule);
+          if (!Number.isNaN(idx) && idx >= 0) params.moduleIndex = idx;
+        }
       }
       if (filterCourseCategory) params.courseCategory = filterCourseCategory;
       if (unitLocation) params.unitLocation = unitLocation;
+    }
+    if (viewMode === 'personal' && filterCourse) {
+      params.courseId = filterCourse;
+      if (filterModule !== '' && filterModule != null) {
+        // filterModule is now the module index (string) from dropdown value
+        const idx = Number(filterModule);
+        if (!Number.isNaN(idx) && idx >= 0) params.moduleIndex = idx;
+      }
     }
     if (company) params.company = company;
     if (filterStatus) params.status = filterStatus;
@@ -236,11 +281,15 @@ export default function LearningAnalyticsPage() {
       .then(setData)
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
-  }, [viewMode, employeeId, dateFrom, dateTo, department, company, searchDebounced, sortOrder, page, pageSize, filterCourse, filterModule, filterStatus, filterTimeMin, filterTimeMax, filterCourseCategory, unitLocation, filterQuizStatus, filterFeedbackGiven]);
+  }, [viewMode, employeeId, dateFrom, dateTo, department, company, searchDebounced, sortOrder, page, pageSize, filterCourse, filterModule, filterStatus, filterTimeMin, filterTimeMax, filterCourseCategory, unitLocation, filterQuizStatus, filterFeedbackGiven, courseModules]);
 
   useEffect(() => {
     if (viewMode === 'table') setPage(1);
   }, [viewMode, searchDebounced, company]);
+
+  useEffect(() => {
+    if (viewMode === 'global') setModuleDetailPage(1);
+  }, [viewMode, filterCourse]);
 
   useEffect(() => {
     if (viewMode === 'personal' && employeeId) {
@@ -362,13 +411,20 @@ export default function LearningAnalyticsPage() {
                   quiz={quiz}
                   filterCourse={filterCourse}
                   filterModule={filterModule}
+                  courseModules={courseModules}
+                  moduleDetailPage={moduleDetailPage}
+                  moduleDetailPageSize={moduleDetailPageSize}
+                  setModuleDetailPage={setModuleDetailPage}
+                  setModuleDetailPageSize={setModuleDetailPageSize}
                 />
               )}
               {viewMode === 'personal' && (
                 <LearningPersonalView
                   data={data}
                   employeeDetail={employeeDetail}
+                  filterCourse={filterCourse}
                   filterModule={filterModule}
+                  courseModules={courseModules}
                   kpis={kpis}
                   quiz={quiz}
                   courseProgressPage={courseProgressPage}

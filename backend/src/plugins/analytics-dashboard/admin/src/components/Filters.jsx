@@ -27,6 +27,8 @@ export function Filters({
   showActivityTracking = false,
   activityType = '',
   onActivityTypeChange = null,
+  activityTrackingEmployeeId = null,
+  hideViewFilter = false,
   search,
   onSearchChange,
   filterCourse,
@@ -51,11 +53,16 @@ export function Filters({
 }) {
   const activityTypeOptions = [
     { value: '', label: 'All Pages' },
-    { value: 'News_Reading', label: 'News Reading' },
-    { value: 'Event_Info', label: 'Event Info' },
-    { value: 'Townhall_Video', label: 'Townhall (Video)' },
-    { value: 'Townhall_PDF', label: 'Townhall PDF View' },
-    { value: 'Holiday_View', label: 'Holiday View' },
+    { value: 'News', label: 'News' },
+    { value: 'Event', label: 'Event' },
+    { value: 'Location', label: 'Location' },
+    { value: 'Routes', label: 'Routes' },
+    { value: 'People', label: 'People' },
+    { value: 'Gallery', label: 'Gallery' },
+    { value: 'Home', label: 'Home' },
+    { value: 'Company policy', label: 'Company policy' },
+    { value: 'Form & Templates', label: 'Form & Templates' },
+    { value: 'Calendar', label: 'Calendar' },
   ];
   const companies = [
     { value: '', label: 'All Companies' },
@@ -101,23 +108,26 @@ export function Filters({
             ))}
           </select>
         </Box>
-        {/* 2. View */}
-        <Box style={{ minWidth: 140 }}>
-          <Typography variant="pi" textColor="neutral600" style={{ marginBottom: 4 }}>
-            View
-          </Typography>
-          <SingleSelect value={viewMode} onChange={onViewModeChange}>
-            {showActivityTracking && (
-              <SingleSelectOption value="activityTracking">Activity Tracking</SingleSelectOption>
-            )}
-            <SingleSelectOption value="personal">Personal</SingleSelectOption>
-            <SingleSelectOption value="global">Course</SingleSelectOption>
-            {showEmployeeTable && (
-              <SingleSelectOption value="table">Employee Table</SingleSelectOption>
-            )}
-          </SingleSelect>
-        </Box>
-        {showEmployeeSelector && viewMode === 'personal' && children}
+        {!hideViewFilter && (
+          <Box style={{ minWidth: 140 }}>
+            <Typography variant="pi" textColor="neutral600" style={{ marginBottom: 4 }}>
+              View
+            </Typography>
+            <SingleSelect value={viewMode} onChange={onViewModeChange}>
+              {showActivityTracking && (
+                <SingleSelectOption value="activityTracking">Activity Tracking</SingleSelectOption>
+              )}
+              <SingleSelectOption value="global">Course</SingleSelectOption>
+              {showEmployeeTable && (
+                <>
+                  <SingleSelectOption value="personal">Personal</SingleSelectOption>
+                  <SingleSelectOption value="table">Employee Table</SingleSelectOption>
+                </>
+              )}
+            </SingleSelect>
+          </Box>
+        )}
+        {showEmployeeSelector && (viewMode === 'activityTracking' || viewMode === 'personal') && children}
         {/* Course view (global): 1.Company already above, 2.Date range, 3.Department, 4.Course, 5.Course type, 6.Location, 7.Quiz status, 8.Feedback given */}
         {viewMode === 'global' && (
           <>
@@ -131,7 +141,7 @@ export function Filters({
                   if (!start && !end) {
                     onDateFromChange(null);
                     onDateToChange(null);
-                  } else if (start && end && start.getTime() !== end.getTime()) {
+                  } else if (start && end) {
                     onDateFromChange(start ? start.toISOString().slice(0, 10) : null);
                     onDateToChange(end ? end.toISOString().slice(0, 10) : null);
                   }
@@ -170,8 +180,13 @@ export function Filters({
               <select
                 value={filterCourse || ''}
                 onChange={(e) => {
-                  setFilterCourse(e.target.value);
+                  const v = e.target.value;
+                  setFilterCourse(v);
                   if (setFilterModule) setFilterModule('');
+                  if (!v) {
+                    if (setFilterQuizStatus) setFilterQuizStatus('');
+                    if (setFilterFeedbackGiven) setFilterFeedbackGiven('');
+                  }
                 }}
                 style={{
                   padding: '8px 12px',
@@ -258,46 +273,50 @@ export function Filters({
                 ))}
               </select>
             </Box>
-            <Box style={{ minWidth: 140 }}>
-              <Typography variant="pi" textColor="neutral600" style={{ marginBottom: 4 }}>
-                Quiz Status
-              </Typography>
-              <select
-                value={filterQuizStatus || ''}
-                onChange={(e) => setFilterQuizStatus?.(e.target.value || '')}
-                style={{
-                  padding: '8px 12px',
-                  border: '1px solid #dcdce4',
-                  borderRadius: '4px',
-                  fontSize: '14px',
-                  minWidth: '100%',
-                }}
-              >
-                <option value="">All</option>
-                <option value="pass">Pass</option>
-                <option value="fail">Fail</option>
-              </select>
-            </Box>
-            <Box style={{ minWidth: 140 }}>
-              <Typography variant="pi" textColor="neutral600" style={{ marginBottom: 4 }}>
-                Feedback Given
-              </Typography>
-              <select
-                value={filterFeedbackGiven || ''}
-                onChange={(e) => setFilterFeedbackGiven?.(e.target.value || '')}
-                style={{
-                  padding: '8px 12px',
-                  border: '1px solid #dcdce4',
-                  borderRadius: '4px',
-                  fontSize: '14px',
-                  minWidth: '100%',
-                }}
-              >
-                <option value="">All</option>
-                <option value="yes">Yes</option>
-                <option value="no">No</option>
-              </select>
-            </Box>
+            {filterCourse && (
+              <>
+                <Box style={{ minWidth: 140 }}>
+                  <Typography variant="pi" textColor="neutral600" style={{ marginBottom: 4 }}>
+                    Quiz Status
+                  </Typography>
+                  <select
+                    value={filterQuizStatus || ''}
+                    onChange={(e) => setFilterQuizStatus?.(e.target.value || '')}
+                    style={{
+                      padding: '8px 12px',
+                      border: '1px solid #dcdce4',
+                      borderRadius: '4px',
+                      fontSize: '14px',
+                      minWidth: '100%',
+                    }}
+                  >
+                    <option value="">All</option>
+                    <option value="pass">Pass</option>
+                    <option value="fail">Fail</option>
+                  </select>
+                </Box>
+                <Box style={{ minWidth: 140 }}>
+                  <Typography variant="pi" textColor="neutral600" style={{ marginBottom: 4 }}>
+                    Feedback Given
+                  </Typography>
+                  <select
+                    value={filterFeedbackGiven || ''}
+                    onChange={(e) => setFilterFeedbackGiven?.(e.target.value || '')}
+                    style={{
+                      padding: '8px 12px',
+                      border: '1px solid #dcdce4',
+                      borderRadius: '4px',
+                      fontSize: '14px',
+                      minWidth: '100%',
+                    }}
+                  >
+                    <option value="">All</option>
+                    <option value="yes">Yes</option>
+                    <option value="no">No</option>
+                  </select>
+                </Box>
+              </>
+            )}
           </>
         )}
         {viewMode === 'table' && (
@@ -397,7 +416,7 @@ export function Filters({
                   if (!start && !end) {
                     onDateFromChange(null);
                     onDateToChange(null);
-                  } else if (start && end && start.getTime() !== end.getTime()) {
+                  } else if (start && end) {
                     onDateFromChange(start ? start.toISOString().slice(0, 10) : null);
                     onDateToChange(end ? end.toISOString().slice(0, 10) : null);
                   }
@@ -419,7 +438,7 @@ export function Filters({
                   if (!start && !end) {
                     onDateFromChange(null);
                     onDateToChange(null);
-                  } else if (start && end && start.getTime() !== end.getTime()) {
+                  } else if (start && end) {
                     onDateFromChange(start ? start.toISOString().slice(0, 10) : null);
                     onDateToChange(end ? end.toISOString().slice(0, 10) : null);
                   }
@@ -479,31 +498,101 @@ export function Filters({
             )}
           </>
         )}
+        {/* Activity Tracking: Employee search, Date range, Unit location (when no employee), Pages, Department (when no employee) */}
         {showActivityTracking && viewMode === 'activityTracking' && (
-          <Box style={{ minWidth: 180 }}>
-            <Typography variant="pi" textColor="neutral600" style={{ marginBottom: 4 }}>
-              Pages
-            </Typography>
-            <select
-              value={activityType || ''}
-              onChange={(e) => onActivityTypeChange?.(e.target.value || '')}
-              style={{
-                padding: '8px 12px',
-                border: '1px solid #dcdce4',
-                borderRadius: '4px',
-                fontSize: '14px',
-                minWidth: '100%',
-              }}
-            >
-              {activityTypeOptions.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
-          </Box>
+          <>
+            <Box style={{ display: 'flex', flexDirection: 'column', minWidth: 260 }}>
+              <Typography variant="pi" textColor="neutral600" style={{ marginBottom: 4 }}>
+                Date Range
+              </Typography>
+              <DateRangeInput
+                value={{ start: dateFrom ? new Date(dateFrom) : null, end: dateTo ? new Date(dateTo) : null }}
+                onChange={({ start, end }) => {
+                  if (!start && !end) {
+                    onDateFromChange(null);
+                    onDateToChange(null);
+                  } else if (start && end) {
+                    onDateFromChange(start ? start.toISOString().slice(0, 10) : null);
+                    onDateToChange(end ? end.toISOString().slice(0, 10) : null);
+                  }
+                }}
+              />
+            </Box>
+            {showUnitLocation && !activityTrackingEmployeeId && (
+              <Box style={{ minWidth: 180 }}>
+                <Typography variant="pi" textColor="neutral600" style={{ marginBottom: 4 }}>
+                  Unit Location
+                </Typography>
+                <select
+                  value={unitLocation || ''}
+                  onChange={(e) => onUnitLocationChange?.(e.target.value || '')}
+                  style={{
+                    padding: '8px 12px',
+                    border: '1px solid #dcdce4',
+                    borderRadius: '4px',
+                    fontSize: '14px',
+                    minWidth: '100%',
+                  }}
+                >
+                  <option value="">All Unit Locations</option>
+                  {unitLocations.map((l) => (
+                    <option key={l.id} value={String(l.id)}>
+                      {l.name}
+                    </option>
+                  ))}
+                </select>
+              </Box>
+            )}
+            <Box style={{ minWidth: 180 }}>
+              <Typography variant="pi" textColor="neutral600" style={{ marginBottom: 4 }}>
+                Pages
+              </Typography>
+              <select
+                value={activityType || ''}
+                onChange={(e) => onActivityTypeChange?.(e.target.value || '')}
+                style={{
+                  padding: '8px 12px',
+                  border: '1px solid #dcdce4',
+                  borderRadius: '4px',
+                  fontSize: '14px',
+                  minWidth: '100%',
+                }}
+              >
+                {activityTypeOptions.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </Box>
+            {departments.length > 0 && !activityTrackingEmployeeId && (
+              <Box style={{ minWidth: 180 }}>
+                <Typography variant="pi" textColor="neutral600" style={{ marginBottom: 4 }}>
+                  Department
+                </Typography>
+                <select
+                  value={department || ''}
+                  onChange={(e) => onDepartmentChange(e.target.value || '')}
+                  style={{
+                    padding: '8px 12px',
+                    border: '1px solid #dcdce4',
+                    borderRadius: '4px',
+                    fontSize: '14px',
+                    minWidth: '100%',
+                  }}
+                >
+                  <option value="">All Departments</option>
+                  {departments.map((d) => (
+                    <option key={d.id} value={String(d.id)}>
+                      {d.name}
+                    </option>
+                  ))}
+                </select>
+              </Box>
+            )}
+          </>
         )}
-        {showUnitLocation && viewMode !== 'personal' && viewMode !== 'global' && (
+        {showUnitLocation && viewMode !== 'personal' && viewMode !== 'global' && viewMode !== 'activityTracking' && (
           <Box style={{ minWidth: 180 }}>
             <Typography variant="pi" textColor="neutral600" style={{ marginBottom: 4 }}>
               Unit Location

@@ -454,11 +454,19 @@ export interface ApiActivityLogActivityLog extends Struct.CollectionTypeSchema {
       >;
     activity_type: Schema.Attribute.Enumeration<
       [
-        'News_Reading',
-        'Event_Info',
-        'Townhall_Video',
-        'Townhall_PDF',
-        'Holiday_View',
+        'News',
+        'Event',
+        'Course',
+        'Quiz',
+        'Feedback',
+        'Location',
+        'Routes',
+        'People',
+        'Gallery',
+        'Home',
+        'Company policy',
+        'Form & Templates',
+        'Calendar',
       ]
     > &
       Schema.Attribute.Required;
@@ -828,6 +836,10 @@ export interface ApiFeedbackSubmissionFeedbackSubmission
     updatedAt: Schema.Attribute.DateTime;
     updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
+    user_progress: Schema.Attribute.Relation<
+      'oneToOne',
+      'api::user-progress.user-progress'
+    >;
     users_permissions_user: Schema.Attribute.Relation<
       'manyToOne',
       'plugin::users-permissions.user'
@@ -1037,7 +1049,7 @@ export interface ApiModuleVideoProgressModuleVideoProgress
     module_index: Schema.Attribute.Integer & Schema.Attribute.Required;
     module_title: Schema.Attribute.String;
     publishedAt: Schema.Attribute.DateTime;
-    time_watched_seconds: Schema.Attribute.Integer &
+    time_watched_min: Schema.Attribute.Integer &
       Schema.Attribute.Required &
       Schema.Attribute.DefaultTo<0>;
     updatedAt: Schema.Attribute.DateTime;
@@ -1052,7 +1064,7 @@ export interface ApiModuleVideoProgressModuleVideoProgress
       ['full_watch', 'skipped_to_end', 'in_progress', 'not_started']
     > &
       Schema.Attribute.Required;
-    video_duration_seconds: Schema.Attribute.Integer;
+    video_duration_min: Schema.Attribute.Integer;
   };
 }
 
@@ -1305,6 +1317,10 @@ export interface ApiQuizSubmissionQuizSubmission
     updatedAt: Schema.Attribute.DateTime;
     updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
+    user_progress: Schema.Attribute.Relation<
+      'oneToOne',
+      'api::user-progress.user-progress'
+    >;
   };
 }
 
@@ -1420,6 +1436,10 @@ export interface ApiUserProgressUserProgress
     createdAt: Schema.Attribute.DateTime;
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
+    feedback_submission: Schema.Attribute.Relation<
+      'oneToOne',
+      'api::feedback-submission.feedback-submission'
+    >;
     last_accessed_at: Schema.Attribute.DateTime & Schema.Attribute.Required;
     locale: Schema.Attribute.String & Schema.Attribute.Private;
     localizations: Schema.Attribute.Relation<
@@ -1435,6 +1455,11 @@ export interface ApiUserProgressUserProgress
     > &
       Schema.Attribute.Required;
     publishedAt: Schema.Attribute.DateTime;
+    quiz_submission: Schema.Attribute.Relation<
+      'oneToOne',
+      'api::quiz-submission.quiz-submission'
+    >;
+    selected_language: Schema.Attribute.String;
     started_at: Schema.Attribute.DateTime;
     time_spent_minutes: Schema.Attribute.Integer &
       Schema.Attribute.Required &

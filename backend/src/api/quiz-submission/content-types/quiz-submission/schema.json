@@ -45,6 +45,12 @@
       "type": "relation",
       "relation": "manyToOne",
       "target": "api::course.course"
+    },
+    "user_progress": {
+      "type": "relation",
+      "relation": "oneToOne",
+      "target": "api::user-progress.user-progress",
+      "inversedBy": "quiz_submission"
     }
   }
 }

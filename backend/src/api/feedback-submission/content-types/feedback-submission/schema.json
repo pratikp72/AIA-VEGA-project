@@ -26,6 +26,12 @@
       "component": "feedback-form.answer",
       "repeatable": true,
       "required": true
+    },
+    "user_progress": {
+      "type": "relation",
+      "relation": "oneToOne",
+      "target": "api::user-progress.user-progress",
+      "inversedBy": "feedback_submission"
     }
   }
 }

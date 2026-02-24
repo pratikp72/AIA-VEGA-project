@@ -84,6 +84,9 @@ module.exports = ({ strapi }) => {
         if (!userId) {
           return ctx.badRequest('userId is required for personal analytics');
         }
+        if (params.moduleIndex !== undefined && params.moduleIndex !== null && params.moduleIndex !== '') {
+          params.moduleIndex = Number(params.moduleIndex);
+        }
         const service = getAnalyticsService();
         const data = await service.getLearningPersonal(userId, params) || emptyLearningPersonal();
         try {
@@ -103,6 +106,32 @@ module.exports = ({ strapi }) => {
           const moduleVideoData = await service.getLearningPersonalModuleVideoProgress(userId, params);
           data.moduleVideoKpis = moduleVideoData?.moduleVideoKpis || {};
           data.moduleVideoProgress = moduleVideoData?.moduleVideoProgress || [];
+          // Attach module columns to courseProgress when a course is selected (same as Course view so table shows watched/duration)
+          const courseId = params.courseId && String(params.courseId).trim();
+          if (courseId && Array.isArray(data.courseProgress) && data.courseProgress.length > 0 && Array.isArray(data.moduleVideoProgress) && data.moduleVideoProgress.length > 0) {
+            const modIndexes = [...new Set(data.moduleVideoProgress.map((m) => m.moduleIndex).filter((x) => x != null && !Number.isNaN(x)))].sort((a, b) => a - b);
+            const byCourseMod = new Map();
+            data.moduleVideoProgress.forEach((mv) => {
+              const cid = mv.courseId ?? '';
+              const midx = mv.moduleIndex ?? mv.module_index;
+              if (midx === undefined || midx === null) return;
+              const key = `${String(cid)}::${midx}`;
+              const watched = mv.timeWatchedMinutes ?? 0;
+              const dur = mv.videoDurationMinutes ?? null;
+              const val = dur != null && Number(dur) > 0 ? `${watched}/${dur}` : (watched ? String(watched) : '—');
+              byCourseMod.set(key, val);
+            });
+            data.courseProgress = data.courseProgress.map((row) => {
+              const out = { ...row };
+              const rowCid = row.courseId ?? '';
+              modIndexes.forEach((midx) => {
+                const key1 = `${String(rowCid)}::${midx}`;
+                const key2 = `${courseId}::${midx}`;
+                out[`mod_${midx}`] = byCourseMod.get(key1) ?? byCourseMod.get(key2) ?? '—';
+              });
+              return out;
+            });
+          }
         } catch (_) {
           data.moduleVideoKpis = { watchedFully: 0, skippedToEnd: 0, inProgress: 0, notStarted: 0 };
           data.moduleVideoProgress = [];

@@ -6,18 +6,16 @@ import { Filters } from '../../components/Filters';
 import { EmployeeSearch } from '../../components/EmployeeSearch';
 import { EmployeeDetailCard } from '../../components/EmployeeDetailCard';
 import { OverallActivityTrackingView } from './views/OverallActivityTrackingView';
-import { OverallContentView } from './views/OverallContentView';
 
 export default function OverallAnalyticsPage() {
   const {
-    fetchOverallGlobal,
-    fetchOverallPersonal,
     fetchDepartments,
     fetchUnitLocations,
-    fetchActivityTimeByTypeAndDay,
     fetchActivityLog,
+    fetchActivityTrackingKpis,
+    fetchActivityPagesStats,
   } = useAnalytics();
-  const [viewMode, setViewMode] = useState('activityTracking');
+  const [viewMode] = useState('activityTracking');
   const [dateFrom, setDateFrom] = useState(null);
   const [dateTo, setDateTo] = useState(null);
   const [department, setDepartment] = useState('');
@@ -28,22 +26,36 @@ export default function OverallAnalyticsPage() {
   const [employeeDetail, setEmployeeDetail] = useState(null);
   const [departments, setDepartments] = useState([]);
   const [unitLocations, setUnitLocations] = useState([]);
-  const [data, setData] = useState(null);
-  const [activityChartData, setActivityChartData] = useState([]);
   const [activityLogData, setActivityLogData] = useState({ rows: [], total: 0, page: 1, pageSize: 10 });
+  const [activityKpis, setActivityKpis] = useState({ totalUser: 0, uniqueUser: 0, timeSpentMin: 0, avgTimeSpentMin: 0 });
+  const [activityPagesStats, setActivityPagesStats] = useState({ topPagesByVisit: [], leastUsedPages: [] });
   const [activityLogPage, setActivityLogPage] = useState(1);
   const [activityLogPageSize, setActivityLogPageSize] = useState(10);
+  const [activityLogSortBy, setActivityLogSortBy] = useState('timestamp');
+  const [activityLogSortOrder, setActivityLogSortOrder] = useState('desc');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    fetchDepartments().then(setDepartments).catch(() => setDepartments([]));
-    fetchUnitLocations().then(setUnitLocations).catch(() => setUnitLocations([]));
-  }, []);
+    const companyParam = company || '';
+    fetchDepartments(companyParam).then(setDepartments).catch(() => setDepartments([]));
+    fetchUnitLocations(companyParam).then(setUnitLocations).catch(() => setUnitLocations([]));
+  }, [company]);
+
+  useEffect(() => {
+    setDepartment('');
+    setUnitLocation('');
+  }, [company]);
 
   useEffect(() => {
     if (viewMode === 'activityTracking') setActivityLogPage(1);
-  }, [viewMode, activityType, dateFrom, dateTo, company, department, unitLocation]);
+  }, [viewMode, activityType, dateFrom, dateTo, company, department, unitLocation, employeeId]);
+
+  const handleActivityLogSortChange = (sortBy, sortOrder) => {
+    setActivityLogSortBy(sortBy);
+    setActivityLogSortOrder(sortOrder);
+    setActivityLogPage(1);
+  };
 
   const loadData = useCallback(() => {
     setLoading(true);
@@ -55,44 +67,33 @@ export default function OverallAnalyticsPage() {
     if (department) params.department = department;
     if (unitLocation) params.unitLocation = unitLocation;
     if (activityType) params.activityType = activityType;
+    if (employeeId) params.userId = employeeId;
 
-    if (viewMode === 'activityTracking') {
-      Promise.all([
-        fetchActivityTimeByTypeAndDay(params),
-        fetchActivityLog({ ...params, page: activityLogPage, pageSize: activityLogPageSize }),
-      ])
-        .then(([chartData, logData]) => {
-          setActivityChartData(Array.isArray(chartData) ? chartData : []);
-          setActivityLogData(logData || { rows: [], total: 0, page: 1, pageSize: 10 });
-        })
-        .catch((err) => setError(err.message))
-        .finally(() => setLoading(false));
-      return;
-    }
-
-    const fetcher =
-      viewMode === 'personal' && employeeId
-        ? () => fetchOverallPersonal({ ...params, userId: employeeId })
-        : () => fetchOverallGlobal(params);
-
-    fetcher()
-      .then(setData)
+    Promise.all([
+      fetchActivityLog({
+        ...params,
+        page: activityLogPage,
+        pageSize: activityLogPageSize,
+        sortBy: activityLogSortBy,
+        sortOrder: activityLogSortOrder,
+      }),
+      fetchActivityTrackingKpis(params),
+      fetchActivityPagesStats(params),
+    ])
+      .then(([logData, kpis, pagesStats]) => {
+        setActivityLogData(logData || { rows: [], total: 0, page: 1, pageSize: 10 });
+        setActivityKpis(kpis || { totalUser: 0, uniqueUser: 0, timeSpentMin: 0, avgTimeSpentMin: 0 });
+        setActivityPagesStats(pagesStats || { topPagesByVisit: [], leastUsedPages: [] });
+      })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
-  }, [viewMode, employeeId, dateFrom, dateTo, company, department, unitLocation, activityType, activityLogPage, activityLogPageSize]);
+  }, [employeeId, dateFrom, dateTo, company, department, unitLocation, activityType, activityLogPage, activityLogPageSize, activityLogSortBy, activityLogSortOrder]);
 
   useEffect(() => {
-    if (viewMode === 'global' || viewMode === 'activityTracking' || (viewMode === 'personal' && employeeId)) {
-      loadData();
-    } else {
-      setData(null);
-      setLoading(false);
-    }
-  }, [viewMode, employeeId, dateFrom, dateTo, company, unitLocation, activityType, loadData]);
+    loadData();
+  }, [employeeId, dateFrom, dateTo, company, unitLocation, activityType, department, loadData]);
 
-  const kpis = data?.kpis || {};
-  const isPersonal = viewMode === 'personal';
-  const isActivityTracking = viewMode === 'activityTracking';
+  const isActivityTracking = true;
 
   return (
     <>
@@ -101,18 +102,15 @@ export default function OverallAnalyticsPage() {
         <Layouts.Header
           title="Overall Analytics"
           subtitle={
-            isPersonal
-              ? 'Personal portal engagement'
-              : isActivityTracking
-                ? 'Activity tracking across the portal'
-                : 'Content portal engagement'
+            employeeId
+              ? 'Activity tracking for selected employee'
+              : 'Activity tracking across the portal'
           }
         />
         <Layouts.Content>
           <Box paddingLeft={8} paddingRight={8} paddingTop={6} paddingBottom={8}>
             <Filters
               viewMode={viewMode}
-              onViewModeChange={setViewMode}
               dateFrom={dateFrom}
               dateTo={dateTo}
               onDateFromChange={setDateFrom}
@@ -130,10 +128,12 @@ export default function OverallAnalyticsPage() {
               unitLocations={unitLocations}
               activityType={activityType}
               onActivityTypeChange={setActivityType}
+              activityTrackingEmployeeId={employeeId}
+              hideViewFilter
               search=""
               onSearchChange={() => {}}
             >
-            <EmployeeSearch value={employeeId} onChange={setEmployeeId} onEmployeeFound={setEmployeeDetail} />
+              <EmployeeSearch value={employeeId} onChange={setEmployeeId} onEmployeeFound={setEmployeeDetail} company={company} />
             </Filters>
 
             {loading && (
@@ -148,31 +148,24 @@ export default function OverallAnalyticsPage() {
               </Box>
             )}
 
-            {!loading && isActivityTracking && (
-              <OverallActivityTrackingView
-                activityChartData={activityChartData}
-                activityType={activityType}
-                activityLogData={activityLogData}
-                setActivityLogPage={setActivityLogPage}
-                setActivityLogPageSize={setActivityLogPageSize}
-              />
-            )}
-
-            {!loading && data && !isActivityTracking && (
+            {!loading && (
               <>
-                {isPersonal && employeeDetail && (
-                  <EmployeeDetailCard employee={employeeDetail} />
+                {employeeId && employeeDetail && (
+                  <Box marginBottom={4}>
+                    <EmployeeDetailCard employee={employeeDetail} />
+                  </Box>
                 )}
-                <OverallContentView data={data} />
+                <OverallActivityTrackingView
+                  activityLogData={activityLogData}
+                  activityKpis={activityKpis}
+                  activityPagesStats={activityPagesStats}
+                  setActivityLogPage={setActivityLogPage}
+                  setActivityLogPageSize={setActivityLogPageSize}
+                  activityLogSortBy={activityLogSortBy}
+                  activityLogSortOrder={activityLogSortOrder}
+                  onActivityLogSortChange={handleActivityLogSortChange}
+                />
               </>
-            )}
-
-            {!loading && !data && viewMode === 'personal' && !employeeId && (
-              <Box padding={6} background="neutral100" hasRadius>
-                <Typography textColor="neutral600">
-                  Search for an employee by ID or email to view personal overall analytics.
-                </Typography>
-              </Box>
             )}
           </Box>
         </Layouts.Content>

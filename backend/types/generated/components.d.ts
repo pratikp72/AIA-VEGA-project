@@ -71,6 +71,13 @@ export interface FeedbackFormFeedbackForm extends Struct.ComponentSchema {
     displayName: 'Feedback Form';
   };
   attributes: {
+    compulsory: Schema.Attribute.Boolean &
+      Schema.Attribute.CustomField<
+        'global::yes-no-toggle',
+        {
+          required: true;
+        }
+      >;
     feedback_question: Schema.Attribute.Component<
       'feedback-form.question',
       true
@@ -90,13 +97,6 @@ export interface FeedbackFormQuestion extends Struct.ComponentSchema {
       ['Rating', 'Text', 'AgreeOrDisagree', 'YesNo']
     > &
       Schema.Attribute.Required;
-    compulsory: Schema.Attribute.Boolean &
-      Schema.Attribute.CustomField<
-        'global::yes-no-toggle',
-        {
-          required: true;
-        }
-      >;
     mandatory: Schema.Attribute.Boolean &
       Schema.Attribute.Required &
       Schema.Attribute.DefaultTo<true>;

@@ -25,11 +25,19 @@
       "type": "enumeration",
       "required": true,
       "enum": [
-        "News_Reading",
-        "Event_Info",
-        "Townhall_Video",
-        "Townhall_PDF",
-        "Holiday_View"
+        "News",
+        "Event",
+        "Course",
+        "Quiz",
+        "Feedback",
+        "Location",
+        "Routes",
+        "People",
+        "Gallery",
+        "Home",
+        "Company policy",
+        "Form & Templates",
+        "Calendar"
       ]
     },
     "activity_description": {
