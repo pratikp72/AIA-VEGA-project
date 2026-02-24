@@ -373,6 +373,9 @@ module.exports = ({ strapi }) => {
     return { topPagesByVisit, leastUsedPages };
   };
 
+  /** Allowed sort fields for activity log: activity_type, activity_duration, timestamp. */
+  const ACTIVITY_LOG_SORT_FIELDS = ['activity_type', 'activity_duration', 'timestamp'];
+
   self.getActivityLog = async function (params = {}) {
     const page = Math.max(1, parseInt(params.page, 10) || 1);
     const pageSize = Math.min(50, Math.max(5, parseInt(params.pageSize, 10) || 10));
@@ -380,12 +383,25 @@ module.exports = ({ strapi }) => {
     const where = await self._buildActivityWhere(params);
     if (where === null) return { rows: [], total: 0, page, pageSize };
 
+    const sortByParam = params.sortBy && String(params.sortBy).trim();
+    const sortOrderParam = (params.sortOrder && String(params.sortOrder).toLowerCase()) === 'asc' ? 'asc' : 'desc';
+    const sortField =
+      sortByParam === 'activity'
+        ? 'activity_type'
+        : sortByParam === 'duration'
+          ? 'activity_duration'
+          : sortByParam === 'timestamp' || sortByParam === 'date'
+            ? 'timestamp'
+            : 'timestamp';
+    const orderByField = ACTIVITY_LOG_SORT_FIELDS.includes(sortField) ? sortField : 'timestamp';
+    const orderBy = { [orderByField]: sortOrderParam };
+
     const total = await strapi.db.query('api::activity-log.activity-log').count({ where });
     const logs = await strapi.db.query('api::activity-log.activity-log').findMany({
       where,
       limit: pageSize,
       offset,
-      orderBy: { timestamp: 'desc' },
+      orderBy,
       populate: ['user', 'company'],
     });
     const list = Array.isArray(logs) ? logs : [];

@@ -180,8 +180,13 @@ export function Filters({
               <select
                 value={filterCourse || ''}
                 onChange={(e) => {
-                  setFilterCourse(e.target.value);
+                  const v = e.target.value;
+                  setFilterCourse(v);
                   if (setFilterModule) setFilterModule('');
+                  if (!v) {
+                    if (setFilterQuizStatus) setFilterQuizStatus('');
+                    if (setFilterFeedbackGiven) setFilterFeedbackGiven('');
+                  }
                 }}
                 style={{
                   padding: '8px 12px',
@@ -268,46 +273,50 @@ export function Filters({
                 ))}
               </select>
             </Box>
-            <Box style={{ minWidth: 140 }}>
-              <Typography variant="pi" textColor="neutral600" style={{ marginBottom: 4 }}>
-                Quiz Status
-              </Typography>
-              <select
-                value={filterQuizStatus || ''}
-                onChange={(e) => setFilterQuizStatus?.(e.target.value || '')}
-                style={{
-                  padding: '8px 12px',
-                  border: '1px solid #dcdce4',
-                  borderRadius: '4px',
-                  fontSize: '14px',
-                  minWidth: '100%',
-                }}
-              >
-                <option value="">All</option>
-                <option value="pass">Pass</option>
-                <option value="fail">Fail</option>
-              </select>
-            </Box>
-            <Box style={{ minWidth: 140 }}>
-              <Typography variant="pi" textColor="neutral600" style={{ marginBottom: 4 }}>
-                Feedback Given
-              </Typography>
-              <select
-                value={filterFeedbackGiven || ''}
-                onChange={(e) => setFilterFeedbackGiven?.(e.target.value || '')}
-                style={{
-                  padding: '8px 12px',
-                  border: '1px solid #dcdce4',
-                  borderRadius: '4px',
-                  fontSize: '14px',
-                  minWidth: '100%',
-                }}
-              >
-                <option value="">All</option>
-                <option value="yes">Yes</option>
-                <option value="no">No</option>
-              </select>
-            </Box>
+            {filterCourse && (
+              <>
+                <Box style={{ minWidth: 140 }}>
+                  <Typography variant="pi" textColor="neutral600" style={{ marginBottom: 4 }}>
+                    Quiz Status
+                  </Typography>
+                  <select
+                    value={filterQuizStatus || ''}
+                    onChange={(e) => setFilterQuizStatus?.(e.target.value || '')}
+                    style={{
+                      padding: '8px 12px',
+                      border: '1px solid #dcdce4',
+                      borderRadius: '4px',
+                      fontSize: '14px',
+                      minWidth: '100%',
+                    }}
+                  >
+                    <option value="">All</option>
+                    <option value="pass">Pass</option>
+                    <option value="fail">Fail</option>
+                  </select>
+                </Box>
+                <Box style={{ minWidth: 140 }}>
+                  <Typography variant="pi" textColor="neutral600" style={{ marginBottom: 4 }}>
+                    Feedback Given
+                  </Typography>
+                  <select
+                    value={filterFeedbackGiven || ''}
+                    onChange={(e) => setFilterFeedbackGiven?.(e.target.value || '')}
+                    style={{
+                      padding: '8px 12px',
+                      border: '1px solid #dcdce4',
+                      borderRadius: '4px',
+                      fontSize: '14px',
+                      minWidth: '100%',
+                    }}
+                  >
+                    <option value="">All</option>
+                    <option value="yes">Yes</option>
+                    <option value="no">No</option>
+                  </select>
+                </Box>
+              </>
+            )}
           </>
         )}
         {viewMode === 'table' && (

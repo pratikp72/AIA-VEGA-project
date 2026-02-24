@@ -171,7 +171,7 @@ export function DataTable({ data = [], columns = [], title, pagination = null, s
                       {headerContent}
                       {isSortable && (
                         <span
-                          style={{ fontSize: 11, color: isActive ? '#4945ff' : '#666' }}
+                          style={{ fontSize: 11, color: isActive ? '#2563eb' : '#3b82f6' }}
                           title={sortLabel}
                         >
                           {isActive ? (sortOrder === 'asc' ? ' ▲' : ' ▼') : ' ↕'}

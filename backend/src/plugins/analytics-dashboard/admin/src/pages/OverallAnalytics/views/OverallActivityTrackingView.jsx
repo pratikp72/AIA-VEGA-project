@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Box, Flex, Typography } from '@strapi/design-system';
+import { Box, Flex, Typography, Button } from '@strapi/design-system';
 import { StatCard } from '../../../components/StatCard';
 import { BarChart } from '../../../components/BarChart';
 import { DataTable } from '../../../components/DataTable';
@@ -23,9 +23,13 @@ export function OverallActivityTrackingView({
   activityPagesStats = {},
   setActivityLogPage,
   setActivityLogPageSize,
+  activityLogSortBy = 'timestamp',
+  activityLogSortOrder = 'desc',
+  onActivityLogSortChange,
 }) {
   const [topPagesCount, setTopPagesCount] = useState('5');
   const [leastPagesCount, setLeastPagesCount] = useState('5');
+  const [dataView, setDataView] = useState('table'); // 'table' | 'chart'
 
   const kpis = activityKpis || {};
   const topPagesRaw = activityPagesStats?.topPagesByVisit || [];
@@ -54,12 +58,25 @@ export function OverallActivityTrackingView({
         </Box>
       </Flex>
 
-      <Flex gap={4} marginBottom={6} wrap="wrap">
-        <Box style={{ flex: '1 1 400px', minWidth: 320 }}>
-          <Flex justifyContent="space-between" alignItems="center" marginBottom={2}>
-            <Typography variant="sigma" textColor="neutral600" fontWeight="semiBold">
-              Top Pages by Time
-            </Typography>
+      <Flex marginBottom={4} gap={1} alignItems="center" justifyContent="flex-end">
+        <Typography variant="sigma" textColor="neutral600" fontWeight="semiBold">
+          View:
+        </Typography>
+        <Button variant={dataView === 'table' ? 'default' : 'tertiary'} size="S" onClick={() => setDataView('table')}>
+          Table
+        </Button>
+        <Button variant={dataView === 'chart' ? 'default' : 'tertiary'} size="S" onClick={() => setDataView('chart')}>
+          Chart
+        </Button>
+      </Flex>
+
+      {dataView === 'chart' && (
+        <Flex gap={4} marginBottom={6} wrap="wrap">
+          <Box style={{ flex: '1 1 400px', minWidth: 320 }}>
+            <Flex justifyContent="space-between" alignItems="center" marginBottom={2}>
+              <Typography variant="sigma" textColor="neutral600" fontWeight="semiBold">
+                Top Pages by Time
+              </Typography>
             <select
               value={topPagesCount}
               onChange={(e) => setTopPagesCount(e.target.value)}
@@ -135,33 +152,41 @@ export function OverallActivityTrackingView({
             }}
           />
         </Box>
-      </Flex>
+        </Flex>
+      )}
 
-      <Box>
-        <DataTable
-          data={activityLogData.rows}
-          columns={[
-            { key: 'userName', label: 'USER' },
-            { key: 'company', label: 'COMPANY' },
-            { key: 'activity', label: 'ACTIVITY' },
-            { key: 'duration', label: 'DURATION' },
-            {
-              key: 'timestamp',
-              label: 'DATE',
-              render: (val) => (val ? new Date(val).toLocaleString() : '—'),
-            },
-          ]}
-          title="Recent Activity Log"
-          exportFileName="activity-log.xlsx"
-          pagination={{
-            page: activityLogData.page,
-            pageSize: activityLogData.pageSize,
-            total: activityLogData.total,
-            onPageChange: setActivityLogPage,
-            onPageSizeChange: (v) => setActivityLogPageSize(Number(v)),
-          }}
-        />
-      </Box>
+      {dataView === 'table' && (
+        <Box>
+          <DataTable
+            data={activityLogData.rows}
+            columns={[
+              { key: 'userName', label: 'USER' },
+              { key: 'company', label: 'COMPANY' },
+              { key: 'activity', label: 'ACTIVITY', sortable: true, sortKey: 'activity' },
+              { key: 'duration', label: 'DURATION', sortable: true, sortKey: 'duration' },
+              {
+                key: 'timestamp',
+                label: 'DATE',
+                sortable: true,
+                sortKey: 'timestamp',
+                render: (val) => (val ? new Date(val).toLocaleString() : '—'),
+              },
+            ]}
+            title="Recent Activity Log"
+            exportFileName="activity-log.xlsx"
+            sortBy={activityLogSortBy}
+            sortOrder={activityLogSortOrder}
+            onSortChange={onActivityLogSortChange}
+            pagination={{
+              page: activityLogData.page,
+              pageSize: activityLogData.pageSize,
+              total: activityLogData.total,
+              onPageChange: setActivityLogPage,
+              onPageSizeChange: (v) => setActivityLogPageSize(Number(v)),
+            }}
+          />
+        </Box>
+      )}
     </>
   );
 }

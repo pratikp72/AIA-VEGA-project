@@ -286,11 +286,11 @@ module.exports = ({ strapi }) => {
     const wantDateToNorm = wantDateTo && /^\d{4}-\d{2}-\d{2}/.test(String(wantDateTo))
       ? String(wantDateTo).slice(0, 10) + 'T23:59:59.999Z' : wantDateTo;
 
-    // Optional: load quiz and feedback submission sets for (userId, courseId) when filters requested
+    // Optional: load quiz and feedback submission sets for (userId, courseId) when filters requested (only when a course is selected)
     let quizPassedByUserCourse = null;
     let quizFailedByUserCourse = null;
     let feedbackByUserCourse = null;
-    if (wantQuizStatus === 'pass' || wantQuizStatus === 'fail' || wantFeedbackGiven === 'yes' || wantFeedbackGiven === 'no') {
+    if (wantCourseId && (wantQuizStatus === 'pass' || wantQuizStatus === 'fail' || wantFeedbackGiven === 'yes' || wantFeedbackGiven === 'no')) {
       const pairs = progresses.map((p) => ({
         userId: p.user?.id ?? p.user_id ?? p.userId,
         courseId: p.course?.id ?? p.course_id ?? p.courseId ?? p.course?.documentId,
@@ -311,28 +311,34 @@ module.exports = ({ strapi }) => {
       }
       if (numericUserIds.length > 0 && numericCourseIds.length > 0 && (wantQuizStatus === 'pass' || wantQuizStatus === 'fail')) {
         try {
+          // Use raw FK columns for where (Strapi 5 db returns submitted_by_id, course_id when relations not populated)
           const quizSubs = await strapi.db.query('api::quiz-submission.quiz-submission').findMany({
             where: {
-              submitted_by: { id: { $in: numericUserIds } },
-              course: { id: { $in: numericCourseIds } },
+              submitted_by_id: { $in: numericUserIds },
+              course_id: { $in: numericCourseIds },
             },
-            select: ['submitted_by', 'course', 'passed'],
+            limit: 10000,
           });
           quizPassedByUserCourse = new Set();
           quizFailedByUserCourse = new Set();
           (quizSubs || []).forEach((q) => {
-            const uid = q.submitted_by?.id ?? q.submitted_by;
-            const cid = q.course?.id ?? q.course;
+            const uid = q.submitted_by?.id ?? q.submitted_by ?? q.submitted_by_id;
+            const cid = q.course?.id ?? q.course ?? q.course_id;
             const cidDoc = q.course?.documentId ?? q.course?.document_id;
-            if (uid != null && (cid != null || cidDoc != null)) {
-              const keyNum = cid != null ? `${uid}-${cid}` : null;
-              const keyDoc = cidDoc != null ? `${uid}-${cidDoc}` : null;
+            if (uid != null && cid != null) {
+              const keyNum = `${Number(uid)}-${Number(cid)}`;
               if (q.passed === true) {
-                if (keyNum) quizPassedByUserCourse.add(keyNum);
-                if (keyDoc) quizPassedByUserCourse.add(keyDoc);
+                quizPassedByUserCourse.add(keyNum);
               } else {
-                if (keyNum) quizFailedByUserCourse.add(keyNum);
-                if (keyDoc) quizFailedByUserCourse.add(keyDoc);
+                quizFailedByUserCourse.add(keyNum);
+              }
+            }
+            if (uid != null && cidDoc != null && String(cidDoc) !== String(cid)) {
+              const keyDoc = `${Number(uid)}-${String(cidDoc)}`;
+              if (q.passed === true) {
+                quizPassedByUserCourse.add(keyDoc);
+              } else {
+                quizFailedByUserCourse.add(keyDoc);
               }
             }
           });
@@ -365,16 +371,25 @@ module.exports = ({ strapi }) => {
       }
     }
 
+    // For company filter: use companyUserIds when available so we don't rely on populated user.company
+    const companyUserIdsSet = companyUserIds && companyUserIds.length > 0
+      ? new Set(companyUserIds.map((id) => Number(id)).filter((n) => !Number.isNaN(n)))
+      : null;
     if (wantCompany || wantDept || wantDateFrom || wantDateTo || wantCourseId || wantCategory || wantUnitLocation || wantQuizStatus || wantFeedbackGiven) {
       const wantCompanyNorm = wantCompany ? (String(wantCompany).trim().toLowerCase() === 'vega' ? 'Vega' : String(wantCompany).trim().toLowerCase() === 'aia' ? 'AIA' : String(wantCompany).trim()) : null;
       progresses = progresses.filter((p) => {
         if (wantDateFromNorm && p.last_accessed_at && String(p.last_accessed_at) < wantDateFromNorm) return false;
         if (wantDateToNorm && p.last_accessed_at && String(p.last_accessed_at) > wantDateToNorm) return false;
         if (wantCompanyNorm) {
-          const rawCompany = p.user?.company;
-          const userCompanyStr = (typeof rawCompany === 'object' && rawCompany != null) ? (rawCompany.name ?? rawCompany) : (rawCompany ?? '');
-          const userCompanyNorm = userCompanyStr ? (String(userCompanyStr).toLowerCase() === 'vega' ? 'Vega' : String(userCompanyStr).toLowerCase() === 'aia' ? 'AIA' : String(userCompanyStr).trim()) : null;
-          if (!userCompanyNorm || userCompanyNorm !== wantCompanyNorm) return false;
+          if (companyUserIdsSet && companyUserIdsSet.size > 0) {
+            const uid = p.user?.id ?? p.user_id ?? p.userId;
+            if (uid == null || !companyUserIdsSet.has(Number(uid))) return false;
+          } else {
+            const rawCompany = p.user?.company;
+            const userCompanyStr = (typeof rawCompany === 'object' && rawCompany != null) ? (rawCompany.name ?? rawCompany) : (rawCompany ?? '');
+            const userCompanyNorm = userCompanyStr ? (String(userCompanyStr).toLowerCase() === 'vega' ? 'Vega' : String(userCompanyStr).toLowerCase() === 'aia' ? 'AIA' : String(userCompanyStr).trim()) : null;
+            if (!userCompanyNorm || userCompanyNorm !== wantCompanyNorm) return false;
+          }
         }
         if (wantDept && departmentNameForFilter) {
           const userDeptName = (typeof p.user?.department === 'object' && p.user?.department?.name) ? p.user.department.name : (p.user?.department ?? '');
@@ -392,20 +407,32 @@ module.exports = ({ strapi }) => {
           const loc = p.user?.working_location ?? p.user?.unit_location ?? '';
           if (!String(loc || '').toLowerCase().includes(String(unitLocationName || '').toLowerCase())) return false;
         }
-        if (wantQuizStatus === 'pass' || wantQuizStatus === 'fail') {
+        if (wantCourseId && (wantQuizStatus === 'pass' || wantQuizStatus === 'fail')) {
           const uid = p.user?.id ?? p.user_id ?? p.userId;
-          const cid = p.course?.id ?? p.course_id ?? p.courseId ?? p.course?.documentId;
-          const key = uid != null && cid != null ? `${uid}-${cid}` : null;
-          const hasPassed = key && quizPassedByUserCourse && quizPassedByUserCourse.has(key);
-          const hasFailed = key && quizFailedByUserCourse && quizFailedByUserCourse.has(key);
-          if (wantQuizStatus === 'pass' && !hasPassed) return false;
-          if (wantQuizStatus === 'fail' && !hasFailed) return false;
+          const uidNum = uid != null ? Number(uid) : NaN;
+          if (Number.isNaN(uidNum)) return false;
+          // Prefer numeric course id to match quiz_submission.course_id; fallback to documentId
+          const cidRaw = p.course_id ?? p.courseId ?? p.course?.id ?? p.course?.documentId;
+          const cidDoc = p.course?.documentId ?? p.course?.document_id;
+          const cidNum = cidRaw != null && (typeof cidRaw === 'number' || /^\d+$/.test(String(cidRaw))) ? Number(cidRaw) : null;
+          const keyNum = cidNum != null ? `${uidNum}-${cidNum}` : null;
+          const keyDoc = cidDoc != null ? `${uidNum}-${String(cidDoc)}` : null;
+          const hasPassed = quizPassedByUserCourse && (keyNum && quizPassedByUserCourse.has(keyNum) || keyDoc && quizPassedByUserCourse.has(keyDoc));
+          const hasFailed = quizFailedByUserCourse && (keyNum && quizFailedByUserCourse.has(keyNum) || keyDoc && quizFailedByUserCourse.has(keyDoc));
+          if (wantQuizStatus === 'pass') {
+            if (!hasPassed) return false;
+          } else {
+            // fail = has at least one fail AND never passed (so Pass and Fail show different sets)
+            if (!hasFailed || hasPassed) return false;
+          }
         }
-        if (wantFeedbackGiven === 'yes' || wantFeedbackGiven === 'no') {
+        if (wantCourseId && (wantFeedbackGiven === 'yes' || wantFeedbackGiven === 'no')) {
           const uid = p.user?.id ?? p.user_id ?? p.userId;
           const cid = p.course?.id ?? p.course_id ?? p.courseId ?? p.course?.documentId;
-          const key = uid != null && cid != null ? `${uid}-${cid}` : null;
-          const hasFeedback = key && feedbackByUserCourse && feedbackByUserCourse.has(key);
+          const cidDoc = p.course?.documentId ?? p.course?.document_id;
+          const key1 = uid != null && cid != null ? `${uid}-${cid}` : null;
+          const key2 = uid != null && cidDoc != null && String(cidDoc) !== String(cid) ? `${uid}-${cidDoc}` : null;
+          const hasFeedback = feedbackByUserCourse && (key1 && feedbackByUserCourse.has(key1) || key2 && feedbackByUserCourse.has(key2));
           if (wantFeedbackGiven === 'yes' && !hasFeedback) return false;
           if (wantFeedbackGiven === 'no' && hasFeedback) return false;
         }
@@ -551,6 +578,55 @@ module.exports = ({ strapi }) => {
       value: statusCounts[name] || 0,
     }));
 
+    // Course view table: one row per course (aggregated across users). Group by title+category so one row per course regardless of id/documentId variance.
+    const byCourse = new Map();
+    progresses.forEach((p) => {
+      const title = String(p.course?.title ?? 'Unknown').trim();
+      const category = String(p.course?.course_category ?? p.course?.courseCategory ?? 'Other').trim();
+      const key = `${title}::${category}`;
+      const cid = p.course?.id ?? p.course?.documentId ?? p.course_id ?? p.courseId;
+      if (!byCourse.has(key)) {
+        byCourse.set(key, {
+          courseId: cid != null ? String(cid) : key,
+          courseTitle: title,
+          courseCategory: category,
+          statusCounts: { Not_started: 0, In_progress: 0, Completed: 0, Failed: 0 },
+          percentages: [],
+          timeSpentMinutes: [],
+          certificateCount: 0,
+          total: 0,
+        });
+      }
+      const agg = byCourse.get(key);
+      agg.total += 1;
+      const st = p.progress_status ?? 'Not_started';
+      agg.statusCounts[st] = (agg.statusCounts[st] || 0) + 1;
+      agg.percentages.push(p.progress_percentage ?? p.progressPercentage ?? 0);
+      agg.timeSpentMinutes.push(p.time_spent_minutes ?? p.timeSpentMinutes ?? 0);
+      if (p.certificate_issued ?? p.certificateIssued) agg.certificateCount += 1;
+    });
+
+    let courseProgressTable = Array.from(byCourse.values()).map((agg) => {
+      const statusParts = [];
+      if (agg.statusCounts.Completed > 0) statusParts.push(`Completed: ${agg.statusCounts.Completed}`);
+      if (agg.statusCounts.In_progress > 0) statusParts.push(`In progress: ${agg.statusCounts.In_progress}`);
+      if (agg.statusCounts.Not_started > 0) statusParts.push(`Not started: ${agg.statusCounts.Not_started}`);
+      if (agg.statusCounts.Failed > 0) statusParts.push(`Failed: ${agg.statusCounts.Failed}`);
+      const status = statusParts.length > 0 ? statusParts.join(', ') : '—';
+      const avgPct = agg.percentages.length > 0 ? Math.round(agg.percentages.reduce((a, b) => a + b, 0) / agg.percentages.length) : 0;
+      const avgTime = agg.timeSpentMinutes.length > 0 ? Math.round((agg.timeSpentMinutes.reduce((a, b) => a + b, 0) / agg.timeSpentMinutes.length) * 10) / 10 : 0;
+      const certStr = `${agg.certificateCount}/${agg.total}`;
+      return {
+        courseId: agg.courseId,
+        courseTitle: agg.courseTitle,
+        courseCategory: agg.courseCategory,
+        status,
+        percentage: avgPct,
+        timeSpentMinutes: avgTime,
+        certificateIssued: certStr,
+      };
+    });
+
     const result = {
       kpis: {
         totalCourses: courseIdsSet.size,
@@ -572,27 +648,143 @@ module.exports = ({ strapi }) => {
         .map(([month, value]) => ({ month, value })),
       learningActivityByWeek: learningActivityByWeekArr,
       completionFunnel,
+      courseProgress: courseProgressTable,
     };
-    // Module detail: when no course selected = flat table (all users, all modules); when course selected = pivot table (users x modules)
-    try {
-      if (wantCourseId) {
-        const pivot = await this.getModuleDetailPivotTable(params.courseId);
-        result.moduleDetailPivot = pivot;
-        result.moduleDetailTable = []; // Not used when course selected
-      } else {
-        result.moduleDetailTable = await this.getModuleDetailTable(null);
-        result.moduleDetailPivot = { moduleColumns: [], rows: [] };
+
+    if (wantCourseId) {
+      try {
+        const moduleVideoRaw = await this.getModuleVideoProgressForCourseGlobal(params.courseId, params.moduleIndex, params.moduleTitle);
+        result.moduleVideoProgress = moduleVideoRaw;
+        const courseModules = await this.getCourseModules(params.courseId);
+        const modIndexes = (params.moduleIndex !== undefined && params.moduleIndex !== null && params.moduleIndex !== '')
+          ? [Number(params.moduleIndex)]
+          : (courseModules || []).map((m) => m.index ?? m.moduleIndex ?? 0);
+        const byCourseMod = new Map();
+        moduleVideoRaw.forEach((mv) => {
+          const cid = mv.courseId ?? '';
+          const midx = mv.moduleIndex ?? mv.module_index;
+          if (midx === undefined || midx === null) return;
+          const key = `${cid}::${midx}`;
+          if (!byCourseMod.has(key)) byCourseMod.set(key, { watched: [], duration: [] });
+          const agg = byCourseMod.get(key);
+          agg.watched.push(mv.timeWatchedMinutes ?? 0);
+          agg.duration.push(mv.videoDurationMinutes ?? 0);
+        });
+        courseProgressTable = courseProgressTable.map((row) => {
+          const cid = row.courseId ?? '';
+          const out = { ...row };
+          modIndexes.forEach((midx) => {
+            const key = `${cid}::${midx}`;
+            const agg = byCourseMod.get(key);
+            if (!agg || agg.watched.length === 0) {
+              out[`mod_${midx}`] = '—';
+              return;
+            }
+            const avgWatched = Math.round((agg.watched.reduce((a, b) => a + b, 0) / agg.watched.length) * 10) / 10;
+            const avgDur = agg.duration.filter((d) => d != null && !Number.isNaN(d)).length > 0
+              ? Math.round((agg.duration.filter((d) => d != null).reduce((a, b) => a + b, 0) / agg.duration.filter((d) => d != null).length) * 10) / 10
+              : null;
+            out[`mod_${midx}`] = avgDur != null ? `${avgWatched}/${avgDur}` : String(avgWatched);
+          });
+          return out;
+        });
+      } catch (e) {
+        strapi.log.warn('Learning global moduleVideoProgress failed:', e?.message);
+        result.moduleVideoProgress = [];
       }
-    } catch (e) {
-      strapi.log.warn('Learning global module detail failed:', e?.message);
-      result.moduleDetailTable = result.moduleDetailTable ?? [];
-      result.moduleDetailPivot = result.moduleDetailPivot ?? { moduleColumns: [], rows: [] };
+    } else {
+      result.moduleVideoProgress = [];
     }
+
+    result.courseProgress = courseProgressTable;
     return result;
     } catch (err) {
       strapi.log.error('Learning global error:', err?.message || err);
       return emptyResponse();
     }
+  },
+
+  /**
+   * Module video progress for global (all users) for a course — same shape as personal moduleVideoProgress for unified table.
+   * Returns array of { userId, userName, courseId, moduleIndex, timeWatchedMinutes, videoDurationMinutes }.
+   */
+  async getModuleVideoProgressForCourseGlobal(courseId, moduleIndex, moduleTitle) {
+    const out = [];
+    if (!courseId || String(courseId).trim() === '') return out;
+    try {
+      let numericCourseId = typeof courseId === 'number' ? courseId : null;
+      const courseIdStr = String(courseId).trim();
+      if (numericCourseId == null && /^\d+$/.test(courseIdStr)) numericCourseId = Number(courseIdStr);
+      if (numericCourseId == null && courseIdStr.length > 10) {
+        const c = await strapi.db.query('api::course.course').findOne({ where: { documentId: courseIdStr }, select: ['id'] });
+        if (c?.id) numericCourseId = c.id;
+        else {
+          const c2 = await strapi.db.query('api::course.course').findOne({ where: { document_id: courseIdStr }, select: ['id'] });
+          if (c2?.id) numericCourseId = c2.id;
+        }
+      }
+      if (numericCourseId == null) return out;
+
+      const whereVariants = [
+        { course: { id: { $eq: numericCourseId } } },
+        { course: { id: numericCourseId } },
+        { course_id: numericCourseId },
+      ];
+      if (courseIdStr.length > 10) whereVariants.push({ course: { documentId: courseIdStr } });
+      let raw = [];
+      for (const where of whereVariants) {
+        raw = await strapi.db.query('api::module-video-progress.module-video-progress').findMany({
+          where,
+          limit: 5000,
+          populate: { user: true, course: true },
+        });
+        if (Array.isArray(raw) && raw.length > 0) break;
+      }
+      if (!Array.isArray(raw) || raw.length === 0) return out;
+
+      const moduleIndexNum = moduleIndex !== undefined && moduleIndex !== null && moduleIndex !== '' ? Number(moduleIndex) : null;
+      const moduleTitleTrim = moduleTitle && String(moduleTitle).trim() ? String(moduleTitle).trim() : null;
+      if (moduleIndexNum !== null && !Number.isNaN(moduleIndexNum)) {
+        raw = raw.filter((r) => (r.module_index ?? r.moduleIndex) === moduleIndexNum);
+      } else if (moduleTitleTrim) {
+        raw = raw.filter((r) => {
+          const t = (r.module_title ?? r.moduleTitle ?? '').trim().toLowerCase();
+          if (t === moduleTitleTrim.toLowerCase()) return true;
+          const m = moduleTitleTrim.match(/^Module\s*(\d+)$/i);
+          const idx = m ? parseInt(m[1], 10) - 1 : null;
+          return idx !== null && (r.module_index ?? r.moduleIndex) === idx;
+        });
+      }
+
+      const userIds = [...new Set(raw.map((r) => r.user_id ?? r.user?.id).filter(Boolean))];
+      const userById = {};
+      if (userIds.length > 0) {
+        const users = await strapi.db.query('plugin::users-permissions.user').findMany({
+          where: { id: { $in: userIds.map(Number) } },
+        });
+        (users || []).forEach((u) => { userById[u.id] = u; });
+      }
+      raw.forEach((r) => {
+        const uid = r.user_id ?? r.user?.id;
+        const cid = r.course?.id ?? r.course_id ?? r.course?.documentId;
+        const user = (uid != null && userById[uid]) ? userById[uid] : r.user;
+        const userName = user?.employee_name || user?.username || user?.email || `User ${uid}`;
+        const timeWat = r.time_watched_seconds ?? r.timeWatchedSeconds ?? 0;
+        const duration = r.video_duration_seconds ?? r.videoDurationSeconds;
+        const mIdx = r.module_index ?? r.moduleIndex;
+        out.push({
+          userId: uid,
+          userName,
+          courseId: cid != null ? String(cid) : null,
+          moduleIndex: mIdx != null ? Number(mIdx) : null,
+          timeWatchedMinutes: Math.round(timeWat / 60),
+          videoDurationMinutes: duration != null ? Math.round(duration / 60) : null,
+        });
+      });
+    } catch (e) {
+      strapi.log.warn('getModuleVideoProgressForCourseGlobal failed:', e?.message);
+    }
+    return out;
   },
 
   /**
@@ -1137,6 +1329,24 @@ module.exports = ({ strapi }) => {
       return { ...p, course: fullCourse || p.course };
     });
 
+    // Deduplicate by course (full list) for KPIs that must reflect all courses (e.g. last course viewed)
+    const courseKey = (p) => (p.course?.documentId ?? p.course?.document_id ?? p.course?.id ?? p.course_id ?? p.courseId ?? p.course ?? '').toString();
+    const statusOrder = { Completed: 0, In_progress: 1, Failed: 2, Not_started: 3 };
+    const byCourseAll = new Map();
+    progresses.forEach((p) => {
+      const key = courseKey(p);
+      if (!key) return;
+      const existing = byCourseAll.get(key);
+      const pStatus = statusOrder[p.progress_status] ?? 4;
+      const existingStatus = existing ? (statusOrder[existing.progress_status] ?? 4) : 4;
+      const pAt = p.last_accessed_at ? new Date(p.last_accessed_at).getTime() : 0;
+      const existingAt = existing && existing.last_accessed_at ? new Date(existing.last_accessed_at).getTime() : 0;
+      if (!existing || pStatus < existingStatus || (pStatus === existingStatus && pAt >= existingAt)) {
+        byCourseAll.set(key, p);
+      }
+    });
+    const progressesDedupAll = Array.from(byCourseAll.values());
+
     // Filter by course when params.courseId is set (Personal view course filter)
     const wantCourseId = params.courseId && String(params.courseId).trim();
     if (wantCourseId) {
@@ -1171,9 +1381,7 @@ module.exports = ({ strapi }) => {
       });
     }
 
-    // Deduplicate by course: one row per course in "My Course" table (prefer Completed, then most recent last_accessed_at)
-    const courseKey = (p) => (p.course?.documentId ?? p.course?.document_id ?? p.course?.id ?? p.course_id ?? p.courseId ?? p.course ?? '').toString();
-    const statusOrder = { Completed: 0, In_progress: 1, Failed: 2, Not_started: 3 };
+    // Deduplicate filtered progress: one row per course in "My Course" table
     const byCourse = new Map();
     progresses.forEach((p) => {
       const key = courseKey(p);
@@ -1307,14 +1515,14 @@ module.exports = ({ strapi }) => {
     const dropOffRatePersonal = total > 0 ? Math.round((dropOffCountPersonal / total) * 100) : 0;
     const courseIdsPersonal = new Set(progressesDedup.map((p) => p.course?.id ?? p.course_id ?? p.courseId ?? p.course?.documentId).filter(Boolean));
 
-    // Calculate additional KPIs
+    // Calculate additional KPIs (last viewed/completed use full list so they are not affected by course filter)
     const inProgressCourses = progressesDedup.filter((p) => p.progress_status === 'In_progress');
-    const lastCourseViewed = progressesDedup.reduce((latest, p) => {
+    const lastCourseViewed = progressesDedupAll.reduce((latest, p) => {
       if (!p.last_accessed_at) return latest;
       if (!latest || new Date(p.last_accessed_at) > new Date(latest.last_accessed_at)) return p;
       return latest;
     }, null);
-    const lastCourseCompleted = progressesDedup.filter((p) => p.progress_status === 'Completed').reduce((latest, p) => {
+    const lastCourseCompleted = progressesDedupAll.filter((p) => p.progress_status === 'Completed').reduce((latest, p) => {
       if (!p.completed_at) return latest;
       if (!latest || new Date(p.completed_at) > new Date(latest.completed_at)) return p;
       return latest;
@@ -1385,8 +1593,83 @@ module.exports = ({ strapi }) => {
     }
 
     let records = [];
+    const wantCourseId = params.courseId && String(params.courseId).trim();
+    let resolvedCourseNumericId = null;
+    if (wantCourseId) {
+      const courseIdStr = String(params.courseId).trim();
+      if (courseIdStr.length > 10 && !/^\d+$/.test(courseIdStr)) {
+        try {
+          const row = await strapi.db.query('api::course.course').findOne({ where: { documentId: courseIdStr }, select: ['id'] });
+          if (row?.id) resolvedCourseNumericId = row.id;
+          else {
+            const row2 = await strapi.db.query('api::course.course').findOne({ where: { document_id: courseIdStr }, select: ['id'] });
+            if (row2?.id) resolvedCourseNumericId = row2.id;
+          }
+        } catch (_) {}
+      } else if (/^\d+$/.test(courseIdStr)) {
+        resolvedCourseNumericId = Number(courseIdStr);
+      }
+    }
+
+    // 0) When course is selected: use same db.query pattern as Course view (user_id + course_id) so we get data
+    const courseIdStrForQuery = wantCourseId ? String(params.courseId).trim() : '';
+    if (numericUserId != null && (resolvedCourseNumericId != null || courseIdStrForQuery.length > 10)) {
+      const whereVariants = [
+        resolvedCourseNumericId != null && { user_id: numericUserId, course_id: resolvedCourseNumericId },
+        resolvedCourseNumericId != null && { user: { id: numericUserId }, course: { id: resolvedCourseNumericId } },
+        resolvedCourseNumericId != null && { user: { id: numericUserId }, course_id: resolvedCourseNumericId },
+        courseIdStrForQuery.length > 10 && { user_id: numericUserId, course: { documentId: courseIdStrForQuery } },
+      ].filter(Boolean);
+      for (const where of whereVariants) {
+        try {
+          const raw = await strapi.db.query('api::module-video-progress.module-video-progress').findMany({
+            where,
+            limit: 1000,
+            populate: { course: true },
+          });
+          if (Array.isArray(raw) && raw.length > 0) {
+            const courseById = {};
+            const courseByDocId = {};
+            const courseIds = [...new Set(raw.map((r) => r.course?.id ?? r.course_id ?? r.courseId ?? r.course?.documentId).filter(Boolean))];
+            const numericIds = courseIds.filter((x) => typeof x === 'number' || (typeof x === 'string' && /^\d+$/.test(x))).map(Number);
+            const docIds = courseIds.filter((x) => typeof x === 'string' && x.length > 10);
+            if (numericIds.length > 0) {
+              const byId = await strapi.db.query('api::course.course').findMany({ where: { id: { $in: numericIds } } }) || [];
+              byId.forEach((c) => { courseById[c.id] = c; if (c.documentId) courseByDocId[c.documentId] = c; });
+            }
+            if (docIds.length > 0) {
+              try {
+                const byDoc = await strapi.db.query('api::course.course').findMany({ where: { documentId: { $in: docIds } } }) || [];
+                byDoc.forEach((c) => { courseById[c.id] = c; if (c.documentId) courseByDocId[c.documentId] = c; });
+              } catch (_) {
+                const byDoc = await strapi.db.query('api::course.course').findMany({ where: { document_id: { $in: docIds } } }) || [];
+                byDoc.forEach((c) => { courseById[c.id] = c; if (c.documentId) courseByDocId[c.documentId] = c; });
+              }
+            }
+            records = raw.map((r) => {
+              const c = r.course;
+              const cid = (c && typeof c === 'object') ? (c.id ?? c.documentId) : (r.course_id ?? r.courseId);
+              const course = (cid != null && courseById[cid]) || (cid != null && courseByDocId[cid]) ? (courseById[cid] || courseByDocId[cid]) : c;
+              return {
+                ...r,
+                course,
+                video_completion_type: r.video_completion_type ?? r.videoCompletionType,
+                time_watched_seconds: r.time_watched_seconds ?? r.timeWatchedSeconds ?? 0,
+                video_duration_seconds: r.video_duration_seconds ?? r.videoDurationSeconds,
+                module_title: r.module_title ?? r.moduleTitle,
+                module_index: r.module_index ?? r.moduleIndex,
+              };
+            });
+            break;
+          }
+        } catch (e) {
+          strapi.log.warn('Module video progress (user+course) failed:', e?.message);
+        }
+      }
+    }
+
     // 1) Document Service with user filter (try published first, then draft so draft entries show)
-    if (numericUserId != null) {
+    if (records.length === 0 && numericUserId != null) {
       for (const status of ['published', 'draft']) {
         try {
           const filters = { user: { id: numericUserId } };
@@ -1493,24 +1776,7 @@ module.exports = ({ strapi }) => {
 
     // Filter by course and/or module when params specify (Personal view course/module filter)
     let filteredRecords = recordsWithCourse || [];
-    const wantCourseId = params.courseId && String(params.courseId).trim();
     const wantModuleTitle = params.moduleTitle && String(params.moduleTitle).trim();
-    let resolvedCourseNumericId = null;
-    if (wantCourseId) {
-      const courseIdStr = String(params.courseId).trim();
-      if (courseIdStr.length > 10 && !/^\d+$/.test(courseIdStr)) {
-        try {
-          const row = await strapi.db.query('api::course.course').findOne({ where: { documentId: courseIdStr }, select: ['id'] });
-          if (row?.id) resolvedCourseNumericId = row.id;
-          else {
-            const row2 = await strapi.db.query('api::course.course').findOne({ where: { document_id: courseIdStr }, select: ['id'] });
-            if (row2?.id) resolvedCourseNumericId = row2.id;
-          }
-        } catch (_) {}
-      } else if (/^\d+$/.test(courseIdStr)) {
-        resolvedCourseNumericId = Number(courseIdStr);
-      }
-    }
     const wantModuleIndex = params.moduleIndex !== undefined && params.moduleIndex !== null && params.moduleIndex !== '';
     const moduleIndexNum = wantModuleIndex ? Number(params.moduleIndex) : null;
     const hasValidModuleIndex = wantModuleIndex && !Number.isNaN(moduleIndexNum);
@@ -1547,19 +1813,24 @@ module.exports = ({ strapi }) => {
 
     const kpis = { watchedFully: 0, skippedToEnd: 0, inProgress: 0, notStarted: 0 };
     const typeToKpi = { full_watch: 'watchedFully', skipped_to_end: 'skippedToEnd', in_progress: 'inProgress', not_started: 'notStarted' };
+    // When filtering by course, use params.courseId so frontend row and module video progress match (same id format)
+    const canonicalCourseId = wantCourseId ? String(params.courseId).trim() : null;
     const progress = filteredRecords.map((r) => {
       const type = r.video_completion_type ?? r.videoCompletionType ?? 'not_started';
       const kpiKey = typeToKpi[type];
       if (kpiKey) kpis[kpiKey] += 1;
-      const courseId = r.course?.documentId ?? r.course?.document_id ?? r.course?.id ?? r.course_id ?? r.courseId;
+      const courseIdRaw = r.course?.documentId ?? r.course?.document_id ?? r.course?.id ?? r.course_id ?? r.courseId;
+      const courseId = canonicalCourseId != null ? canonicalCourseId : (courseIdRaw != null ? String(courseIdRaw) : null);
       const courseTitle = r.course?.title ?? 'Unknown';
       const moduleTitle = r.module_title ?? r.moduleTitle ?? (r.module_index != null ? `Module ${(r.module_index ?? r.moduleIndex) + 1}` : 'Unknown');
       const timeWat = r.time_watched_seconds != null ? r.time_watched_seconds : (r.timeWatchedSeconds ?? 0);
       const duration = r.video_duration_seconds != null ? r.video_duration_seconds : (r.videoDurationSeconds ?? 0);
+      const moduleIdx = r.module_index ?? r.moduleIndex ?? null;
       return {
-        courseId: courseId != null ? String(courseId) : null,
+        courseId,
         courseTitle,
         moduleTitle,
+        moduleIndex: moduleIdx != null ? Number(moduleIdx) : null,
         videoCompletionType: type,
         timeWatchedMinutes: Math.round(timeWat / 60),
         videoDurationMinutes: duration > 0 ? Math.round(duration / 60) : null,

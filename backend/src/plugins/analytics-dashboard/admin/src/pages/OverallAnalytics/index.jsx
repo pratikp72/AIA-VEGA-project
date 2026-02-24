@@ -31,6 +31,8 @@ export default function OverallAnalyticsPage() {
   const [activityPagesStats, setActivityPagesStats] = useState({ topPagesByVisit: [], leastUsedPages: [] });
   const [activityLogPage, setActivityLogPage] = useState(1);
   const [activityLogPageSize, setActivityLogPageSize] = useState(10);
+  const [activityLogSortBy, setActivityLogSortBy] = useState('timestamp');
+  const [activityLogSortOrder, setActivityLogSortOrder] = useState('desc');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -49,6 +51,12 @@ export default function OverallAnalyticsPage() {
     if (viewMode === 'activityTracking') setActivityLogPage(1);
   }, [viewMode, activityType, dateFrom, dateTo, company, department, unitLocation, employeeId]);
 
+  const handleActivityLogSortChange = (sortBy, sortOrder) => {
+    setActivityLogSortBy(sortBy);
+    setActivityLogSortOrder(sortOrder);
+    setActivityLogPage(1);
+  };
+
   const loadData = useCallback(() => {
     setLoading(true);
     setError(null);
@@ -62,7 +70,13 @@ export default function OverallAnalyticsPage() {
     if (employeeId) params.userId = employeeId;
 
     Promise.all([
-      fetchActivityLog({ ...params, page: activityLogPage, pageSize: activityLogPageSize }),
+      fetchActivityLog({
+        ...params,
+        page: activityLogPage,
+        pageSize: activityLogPageSize,
+        sortBy: activityLogSortBy,
+        sortOrder: activityLogSortOrder,
+      }),
       fetchActivityTrackingKpis(params),
       fetchActivityPagesStats(params),
     ])
@@ -73,7 +87,7 @@ export default function OverallAnalyticsPage() {
       })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
-  }, [employeeId, dateFrom, dateTo, company, department, unitLocation, activityType, activityLogPage, activityLogPageSize]);
+  }, [employeeId, dateFrom, dateTo, company, department, unitLocation, activityType, activityLogPage, activityLogPageSize, activityLogSortBy, activityLogSortOrder]);
 
   useEffect(() => {
     loadData();
@@ -147,6 +161,9 @@ export default function OverallAnalyticsPage() {
                   activityPagesStats={activityPagesStats}
                   setActivityLogPage={setActivityLogPage}
                   setActivityLogPageSize={setActivityLogPageSize}
+                  activityLogSortBy={activityLogSortBy}
+                  activityLogSortOrder={activityLogSortOrder}
+                  onActivityLogSortChange={handleActivityLogSortChange}
                 />
               </>
             )}
