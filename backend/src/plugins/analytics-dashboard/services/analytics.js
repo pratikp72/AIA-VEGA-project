@@ -794,16 +794,16 @@ module.exports = ({ strapi }) => {
         const cid = r.course?.id ?? r.course_id ?? r.course?.documentId;
         const user = (uid != null && userById[uid]) ? userById[uid] : r.user;
         const userName = user?.employee_name || user?.username || user?.email || `User ${uid}`;
-        const timeWat = r.time_watched_seconds ?? r.timeWatchedSeconds ?? 0;
-        const duration = r.video_duration_seconds ?? r.videoDurationSeconds;
+        const timeWat = r.time_watched_min ?? 0;
+        const duration = r.video_duration_min;
         const mIdx = r.module_index ?? r.moduleIndex;
         out.push({
           userId: uid,
           userName,
           courseId: cid != null ? String(cid) : null,
           moduleIndex: mIdx != null ? Number(mIdx) : null,
-          timeWatchedMinutes: Math.round(timeWat / 60),
-          videoDurationMinutes: duration != null ? Math.round(duration / 60) : null,
+          timeWatchedMinutes: timeWat,
+          videoDurationMinutes: duration != null ? duration : null,
         });
       });
     } catch (e) {
@@ -924,15 +924,15 @@ module.exports = ({ strapi }) => {
         const courseTitle = course?.title ?? '—';
         const modTitle = r.module_title ?? r.moduleTitle ?? (r.module_index != null ? `Module ${r.module_index + 1}` : '—');
         const type = r.video_completion_type ?? r.videoCompletionType ?? 'not_started';
-        const timeWat = r.time_watched_seconds ?? r.timeWatchedSeconds ?? 0;
-        const duration = r.video_duration_seconds ?? r.videoDurationSeconds;
+        const timeWat = r.time_watched_min ?? 0;
+        const duration = r.video_duration_min;
         rows.push({
           userName,
           courseTitle,
           moduleTitle: modTitle,
           videoCompletionType: type,
-          timeWatchedMinutes: Math.round(timeWat / 60),
-          videoDurationMinutes: duration != null ? Math.round(duration / 60) : null,
+          timeWatchedMinutes: timeWat,
+          videoDurationMinutes: duration != null ? duration : null,
         });
       });
     } catch (e) {
@@ -1690,8 +1690,8 @@ module.exports = ({ strapi }) => {
                 ...r,
                 course,
                 video_completion_type: r.video_completion_type ?? r.videoCompletionType,
-                time_watched_seconds: r.time_watched_seconds ?? r.timeWatchedSeconds ?? 0,
-                video_duration_seconds: r.video_duration_seconds ?? r.videoDurationSeconds,
+                time_watched_min: r.time_watched_min ?? 0,
+                video_duration_min: r.video_duration_min,
                 module_title: r.module_title ?? r.moduleTitle,
                 module_index: r.module_index ?? r.moduleIndex,
               };
@@ -1859,8 +1859,8 @@ module.exports = ({ strapi }) => {
       const courseId = canonicalCourseId != null ? canonicalCourseId : (courseIdRaw != null ? String(courseIdRaw) : null);
       const courseTitle = r.course?.title ?? 'Unknown';
       const moduleTitle = r.module_title ?? r.moduleTitle ?? (r.module_index != null ? `Module ${(r.module_index ?? r.moduleIndex) + 1}` : 'Unknown');
-      const timeWat = r.time_watched_seconds != null ? r.time_watched_seconds : (r.timeWatchedSeconds ?? 0);
-      const duration = r.video_duration_seconds != null ? r.video_duration_seconds : (r.videoDurationSeconds ?? 0);
+      const timeWat = r.time_watched_min ?? 0;
+      const duration = r.video_duration_min;
       const moduleIdx = r.module_index ?? r.moduleIndex ?? null;
       return {
         courseId,
@@ -1868,8 +1868,8 @@ module.exports = ({ strapi }) => {
         moduleTitle,
         moduleIndex: moduleIdx != null ? Number(moduleIdx) : null,
         videoCompletionType: type,
-        timeWatchedMinutes: Math.round(timeWat / 60),
-        videoDurationMinutes: duration > 0 ? Math.round(duration / 60) : null,
+        timeWatchedMinutes: timeWat,
+        videoDurationMinutes: duration != null ? duration : null,
       };
     });
 

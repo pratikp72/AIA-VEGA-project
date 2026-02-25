@@ -126,7 +126,7 @@ export function LearningPersonalView({
     return tableDataWithModuleCells.slice(start, start + courseProgressPageSize);
   }, [tableDataWithModuleCells, courseProgressPage, courseProgressPageSize]);
 
-  const showKpis = !hasModule;
+  const showKpis = true;
 
   return (
     <>

@@ -11,7 +11,7 @@ module.exports = createCoreController(
   ({ strapi }) => ({
 
     async markAsRead(ctx) {
-      const { userId, courseId, moduleIndex, moduleTitle, videoDurationSeconds } = ctx.request.body;
+      const { userId, courseId, moduleIndex, moduleTitle, videoDurationMin, timeWatchedMin } = ctx.request.body;
 
       if (!userId || !courseId || moduleIndex === undefined)
         return ctx.badRequest("Missing required fields");
@@ -29,8 +29,8 @@ module.exports = createCoreController(
         module_index: moduleIndex,
         module_title: moduleTitle || null,
         video_completion_type: "full_watch",
-        video_duration_seconds: videoDurationSeconds,
-        time_watched_seconds: videoDurationSeconds,
+        video_duration_min: videoDurationMin,
+        time_watched_min: timeWatchedMin,
         last_updated: new Date(),
       };
 

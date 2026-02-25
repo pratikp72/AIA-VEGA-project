@@ -42,12 +42,12 @@
         "not_started"
       ]
     },
-    "time_watched_seconds": {
+    "time_watched_min": {
       "type": "integer",
       "required": true,
       "default": 0
     },
-    "video_duration_seconds": {
+    "video_duration_min": {
       "type": "integer",
       "required": false
     },
