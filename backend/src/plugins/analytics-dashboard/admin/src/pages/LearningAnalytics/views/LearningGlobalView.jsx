@@ -62,12 +62,34 @@ export function LearningGlobalView({
 
   const tableColumns = useMemo(() => {
     const base = [
-      { key: 'courseTitle', label: 'Course' },
+      {
+        key: 'courseTitle',
+        label: 'Course',
+        header: (
+          <Typography variant="sigma" textColor="neutral600" style={{ wordBreak: 'break-word', whiteSpace: 'normal', maxWidth: 120 }}>
+            Course
+          </Typography>
+        ),
+        render: (v) => (
+          <span style={{ wordBreak: 'break-word', whiteSpace: 'normal', maxWidth: 220, display: 'block' }}>{v}</span>
+        ),
+      },
       { key: 'courseCategory', label: 'Category' },
       { key: 'status', label: 'Status' },
       { key: 'percentage', label: 'Progress %', render: (v) => (v != null ? `${v}%` : '—') },
       { key: 'timeSpentMinutes', label: 'Time (min)' },
-      { key: 'certificateIssued', label: 'Certificate' },
+      {
+        key: 'certificateIssued',
+        label: 'Certificate',
+        header: (
+          <Flex direction="column" gap={0} alignItems="flex-start">
+            <Typography variant="sigma" textColor="neutral600">Certificate</Typography>
+            <Typography variant="pi" textColor="neutral500" style={{ fontSize: '11px', fontWeight: 'normal' }}>
+              per enrollment
+            </Typography>
+          </Flex>
+        ),
+      },
       { key: 'dropOffRate', label: 'Drop Off Rate', render: (v, row) => `${v ?? 0}% (${row.dropOffCount ?? 0})` },
     ];
     const moduleColDefs = moduleColumnsForCourse.map((m) => ({
