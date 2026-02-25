@@ -162,7 +162,7 @@ export function OverallActivityTrackingView({
             columns={[
               { key: 'userName', label: 'USER' },
               { key: 'company', label: 'COMPANY' },
-              { key: 'activity', label: 'ACTIVITY', sortable: true, sortKey: 'activity' },
+              { key: 'activity', label: 'PAGE', sortable: true, sortKey: 'activity' },
               { key: 'duration', label: 'DURATION', sortable: true, sortKey: 'duration' },
               {
                 key: 'timestamp',

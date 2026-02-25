@@ -1049,7 +1049,7 @@ export interface ApiModuleVideoProgressModuleVideoProgress
     module_index: Schema.Attribute.Integer & Schema.Attribute.Required;
     module_title: Schema.Attribute.String;
     publishedAt: Schema.Attribute.DateTime;
-    time_watched_min: Schema.Attribute.Integer &
+    time_watched_seconds: Schema.Attribute.Integer &
       Schema.Attribute.Required &
       Schema.Attribute.DefaultTo<0>;
     updatedAt: Schema.Attribute.DateTime;
@@ -1064,7 +1064,7 @@ export interface ApiModuleVideoProgressModuleVideoProgress
       ['full_watch', 'skipped_to_end', 'in_progress', 'not_started']
     > &
       Schema.Attribute.Required;
-    video_duration_min: Schema.Attribute.Integer;
+    video_duration_seconds: Schema.Attribute.Integer;
   };
 }
 

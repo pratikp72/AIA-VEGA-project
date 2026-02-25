@@ -129,7 +129,7 @@ module.exports = ({ strapi }) => {
       if (!Array.isArray(mods)) return [];
       return mods.map((m, idx) => ({
         title: m.title ?? m.attributes?.title ?? `Module ${idx + 1}`,
-        module_id: m.module_id ?? m.attributes?.module_id ?? String(idx),
+            module_id: m.module_id ?? m.attributes?.module_id ?? m.moduleIndex ?? String(idx),
         index: m.index ?? idx,
       }));
     } catch (e) {
@@ -616,6 +616,29 @@ module.exports = ({ strapi }) => {
       const avgPct = agg.percentages.length > 0 ? Math.round(agg.percentages.reduce((a, b) => a + b, 0) / agg.percentages.length) : 0;
       const avgTime = agg.timeSpentMinutes.length > 0 ? Math.round((agg.timeSpentMinutes.reduce((a, b) => a + b, 0) / agg.timeSpentMinutes.length) * 10) / 10 : 0;
       const certStr = `${agg.certificateCount}/${agg.total}`;
+
+      // Calculate drop off rate for this course
+      // Drop-off: started but not completed, and no activity in last 14 days
+      let dropOffCount = 0;
+      if (Array.isArray(progresses)) {
+        const dropOffCutoff = new Date();
+        dropOffCutoff.setDate(dropOffCutoff.getDate() - 14);
+        const dropOffCutoffStr = dropOffCutoff.toISOString().slice(0, 10);
+        progresses.forEach((p) => {
+          const pCid = p.course?.id ?? p.course?.documentId ?? p.course_id ?? p.courseId;
+          if (String(pCid) !== String(agg.courseId)) return;
+          const status = p.progress_status;
+          const percentage = p.progress_percentage ?? p.progressPercentage ?? 0;
+          const lastAccess = p.last_accessed_at ?? p.lastAccessedAt;
+          const startedAt = p.started_at ?? p.startedAt;
+          const isStarted = status === 'In_progress' || (status === 'Not_started' && startedAt);
+          const notCompleted = status !== 'Completed' && status !== 'Failed';
+          const inactiveLongEnough = lastAccess && String(lastAccess).slice(0, 10) < dropOffCutoffStr;
+          if (isStarted && notCompleted && percentage < 100 && inactiveLongEnough) dropOffCount++;
+        });
+      }
+      const dropOffRate = agg.total > 0 ? Math.round((dropOffCount / agg.total) * 100) : 0;
+
       return {
         courseId: agg.courseId,
         courseTitle: agg.courseTitle,
@@ -624,6 +647,8 @@ module.exports = ({ strapi }) => {
         percentage: avgPct,
         timeSpentMinutes: avgTime,
         certificateIssued: certStr,
+        dropOffRate,
+        dropOffCount,
       };
     });
 
@@ -1458,6 +1483,16 @@ module.exports = ({ strapi }) => {
       categoryCounts[catNamePersonal] = (categoryCounts[catNamePersonal] || 0) + 1;
 
       const courseId = p.course?.documentId ?? p.course?.document_id ?? p.course?.id ?? p.course_id ?? p.courseId;
+
+      // Calculate inactive days
+      let inactiveDays = null;
+      if (p.last_accessed_at) {
+        const lastAccessDate = new Date(p.last_accessed_at);
+        const now = new Date();
+        const diffMs = now.getTime() - lastAccessDate.getTime();
+        inactiveDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+      }
+
       courseProgress.push({
         courseId: courseId != null ? String(courseId) : null,
         courseTitle: p.course?.title ?? 'Unknown',
@@ -1470,6 +1505,7 @@ module.exports = ({ strapi }) => {
         quizPassed: courseId && quizPassedByCourse.has(String(courseId)),
         feedbackGiven: courseId && feedbackGivenByCourse.has(String(courseId)),
         feedbackPending: courseId && feedbackPendingByCourse.has(String(courseId)),
+        inactiveDays,
       });
 
       if (p.completed_at && p.progress_status === 'Completed') {

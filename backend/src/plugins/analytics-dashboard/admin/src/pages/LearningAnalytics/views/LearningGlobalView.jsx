@@ -68,6 +68,7 @@ export function LearningGlobalView({
       { key: 'percentage', label: 'Progress %', render: (v) => (v != null ? `${v}%` : '—') },
       { key: 'timeSpentMinutes', label: 'Time (min)' },
       { key: 'certificateIssued', label: 'Certificate' },
+      { key: 'dropOffRate', label: 'Drop Off Rate', render: (v, row) => `${v ?? 0}% (${row.dropOffCount ?? 0})` },
     ];
     const moduleColDefs = moduleColumnsForCourse.map((m) => ({
       key: m.key,

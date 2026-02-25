@@ -102,6 +102,7 @@ export function LearningPersonalView({
       { key: 'percentage', label: 'Progress %', render: (v) => (v != null ? `${v}%` : '—') },
       { key: 'timeSpentMinutes', label: 'Time (min)' },
       { key: 'certificateIssued', label: 'Certificate', render: (v) => (v ? 'Yes' : 'No') },
+      { key: 'inactiveDays', label: 'Inactive Days', render: (v) => v != null ? `${v} days` : '—' },
     ];
     const moduleColDefs = moduleColumnsForCourse.map((m) => ({
       key: m.key,
