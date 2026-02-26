@@ -287,17 +287,17 @@ module.exports = ({ strapi }) => {
           const locId = params.unitLocation;
           const isNumeric = typeof locId === 'number' || /^\d+$/.test(String(locId));
           const locRow = isNumeric
-            ? await strapi.db.query('api::unit-location.unit-location').findOne({
+            ? await strapi.db.query('api::work-location.work-location').findOne({
                 where: { id: Number(locId) },
                 select: ['name'],
               })
-            : await strapi.db.query('api::unit-location.unit-location').findOne({
+            : await strapi.db.query('api::work-location.work-location').findOne({
                 where: { documentId: String(locId) },
                 select: ['name'],
               });
           if (locRow?.name) userWhere.working_location = { $containsi: locRow.name };
         } catch (e) {
-          strapi.log.warn('_buildActivityWhere: resolve unit location failed', e?.message);
+          strapi.log.warn('_buildActivityWhere: resolve work location failed', e?.message);
         }
       }
 

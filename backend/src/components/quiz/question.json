@@ -36,6 +36,36 @@
         "positiveOnly": true,
         "min": "1"
       }
+    },
+    "correct_answer": {
+      "type": "string",
+      "conditions": {
+        "visible": {
+          "==": [
+            {
+              "var": "question_type"
+            },
+            "Multiple_choice"
+          ]
+        }
+      },
+      "required": true
+    },
+    "correct_multiSelect_answers": {
+      "type": "component",
+      "conditions": {
+        "visible": {
+          "==": [
+            {
+              "var": "question_type"
+            },
+            "Multiple_select"
+          ]
+        }
+      },
+      "component": "quiz.multiselect-question-answer",
+      "repeatable": true,
+      "required": true
     }
   },
   "config": {}
