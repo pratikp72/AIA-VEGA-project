@@ -3,6 +3,7 @@ import { Box, Flex, Typography, Button } from '@strapi/design-system';
 import { StatCard } from '../../../components/StatCard';
 import { DonutChart } from '../../../components/DonutChart';
 import { LineChart } from '../../../components/LineChart';
+import { BarChart } from '../../../components/BarChart';
 import { FunnelChart } from '../../../components/FunnelChart';
 import { DataTable } from '../../../components/DataTable';
 
@@ -24,6 +25,7 @@ export function LearningGlobalView({
   setModuleDetailPage,
   setModuleDetailPageSize,
 }) {
+  const [downloadStyle, setDownloadStyle] = React.useState('shown'); // 'shown' or 'all'
   const dataView = courseContentViewType === 'table' ? 'table' : 'chart';
   const setDataView = (v) => setCourseContentViewType(v === 'table' ? 'table' : 'statistics');
 
@@ -62,12 +64,35 @@ export function LearningGlobalView({
 
   const tableColumns = useMemo(() => {
     const base = [
-      { key: 'courseTitle', label: 'Course' },
+      {
+        key: 'courseTitle',
+        label: 'Course',
+        header: (
+          <Typography variant="sigma" textColor="neutral600" style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 160 }}>
+            Course
+          </Typography>
+        ),
+        render: (v) => (
+          <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 220, display: 'block' }} title={v}>{v}</span>
+        ),
+      },
       { key: 'courseCategory', label: 'Category' },
       { key: 'status', label: 'Status' },
       { key: 'percentage', label: 'Progress %', render: (v) => (v != null ? `${v}%` : '—') },
       { key: 'timeSpentMinutes', label: 'Time (min)' },
-      { key: 'certificateIssued', label: 'Certificate' },
+      {
+        key: 'certificateIssued',
+        label: 'Certificate',
+        header: (
+          <Flex direction="column" gap={0} alignItems="flex-start">
+            <Typography variant="sigma" textColor="neutral600">Certificate</Typography>
+            <Typography variant="pi" textColor="neutral500" style={{ fontSize: '11px', fontWeight: 'normal' }}>
+              per enrollment
+            </Typography>
+          </Flex>
+        ),
+      },
+      { key: 'dropOffRate', label: 'Drop Off Rate', render: (v, row) => `${v ?? 0}% (${row.dropOffCount ?? 0})` },
     ];
     const moduleColDefs = moduleColumnsForCourse.map((m) => ({
       key: m.key,
@@ -131,16 +156,58 @@ export function LearningGlobalView({
 
       {dataView === 'chart' && (
         <>
-          <Box style={{ width: '100%', marginBottom: 24 }}>
-            <LineChart
-              data={data?.learningActivityByWeek || []}
-              title="Learning Activity"
-              nameKey="week"
-              dataKey="enrollments"
-              seriesName="Enrollments"
-              height={280}
-            />
-          </Box>
+            <Box style={{ width: '100%', marginBottom: 24 }}>
+              <BarChart
+                data={(() => {
+                  // Global view: show all users' time spent per course
+                  if (!hasCourse) {
+                    return courseProgress.map(cp => ({
+                      name: cp.courseTitle ?? cp.course?.title ?? 'Course',
+                      value: cp.timeSpentMinutes ?? cp.timeSpent ?? 0
+                    }));
+                  }
+                  // Course selected: show all modules' time spent
+                  if (hasCourse && courseModules.length > 0) {
+                    // Find course progress for selected course
+                    const cp = tableRows[0];
+                    if (!cp) return [];
+                    return courseModules.map((mod) => {
+                      const modVal = cp[`mod_${mod.index}`];
+                      let watched = 0, duration = null;
+                      if (typeof modVal === 'string' && modVal.includes('/')) {
+                        const [w, d] = modVal.split('/').map(s => s.trim());
+                        watched = Number(w) || 0;
+                        duration = d ? Number(d) : null;
+                      } else if (!isNaN(Number(modVal))) {
+                        watched = Number(modVal);
+                      }
+                      return {
+                        name: mod.title ?? `Module ${mod.index + 1}`,
+                        value: watched,
+                        watched,
+                        duration,
+                      };
+                    });
+                  }
+                  return [];
+                })()}
+                title={hasCourse ? 'Time Spent per Module' : 'Time Spent per Course'}
+                dataKey="value"
+                nameKey="name"
+                height={320}
+                layout="horizontal"
+                valueLabel="Time Spent"
+                valueUnit="min"
+                tooltipFormatter={(value, name, props) => {
+                  if (hasCourse && props?.payload) {
+                    const { watched, duration } = props.payload;
+                    if (watched != null && duration != null) return [`${watched}/${duration} min`];
+                    if (watched != null) return [`${watched} min`];
+                  }
+                  return [`${value} min`];
+                }}
+              />
+            </Box>
           <Flex gap={4} marginBottom={6} wrap="wrap">
             <Box style={{ flex: '1 1 340px', minWidth: 280 }}>
               <FunnelChart
@@ -165,7 +232,10 @@ export function LearningGlobalView({
       {dataView === 'table' && (
         <Box marginBottom={6}>
           <DataTable
-            data={paginatedTableData}
+            data={downloadStyle === 'all' ? tableRows : paginatedTableData}
+            fullData={tableRows}
+            paginatedData={paginatedTableData}
+            downloadStyle={downloadStyle}
             title="Course Progress"
             exportFileName="course-progress.xlsx"
             emptyMessage={hasCourse ? (hasModule ? 'No data for the selected course and module.' : 'No data for the selected course.') : 'No course progress data.'}

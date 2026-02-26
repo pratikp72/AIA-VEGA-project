@@ -1034,8 +1034,7 @@ export interface ApiModuleVideoProgressModuleVideoProgress
     draftAndPublish: true;
   };
   attributes: {
-    course: Schema.Attribute.Relation<'manyToOne', 'api::course.course'> &
-      Schema.Attribute.Required;
+    course: Schema.Attribute.Relation<'manyToOne', 'api::course.course'>;
     createdAt: Schema.Attribute.DateTime;
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
@@ -1058,8 +1057,7 @@ export interface ApiModuleVideoProgressModuleVideoProgress
     user: Schema.Attribute.Relation<
       'manyToOne',
       'plugin::users-permissions.user'
-    > &
-      Schema.Attribute.Required;
+    >;
     video_completion_type: Schema.Attribute.Enumeration<
       ['full_watch', 'skipped_to_end', 'in_progress', 'not_started']
     > &
