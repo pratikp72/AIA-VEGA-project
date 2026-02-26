@@ -113,7 +113,6 @@ export interface QuizAnswer extends Struct.ComponentSchema {
     displayName: 'Answer';
   };
   attributes: {
-    answer: Schema.Attribute.String & Schema.Attribute.Required;
     correct: Schema.Attribute.Boolean;
     point: Schema.Attribute.Integer;
     question: Schema.Attribute.String & Schema.Attribute.Required;
@@ -122,6 +121,9 @@ export interface QuizAnswer extends Struct.ComponentSchema {
       ['Multiple_choice', 'Multiple_select']
     > &
       Schema.Attribute.Required;
+    selected_answer_for_multiChoice: Schema.Attribute.String &
+      Schema.Attribute.Required;
+    selected_answer_for_multiSelect: Schema.Attribute.JSON;
   };
 }
 
@@ -132,6 +134,16 @@ export interface QuizChecklist extends Struct.ComponentSchema {
   };
   attributes: {
     discription: Schema.Attribute.Text;
+  };
+}
+
+export interface QuizMultiselectQuestionAnswer extends Struct.ComponentSchema {
+  collectionName: 'components_quiz_multiselect_question_answers';
+  info: {
+    displayName: 'Multiselect question answer';
+  };
+  attributes: {
+    answer: Schema.Attribute.String & Schema.Attribute.Required;
   };
 }
 
@@ -152,6 +164,12 @@ export interface QuizQuestion extends Struct.ComponentSchema {
     displayName: 'Question';
   };
   attributes: {
+    correct_answer: Schema.Attribute.String & Schema.Attribute.Required;
+    correct_multiSelect_answers: Schema.Attribute.Component<
+      'quiz.multiselect-question-answer',
+      true
+    > &
+      Schema.Attribute.Required;
     options: Schema.Attribute.Component<'quiz.options', true>;
     order: Schema.Attribute.Integer;
     point: Schema.Attribute.Integer &
@@ -291,6 +309,7 @@ declare module '@strapi/strapi' {
       'feedback-form.question': FeedbackFormQuestion;
       'quiz.answer': QuizAnswer;
       'quiz.checklist': QuizChecklist;
+      'quiz.multiselect-question-answer': QuizMultiselectQuestionAnswer;
       'quiz.options': QuizOptions;
       'quiz.question': QuizQuestion;
       'quiz.quiz': QuizQuiz;

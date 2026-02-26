@@ -1,0 +1,14 @@
+{
+  "collectionName": "components_quiz_multiselect_question_answers",
+  "info": {
+    "displayName": "Multiselect question answer"
+  },
+  "options": {},
+  "attributes": {
+    "answer": {
+      "type": "string",
+      "required": true
+    }
+  },
+  "config": {}
+}
