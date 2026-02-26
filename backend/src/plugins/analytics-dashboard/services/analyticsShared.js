@@ -130,10 +130,11 @@ module.exports = ({ strapi }) => {
   };
 
   self.getUnitLocationsList = async function (company) {
+    // Now fetch from work-location instead of unit-location
     try {
       const companyId = await self.resolveCompanyId(company);
       const where = companyId != null ? { company: { id: companyId } } : {};
-      const locations = await strapi.db.query('api::unit-location.unit-location').findMany({
+      const locations = await strapi.db.query('api::work-location.work-location').findMany({
         where: Object.keys(where).length > 0 ? where : undefined,
         orderBy: { name: 'asc' },
         limit: 200,

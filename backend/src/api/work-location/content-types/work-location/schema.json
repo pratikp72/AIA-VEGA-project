@@ -1,0 +1,37 @@
+{
+  "kind": "collectionType",
+  "collectionName": "work_locations",
+  "info": {
+    "singularName": "work-location",
+    "pluralName": "work-locations",
+    "displayName": "Work Location"
+  },
+  "options": {
+    "draftAndPublish": true
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "name": {
+      "type": "string",
+      "required": true
+    },
+    "company": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::company.company",
+      "inversedBy": "work_locations"
+    },
+    "course_assignments": {
+      "type": "relation",
+      "relation": "manyToMany",
+      "target": "api::course-assignment.course-assignment",
+      "mappedBy": "work_locations"
+    },
+    "holidays": {
+      "type": "relation",
+      "relation": "oneToMany",
+      "target": "api::holiday.holiday",
+      "mappedBy": "work_location"
+    }
+  }
+}

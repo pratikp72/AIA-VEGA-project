@@ -600,6 +600,10 @@ export interface ApiCompanyCompany extends Struct.CollectionTypeSchema {
     updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
     website: Schema.Attribute.String & Schema.Attribute.Required;
+    work_locations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::work-location.work-location'
+    >;
   };
 }
 
@@ -643,13 +647,13 @@ export interface ApiCourseAssignmentCourseAssignment
     > &
       Schema.Attribute.Private;
     publishedAt: Schema.Attribute.DateTime;
-    unit_locations: Schema.Attribute.Relation<
-      'manyToMany',
-      'api::unit-location.unit-location'
-    >;
     updatedAt: Schema.Attribute.DateTime;
     updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
+    work_locations: Schema.Attribute.Relation<
+      'manyToMany',
+      'api::work-location.work-location'
+    >;
   };
 }
 
@@ -969,13 +973,13 @@ export interface ApiHolidayHoliday extends Struct.CollectionTypeSchema {
       Schema.Attribute.Private;
     publishedAt: Schema.Attribute.DateTime;
     title: Schema.Attribute.String & Schema.Attribute.Required;
-    unit_location: Schema.Attribute.Relation<
-      'manyToOne',
-      'api::unit-location.unit-location'
-    >;
     updatedAt: Schema.Attribute.DateTime;
     updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
+    work_location: Schema.Attribute.Relation<
+      'manyToOne',
+      'api::work-location.work-location'
+    >;
   };
 }
 
@@ -998,15 +1002,7 @@ export interface ApiImportantLinkImportantLink
     createdAt: Schema.Attribute.DateTime;
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
-    icon: Schema.Attribute.JSON &
-      Schema.Attribute.Required &
-      Schema.Attribute.CustomField<
-        'plugin::strapi-plugin-iconhub.iconhub',
-        {
-          storeIconData: true;
-          storeIconName: true;
-        }
-      >;
+    link_icon: Schema.Attribute.Media<'images'> & Schema.Attribute.Required;
     locale: Schema.Attribute.String & Schema.Attribute.Private;
     localizations: Schema.Attribute.Relation<
       'oneToMany',
@@ -1469,6 +1465,41 @@ export interface ApiUserProgressUserProgress
       'manyToOne',
       'plugin::users-permissions.user'
     >;
+  };
+}
+
+export interface ApiWorkLocationWorkLocation
+  extends Struct.CollectionTypeSchema {
+  collectionName: 'work_locations';
+  info: {
+    displayName: 'Work Location';
+    pluralName: 'work-locations';
+    singularName: 'work-location';
+  };
+  options: {
+    draftAndPublish: true;
+  };
+  attributes: {
+    company: Schema.Attribute.Relation<'manyToOne', 'api::company.company'>;
+    course_assignments: Schema.Attribute.Relation<
+      'manyToMany',
+      'api::course-assignment.course-assignment'
+    >;
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    holidays: Schema.Attribute.Relation<'oneToMany', 'api::holiday.holiday'>;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::work-location.work-location'
+    > &
+      Schema.Attribute.Private;
+    name: Schema.Attribute.String & Schema.Attribute.Required;
+    publishedAt: Schema.Attribute.DateTime;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
   };
 }
 
@@ -2066,6 +2097,7 @@ declare module '@strapi/strapi' {
       'api::townhall.townhall': ApiTownhallTownhall;
       'api::unit-location.unit-location': ApiUnitLocationUnitLocation;
       'api::user-progress.user-progress': ApiUserProgressUserProgress;
+      'api::work-location.work-location': ApiWorkLocationWorkLocation;
       'plugin::audit-log.audit-entry': PluginAuditLogAuditEntry;
       'plugin::content-releases.release': PluginContentReleasesRelease;
       'plugin::content-releases.release-action': PluginContentReleasesReleaseAction;
