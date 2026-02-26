@@ -59,35 +59,10 @@ function syncComponentArray(current, languages, createPlaceholder) {
  *
  * @param {object} data - Course document payload (params.data)
  */
+// Fully disabled: do not sync or mutate any course data. All repeatables are managed manually.
 function syncCourseLanguageComponents(data) {
-  const languages = getLanguageList(data?.course_language);
-  if (languages.length === 0) return;
-
-  data.modules = syncComponentArray(data.modules, languages, (lang) => ({
-    language: lang,
-    title: '',
-    module_content_type: 'Text',
-    mark_as_read: false,
-  }));
-
-  data.quiz = syncComponentArray(data.quiz, languages, (lang) => ({
-    language: lang,
-    title: '',
-    quiz_questions: [],
-    quiz_instruction: [],
-    quiz_instruction_checklist: [],
-  }));
-
-  // feedback is repeatable: N entries (one per language). Do not sync inner feedback_question.
-  const existingFeedback = Array.isArray(data.feedback) ? data.feedback : [];
-  data.feedback = syncComponentArray(existingFeedback, languages, (lang) => ({
-    language: lang,
-    feedback_question: [],
-  }));
-  data.feedback = data.feedback.map((f) => ({
-    ...f,
-    feedback_question: Array.isArray(f.feedback_question) ? f.feedback_question : [],
-  }));
+  // No-op: backend auto-sync is disabled by request.
+  return;
 }
 
 module.exports = {

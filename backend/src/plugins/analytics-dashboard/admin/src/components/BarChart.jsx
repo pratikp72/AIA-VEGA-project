@@ -33,13 +33,13 @@ export function BarChart({ data = [], title, dataKey = 'value', nameKey = 'name'
   // Horizontal bars = categories on Y-axis, values on X-axis → Recharts uses layout="vertical" (category axis is vertical)
   const isHorizontalBars = layout === 'horizontal';
   const rechartsLayout = isHorizontalBars ? 'vertical' : 'horizontal';
-  const barCategoryGap = isHorizontalBars && data.length > 0 ? `${Math.max(8, 40 - data.length * 2)}%` : undefined;
-  const minBarSize = isHorizontalBars ? 16 : undefined;
-  const fixedBarSize = isHorizontalBars ? 28 : undefined;
+  const barCategoryGap = isHorizontalBars && data.length > 0 ? `${Math.max(10, 40 - data.length * 2)}%` : undefined;
+  const minBarSize = isHorizontalBars ? 24 : undefined;
+  const fixedBarSize = isHorizontalBars ? 34 : undefined;
   // Minimal left margin so bars use more of the width; YAxis width only for labels
   const margin = isHorizontalBars ? { left: 8, right: 16, top: 8, bottom: 28 } : { top: 20, bottom: 20, left: 5, right: 5 };
   // Height for horizontal chart: fit all bars and labels (roughly 28px per category)
-  const chartHeight = isHorizontalBars && data.length > 6 ? Math.min(500, 120 + data.length * 28) : height;
+  const chartHeight = isHorizontalBars ? Math.min(700, 90 + data.length * 48) : height;
 
   return (
     <Box padding={4} background="neutral0" hasRadius shadow="tableShadow" borderColor="neutral200" borderWidth="1px" borderStyle="solid">

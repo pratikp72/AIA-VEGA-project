@@ -4,13 +4,43 @@ import * as XLSX from 'xlsx';
 
 const DEFAULT_FONT_SIZE = '16px';
 
-export function DataTable({ data = [], columns = [], title, pagination = null, sortBy = null, sortOrder = 'asc', onSortChange = null, fontSize = DEFAULT_FONT_SIZE, exportFileName = null, emptyMessage = 'No data available' }) {
+export function DataTable({
+  data = [],
+  columns = [],
+  title,
+  pagination = null,
+  sortBy = null,
+  sortOrder = 'asc',
+  onSortChange = null,
+  fontSize = DEFAULT_FONT_SIZE,
+  exportFileName = null,
+  emptyMessage = 'No data available',
+  downloadStyle: propDownloadStyle = 'shown',
+  fullData = [],
+  paginatedData = [],
+  onDownloadStyleChange = null,
+}) {
+  const [downloadStyle, setDownloadStyle] = React.useState(propDownloadStyle);
+
+  const handleDownloadStyleChange = (value) => {
+    setDownloadStyle(value);
+    if (onDownloadStyleChange) {
+      onDownloadStyleChange(value);
+    }
+  };
   const handleExportToExcel = () => {
-    if (!data || data.length === 0) return;
+    // Choose data based on downloadStyle
+    let exportSource = data;
+    if (downloadStyle === 'all') {
+      exportSource = fullData && fullData.length ? fullData : data;
+    } else {
+      exportSource = paginatedData && paginatedData.length ? paginatedData : data;
+    }
+    if (!exportSource || exportSource.length === 0) return;
 
     // Prepare data for Excel export
     const exportLabel = (col) => col.exportLabel ?? col.label;
-    const exportData = data.map((row) => {
+    const exportData = exportSource.map((row) => {
       const exportRow = {};
       columns.forEach((col) => {
         let value = row[col.key];
@@ -93,6 +123,21 @@ export function DataTable({ data = [], columns = [], title, pagination = null, s
               Download Excel
             </Button>
           )}
+          {/* Dropdown for download style, right of Download Excel button */}
+          {data?.length > 0 && (
+            <Box style={{ minWidth: 180 }}>
+              <label htmlFor="download-style-select" style={{ fontSize: '14px', marginRight: 8 }}>Download:</label>
+              <select
+                id="download-style-select"
+                value={downloadStyle}
+                onChange={e => handleDownloadStyleChange(e.target.value)}
+                style={{ padding: '4px 8px', fontSize: '14px', borderRadius: 4 }}
+              >
+                <option value="shown">Current rows</option>
+                <option value="all">All rows</option>
+              </select>
+            </Box>
+          )}
         </Flex>
         {pagination && total > 0 && (
           <Flex gap={2} alignItems="center" wrap="wrap">
@@ -171,11 +216,10 @@ export function DataTable({ data = [], columns = [], title, pagination = null, s
                       {headerContent}
                       {isSortable && (
                         <span
-                          style={{ fontSize: 11, color: isActive ? '#2563eb' : '#3b82f6' }}
+                          style={{ fontSize: 13, fontWeight: 'bold', color: isActive ? '#2563eb' : '#3b82f6' }}
                           title={sortLabel}
                         >
-                          {isActive ? (sortOrder === 'asc' ? ' ▲' : ' ▼') : ' ↕'}
-                          <span style={{ marginLeft: 2, fontWeight: 'normal', opacity: 0.9 }}>(Sort)</span>
+                          {isActive ? (sortOrder === 'asc' ? ' ▲' : ' ▼') : '↕'}
                         </span>
                       )}
                     </Flex>

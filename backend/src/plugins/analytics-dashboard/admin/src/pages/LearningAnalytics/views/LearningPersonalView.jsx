@@ -26,7 +26,7 @@ export function LearningPersonalView({
   onExport,
 }) {
   const [dataView, setDataView] = useState('table'); // 'table' | 'chart'
-
+  const [downloadStyle, setDownloadStyle] = React.useState('shown');
   const hasCourse = Boolean(filterCourse);
   const hasModule = Boolean(filterModule !== '' && filterModule != null);
   const moduleIndexSelected = hasModule ? (Number(filterModule)) : null;
@@ -176,7 +176,7 @@ export function LearningPersonalView({
 
       {dataView === 'chart' && (
         <>
-          {!hasModule && (
+          {/* {!hasModule && (
             <Flex justifyContent="flex-end" marginBottom={2}>
               <Button
                 variant="secondary"
@@ -187,20 +187,61 @@ export function LearningPersonalView({
                 Download
               </Button>
             </Flex>
-          )}
+          )} */}
           <Box marginBottom={6}>
             <BarChart
-              data={Array.isArray(courseProgress) ? courseProgress.map((c) => ({ name: c.courseTitle, value: c.timeSpentMinutes ?? 0, category: c.courseCategory || '' })) : []}
-              title="Time Spent per Course"
+              data={(() => {
+                // If no course selected, show time spent per course
+                if (!hasCourse) {
+                  return Array.isArray(courseProgress)
+                    ? courseProgress.map((c) => ({
+                        name: c.courseTitle,
+                        value: c.timeSpentMinutes ?? 0,
+                        category: c.courseCategory || '',
+                      }))
+                    : [];
+                }
+                // If course selected, show time spent per module for that user
+                if (hasCourse && courseModules.length > 0) {
+                  const cp = tableRows[0];
+                  if (!cp) return [];
+                  return courseModules.map((mod) => {
+                    // Try to extract watched and duration from cp[`mod_${mod.index}`]
+                    const modVal = cp[`mod_${mod.index}`];
+                    let watched = 0, duration = null;
+                    if (typeof modVal === 'string' && modVal.includes('/')) {
+                      const [w, d] = modVal.split('/').map(s => s.trim());
+                      watched = Number(w) || 0;
+                      duration = d ? Number(d) : null;
+                    } else if (!isNaN(Number(modVal))) {
+                      watched = Number(modVal);
+                    }
+                    return {
+                      name: mod.title ?? `Module ${mod.index + 1}`,
+                      value: watched,
+                      watched,
+                      duration,
+                    };
+                  });
+                }
+                return [];
+              })()}
+              title={hasCourse ? 'Time Spent per Module' : 'Time Spent per Course'}
               nameKey="name"
               dataKey="value"
-              height={260}
-              valueLabel="Total Time Spent"
+              height={hasCourse ? 320 : 260}
+              valueLabel={hasCourse ? 'Time Spent' : 'Total Time Spent'}
               valueUnit="min"
               layout="horizontal"
               tooltipFormatter={(value, name, props) => {
-                const category = props?.payload?.category ?? '';
-                return [value + ' min', category ? `Category: ${category}` : undefined];
+                // For module view, show watched/duration if available
+                if (hasCourse && props?.payload) {
+                  const { watched, duration } = props.payload;
+                  if (watched != null && duration != null) return [`${watched}/${duration} min`];
+                  if (watched != null) return [`${watched} min`];
+                }
+                // For course view, show value as min
+                return [`${value} min`];
               }}
             />
           </Box>
@@ -234,7 +275,10 @@ export function LearningPersonalView({
       {dataView === 'table' && (
         <Box marginBottom={6}>
           <DataTable
-            data={paginatedTableData}
+            data={downloadStyle === 'all' ? tableRows : paginatedTableData}
+            fullData={tableRows}
+            paginatedData={paginatedTableData}
+            downloadStyle={downloadStyle}
             title="My Course Progress"
             exportFileName="my-course-progress.xlsx"
             emptyMessage={hasCourse ? (hasModule ? 'No data for the selected course and module.' : 'No data for the selected course.') : 'No course progress data for this employee yet.'}
