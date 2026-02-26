@@ -60,6 +60,12 @@
       "relation": "manyToMany",
       "target": "api::course-assignment.course-assignment",
       "inversedBy": "companies"
+    },
+    "work_locations": {
+      "type": "relation",
+      "relation": "oneToMany",
+      "target": "api::work-location.work-location",
+      "mappedBy": "company"
     }
   }
 }

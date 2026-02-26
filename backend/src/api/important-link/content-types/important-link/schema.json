@@ -30,14 +30,13 @@
       "relation": "manyToMany",
       "target": "api::company.company"
     },
-    "icon": {
-      "type": "customField",
-      "customField": "plugin::strapi-plugin-iconhub.iconhub",
-      "options": {
-        "storeIconData": true,
-        "storeIconName": true
-      },
-      "required": true
+    "link_icon": {
+      "type": "media",
+      "multiple": false,
+      "required": true,
+      "allowedTypes": [
+        "images"
+      ]
     }
   }
 }

@@ -216,6 +216,14 @@ export interface QuizQuizInstruction extends Struct.ComponentSchema {
   };
   attributes: {
     description: Schema.Attribute.Text;
+    icon: Schema.Attribute.JSON &
+      Schema.Attribute.CustomField<
+        'plugin::strapi-plugin-iconhub.iconhub',
+        {
+          storeIconData: true;
+          storeIconName: true;
+        }
+      >;
     name: Schema.Attribute.String;
   };
 }

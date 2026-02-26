@@ -66,21 +66,6 @@
       },
       "description": "Select employees to assign"
     },
-    "unit_locations": {
-      "type": "relation",
-      "relation": "manyToMany",
-      "target": "api::unit-location.unit-location",
-      "conditions": {
-        "visible": {
-          "==": [
-            {
-              "var": "assignment_target_type"
-            },
-            "Location"
-          ]
-        }
-      }
-    },
     "companies": {
       "type": "relation",
       "relation": "manyToMany",
@@ -96,6 +81,12 @@
         }
       },
       "mappedBy": "course_assignments"
+    },
+    "work_locations": {
+      "type": "relation",
+      "relation": "manyToMany",
+      "target": "api::work-location.work-location",
+      "inversedBy": "course_assignments"
     }
   }
 }
