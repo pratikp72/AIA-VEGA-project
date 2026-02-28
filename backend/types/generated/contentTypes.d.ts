@@ -1149,16 +1149,17 @@ export interface ApiNotificationNotification
     singularName: 'notification';
   };
   options: {
-    draftAndPublish: true;
+    draftAndPublish: false;
   };
   attributes: {
+    admin_user: Schema.Attribute.Relation<'oneToOne', 'admin::user'>;
     createdAt: Schema.Attribute.DateTime;
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
-    is_read: Schema.Attribute.Boolean &
-      Schema.Attribute.Required &
-      Schema.Attribute.DefaultTo<false>;
-    link: Schema.Attribute.String;
+    forRole: Schema.Attribute.Enumeration<
+      ['user', 'HRadmin', 'LMadmin', 'admin']
+    >;
+    is_read: Schema.Attribute.Boolean & Schema.Attribute.DefaultTo<false>;
     locale: Schema.Attribute.String & Schema.Attribute.Private;
     localizations: Schema.Attribute.Relation<
       'oneToMany',
@@ -1166,28 +1167,28 @@ export interface ApiNotificationNotification
     > &
       Schema.Attribute.Private;
     message: Schema.Attribute.Text & Schema.Attribute.Required;
+    meta: Schema.Attribute.JSON;
     publishedAt: Schema.Attribute.DateTime;
-    sent_via_email: Schema.Attribute.Boolean &
-      Schema.Attribute.Required &
-      Schema.Attribute.DefaultTo<false>;
     title: Schema.Attribute.String & Schema.Attribute.Required;
+    toUser: Schema.Attribute.Relation<
+      'manyToOne',
+      'plugin::users-permissions.user'
+    >;
     type: Schema.Attribute.Enumeration<
       [
-        'Course_assigned',
-        'Quiz_passed',
-        'Quiz_failed',
-        'Certificate_issued',
-        'Due_date_reminder',
+        'course_assigned',
+        'quiz_reattempt_requested',
+        'quiz_reattempt_approved',
+        'quiz_submitted',
+        'feedback_submitted',
+        'news_liked',
+        'custom',
       ]
     > &
       Schema.Attribute.Required;
     updatedAt: Schema.Attribute.DateTime;
     updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
-    user: Schema.Attribute.Relation<
-      'manyToOne',
-      'plugin::users-permissions.user'
-    >;
   };
 }
 
@@ -1376,18 +1377,12 @@ export interface ApiUnitLocationUnitLocation
       Schema.Attribute.DefaultTo<true>;
     address: Schema.Attribute.Text & Schema.Attribute.Required;
     alternative_contact: Schema.Attribute.String;
-    bus_routes: Schema.Attribute.Component<'routes.bus-route', true> &
-      Schema.Attribute.Required;
     city: Schema.Attribute.Relation<'manyToOne', 'api::city.city'>;
     company: Schema.Attribute.Relation<'manyToMany', 'api::company.company'>;
     contact: Schema.Attribute.String & Schema.Attribute.Required;
     createdAt: Schema.Attribute.DateTime;
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
-    emergency_gate_images: Schema.Attribute.Media<
-      'images' | 'files' | 'videos' | 'audios',
-      true
-    >;
     factory_location: Schema.Attribute.Boolean & Schema.Attribute.Required;
     locale: Schema.Attribute.String & Schema.Attribute.Private;
     localizations: Schema.Attribute.Relation<
@@ -1395,13 +1390,14 @@ export interface ApiUnitLocationUnitLocation
       'api::unit-location.unit-location'
     > &
       Schema.Attribute.Private;
-    map_snapshot: Schema.Attribute.Media<
-      'images' | 'files' | 'videos' | 'audios'
-    >;
+    location_images: Schema.Attribute.Media<'images', true> &
+      Schema.Attribute.Required;
     name: Schema.Attribute.String & Schema.Attribute.Required;
     note: Schema.Attribute.Blocks;
     office_location: Schema.Attribute.Boolean & Schema.Attribute.Required;
     publishedAt: Schema.Attribute.DateTime;
+    units: Schema.Attribute.Component<'routes.bus-route', true> &
+      Schema.Attribute.Required;
     updatedAt: Schema.Attribute.DateTime;
     updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;

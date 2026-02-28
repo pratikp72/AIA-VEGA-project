@@ -174,6 +174,22 @@ module.exports = createCoreController(
 
       await userProgressController.updateAfterQuiz(courseId, userId, passed);
 
+        // ------------------------------------------------------
+        // 8. Notification: send to admin + LMadmin
+        // ------------------------------------------------------
+        const meta = { courseId, userId, score, passed };
+        const notifUtil = strapi.utils?.notification;
+        if (notifUtil) {
+          await notifUtil.sendNotification(
+            'quiz_submitted',
+            'Quiz Submitted',
+            `User ${userId} submitted a quiz for course ${courseId}.`,
+            [],
+            meta,
+            ['admin', 'LMadmin']
+          );
+        }
+
       return ctx.send({
         message: "Quiz submitted successfully",
         submission: entry,

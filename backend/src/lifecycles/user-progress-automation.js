@@ -388,25 +388,51 @@ function registerUserProgressLifecycles(strapi) {
     async afterCreate(event) {
       try {
         const { result, params = {} } = event;
-        // Skip when the created assignment is Individual: those are our own child entries from
-        // createCourseAssignmentEntries. Running automation for them would create duplicate user-progress.
-        if (result?.assignment_target_type === 'Individual') return;
         const assignmentId = result.id ?? result.documentId;
         let payload = null;
         if (params.data) {
           payload = await getAssignedUserIdsFromParams(strapi, params, result);
         }
         if (!payload || !payload.userIds || payload.userIds.length === 0) {
-          if (assignmentId == null) {
-            strapi.log.warn('user-progress-automation: afterCreate no id/documentId', result);
-            return;
+          if (assignmentId != null) {
+            await new Promise((r) => setTimeout(r, 200));
+            payload = await getAssignedUserIds(strapi, assignmentId);
           }
-          await new Promise((r) => setTimeout(r, 200));
-          payload = await getAssignedUserIds(strapi, assignmentId);
         }
         let { courseId, userIds, due_date, active, targetType } = payload || {};
-        if (!courseId || !userIds || userIds.length === 0) return;
-        userIds = [...new Set(userIds)]; // dedupe so we never create more than one user-progress per user
+        if (!courseId || !userIds || userIds.length === 0) {
+          if (assignmentId == null) strapi.log.warn('user-progress-automation: afterCreate no id/documentId', result);
+          return;
+        }
+        userIds = [...new Set(userIds)];
+
+        // Send notifications (email + DB + socket) when course is assigned
+        const notifUtil = strapi.utils?.notification;
+        if (notifUtil) {
+          try {
+            const usersWithEmail = await strapi.db.query('plugin::users-permissions.user').findMany({
+              where: { id: { $in: userIds } },
+              select: ['id', 'email'],
+            });
+            const levelMap = { Individual: 'individual', Department: 'department', Company: 'company', Location: 'work_location' };
+            const meta = { courseId, assignedBy: null, level: levelMap[targetType] || targetType };
+            await notifUtil.sendNotification(
+              'course_assigned',
+              'Course Assigned',
+              'A new course has been assigned to you.',
+              usersWithEmail || [],
+              meta,
+              ['LMadmin', 'admin']
+            );
+          } catch (notifErr) {
+            strapi.log.error('user-progress-automation: notification failed', notifErr?.message || notifErr);
+          }
+        }
+
+        // Skip user-progress/individual-entries when the created assignment is Individual
+        // (those are our own child entries from createCourseAssignmentEntries)
+        if (result?.assignment_target_type === 'Individual') return;
+
         courseId = await resolveCourseIdForDb(strapi, courseId);
         if (!courseId) return;
         await createUserProgressEntries(strapi, courseId, userIds);

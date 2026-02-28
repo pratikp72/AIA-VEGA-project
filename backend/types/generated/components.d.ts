@@ -252,11 +252,12 @@ export interface RoutesBusRoute extends Struct.ComponentSchema {
     displayName: 'Bus route';
   };
   attributes: {
-    route_id: Schema.Attribute.String &
+    map_link: Schema.Attribute.String & Schema.Attribute.Required;
+    routes: Schema.Attribute.Component<'routes.bus-stop', true>;
+    unit_id: Schema.Attribute.String &
       Schema.Attribute.Required &
       Schema.Attribute.Unique;
-    route_name: Schema.Attribute.String & Schema.Attribute.Required;
-    route_stops: Schema.Attribute.Component<'routes.bus-stop', true>;
+    unit_name: Schema.Attribute.String & Schema.Attribute.Required;
   };
 }
 
@@ -268,10 +269,10 @@ export interface RoutesBusStop extends Struct.ComponentSchema {
   attributes: {
     bus_sifts: Schema.Attribute.Component<'routes.sift', true> &
       Schema.Attribute.Required;
-    bus_stop_id: Schema.Attribute.String &
+    route_id: Schema.Attribute.String &
       Schema.Attribute.Required &
       Schema.Attribute.Unique;
-    stop_name: Schema.Attribute.String & Schema.Attribute.Required;
+    route_name: Schema.Attribute.String & Schema.Attribute.Required;
   };
 }
 
