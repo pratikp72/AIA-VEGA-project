@@ -86,6 +86,16 @@
       "type": "relation",
       "relation": "manyToMany",
       "target": "api::work-location.work-location",
+      "conditions": {
+        "visible": {
+          "==": [
+            {
+              "var": "assignment_target_type"
+            },
+            "Location"
+          ]
+        }
+      },
       "inversedBy": "course_assignments"
     }
   }

@@ -5,19 +5,23 @@
   },
   "options": {},
   "attributes": {
-    "route_id": {
+    "unit_id": {
       "type": "string",
       "required": true,
       "unique": true
     },
-    "route_name": {
+    "unit_name": {
       "type": "string",
       "required": true
     },
-    "route_stops": {
+    "routes": {
       "type": "component",
       "component": "routes.bus-stop",
       "repeatable": true
+    },
+    "map_link": {
+      "type": "string",
+      "required": true
     }
   },
   "config": {}

@@ -27,6 +27,20 @@ module.exports = createCoreController("api::feedback-submission.feedback-submiss
       .controller("api::user-progress.user-progress")
       .finalizeCourse(courseId, userId);
 
+    // Notification: send to admin + LMadmin
+    const meta = { courseId, userId };
+    const notifUtil = strapi.utils?.notification;
+    if (notifUtil) {
+      await notifUtil.sendNotification(
+        'feedback_submitted',
+        'Course Feedback Submitted',
+        `User ${userId} submitted feedback for course ${courseId}.`,
+        [],
+        meta,
+        ['admin', 'LMadmin']
+      );
+    }
+
     return ctx.send({
       message: "Feedback submitted successfully & course completed",
       submission: entry,

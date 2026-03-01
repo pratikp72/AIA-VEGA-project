@@ -26,24 +26,12 @@
     "alternative_contact": {
       "type": "string"
     },
-    "map_snapshot": {
-      "type": "media",
-      "multiple": false,
-      "allowedTypes": [
-        "images",
-        "files",
-        "videos",
-        "audios"
-      ]
-    },
-    "emergency_gate_images": {
+    "location_images": {
       "type": "media",
       "multiple": true,
+      "required": true,
       "allowedTypes": [
-        "images",
-        "files",
-        "videos",
-        "audios"
+        "images"
       ]
     },
     "active": {
@@ -64,7 +52,7 @@
       "type": "boolean",
       "required": true
     },
-    "bus_routes": {
+    "units": {
       "type": "component",
       "component": "routes.bus-route",
       "repeatable": true,

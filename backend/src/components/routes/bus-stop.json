@@ -5,12 +5,12 @@
   },
   "options": {},
   "attributes": {
-    "bus_stop_id": {
+    "route_id": {
       "type": "string",
       "required": true,
       "unique": true
     },
-    "stop_name": {
+    "route_name": {
       "type": "string",
       "required": true
     },

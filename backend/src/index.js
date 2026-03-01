@@ -80,6 +80,9 @@ module.exports = {
   },
 
   bootstrap({ strapi }) {
+    strapi.utils = strapi.utils || {};
+    strapi.utils.notification = require('./utils/notification')(strapi);
+
     // User-progress automation: course-assignment → Not_started; start-course → In_progress; quiz-submission → Completed/Failed
     try {
       const { registerUserProgressLifecycles } = require('./lifecycles/user-progress-automation');

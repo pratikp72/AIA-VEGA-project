@@ -54,10 +54,52 @@ module.exports = createCoreController(
           },
         });
 
+      // Notification: send to LMadmin + admin
+      const meta = { courseId, userId };
+      const notifUtil = strapi.utils?.notification;
+      if (notifUtil) {
+        await notifUtil.sendNotification(
+          "quiz_reattempt_requested",
+          "Quiz Reattempt Requested",
+          `User ${userId} requested a quiz reattempt for course ${courseId}.`,
+          [],
+          meta,
+          ["LMadmin", "admin"]
+        );
+      }
+
       return ctx.send({
         message: "Reattempt request sent successfully.",
         request,
       });
+    },
+
+    async approve(ctx) {
+      const { requestId } = ctx.request.body;
+      if (!requestId) return ctx.badRequest('requestId required');
+      // Find request
+      const request = await strapi.db.query('api::quiz-reattempt-request.quiz-reattempt-request').findOne({ where: { id: requestId } });
+      if (!request) return ctx.notFound('Request not found');
+      // Update status
+      await strapi.db.query('api::quiz-reattempt-request.quiz-reattempt-request').update({
+        where: { id: requestId },
+        data: { request_status: 'Approved' },
+      });
+      // Notify user
+      const user = await strapi.db.query('plugin::users-permissions.user').findOne({ where: { id: request.users_permissions_user }, select: ['id', 'email'] });
+      const meta = { courseId: request.course, requestId };
+      const notifUtil = strapi.utils?.notification;
+      if (notifUtil && user) {
+        await notifUtil.sendNotification(
+          'quiz_reattempt_approved',
+          'Quiz Reattempt Approved',
+          `Your quiz reattempt request for course ${request.course} has been approved.`,
+          [user],
+          meta,
+          []
+        );
+      }
+      return ctx.send({ message: 'Request approved and user notified.' });
     },
 
   })

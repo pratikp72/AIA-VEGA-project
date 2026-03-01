@@ -70,6 +70,19 @@ module.exports = createCoreController('api::news.news', ({ strapi }) => ({
           likes: [...currentLikes, user.id],
         },
       });
+      // Notification: send to admin + HRadmin
+      const meta = { newsId: id, userId: user.id };
+      const notifUtil = strapi.utils?.notification;
+      if (notifUtil) {
+        await notifUtil.sendNotification(
+          'news_liked',
+          'News Liked',
+          `User ${user.id} liked news item ${id}.`,
+          [],
+          meta,
+          ['admin', 'HRadmin']
+        );
+      }
 
       ctx.body = { success: true, message: 'News liked', likesCount: currentLikes.length + 1 };
     } catch (error) {
