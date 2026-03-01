@@ -12,6 +12,7 @@ function getQueryParams(ctx) {
     department: ctx.query.department,
     company: ctx.query.company,
     unitLocation: ctx.query.unitLocation || ctx.query.unit_location,
+    location: ctx.query.location,
     activityType: ctx.query.activityType || ctx.query.activity_type,
     courseCategory: ctx.query.courseCategory || ctx.query.course_category,
     search: ctx.query.search,

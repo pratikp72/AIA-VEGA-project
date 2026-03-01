@@ -79,11 +79,26 @@ module.exports = createCoreController("api::user-progress.user-progress", ({ str
     const uid = "api::user-progress.user-progress";
 
     // Fetch progress
-    const progress = await strapi.db.query(uid).findOne({
+    let progress = await strapi.db.query(uid).findOne({
       where: { user: userId, course: courseId },
     });
 
-    if (!progress) return ctx.badRequest("Progress entry not found.");
+    // Auto-create if missing — user may mark a module without going through start-course
+    if (!progress) {
+      const now = new Date();
+      progress = await strapi.db.query(uid).create({
+        data: {
+          user: userId,
+          course: courseId,
+          progress_status: 'In_progress',
+          progress_percentage: 0,
+          completed_modules: [],
+          last_accessed_at: now,
+          time_spent_minutes: 0,
+          certificate_issued: false,
+        },
+      });
+    }
 
     // Add module if not completed
     const completed = new Set(progress.completed_modules);
@@ -132,6 +147,8 @@ module.exports = createCoreController("api::user-progress.user-progress", ({ str
       where: { user: userId, course: courseId },
     });
 
+
+
     if (!progress) return;
 
     if (passed === false) {
@@ -145,6 +162,25 @@ module.exports = createCoreController("api::user-progress.user-progress", ({ str
         data: { progress_status: "In_progress" },
       });
     }
+  },
+
+  /**
+   * GET /api/user-progress/progress?userId=&courseId=
+   * Returns the progress record (including completed_modules) for a user+course pair.
+   */
+  async getProgress(ctx) {
+    const { userId, courseId } = ctx.query;
+    if (!userId || !courseId) {
+      return ctx.badRequest('userId and courseId are required');
+    }
+    const uid = 'api::user-progress.user-progress';
+    const progress = await strapi.db.query(uid).findOne({
+      where: { user: Number(userId), course: Number(courseId) },
+    });
+    if (!progress) {
+      return ctx.send({ completed_modules: [], progress_status: null });
+    }
+    return ctx.send(progress);
   },
 
   /**

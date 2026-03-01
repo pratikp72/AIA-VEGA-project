@@ -24,10 +24,17 @@ module.exports = createCoreController(
         }
       });
 
-      if (!course?.quiz?.quiz_questions) return 0;
+      // quiz is a repeatable component → array
+      const quiz = course?.quiz?.[0];
+      if (!quiz?.quiz_questions || quiz.quiz_questions.length === 0) return 0;
 
-      const questions = course.quiz.quiz_questions;
-      let totalScore = 0;
+      const questions = quiz.quiz_questions;
+      let earnedPoints = 0;
+      let totalPoints = 0;
+
+      // Sum all possible points across every question
+      questions.forEach(q => { totalPoints += q.point || 0; });
+      if (totalPoints === 0) return 0;
 
       // 2. Compare submitted answers with correct answers
       if (Array.isArray(answers)) {
@@ -39,11 +46,8 @@ module.exports = createCoreController(
           // MULTIPLE CHOICE LOGIC
           // -----------------------------
           if (ans.question_type === "Multiple_choice") {
-            const userAnswer = ans.selected_answer_for_multiChoice;
-            const correctAnswer = q.correct_answer;
-
-            if (userAnswer === correctAnswer) {
-              totalScore += q.point || 0;
+            if (ans.selected_answer_for_multiChoice === q.correct_answer) {
+              earnedPoints += q.point || 0;
             }
           }
 
@@ -52,9 +56,8 @@ module.exports = createCoreController(
           // -----------------------------
           if (ans.question_type === "Multiple_select") {
             const userSelected = ans.selected_answer_for_multiSelect || [];
-            const correctOptions = q.correct_answers || [];
+            const correctOptions = q.correct_multiSelect_answers || [];
 
-            // Convert both to sorted arrays (easy comparison)
             const u = userSelected.map(item => item.answer).sort();
             const c = correctOptions.map(item => item.answer).sort();
 
@@ -63,13 +66,42 @@ module.exports = createCoreController(
               u.every((v, idx) => v === c[idx]);
 
             if (match) {
-              totalScore += q.point || 0;
+              earnedPoints += q.point || 0;
             }
           }
         });
       }
 
-      return totalScore;
+      // Return percentage 0–100 (frontend displays "{score}%")
+      return Math.round((earnedPoints / totalPoints) * 100);
+    },
+
+    // ----------------------------------------------------------
+    // ⭐ GET LATEST SUBMISSION
+    // ----------------------------------------------------------
+    async getLatest(ctx) {
+      const { userId, courseId } = ctx.query;
+
+      if (!userId || !courseId) {
+        return ctx.badRequest('userId and courseId are required');
+      }
+
+      const submission = await strapi.db
+        .query('api::quiz-submission.quiz-submission')
+        .findOne({
+          where: { submitted_by: Number(userId), course: Number(courseId) },
+          orderBy: { attempt_number: 'desc' },
+        });
+
+      // Fetch maxAttempt from course so the frontend can display "Attempt X of Y"
+      const course = await strapi.db.query('api::course.course').findOne({
+        where: { id: Number(courseId) },
+        populate: { quiz: true },
+      });
+      const maxAttempt = course?.quiz?.[0]?.max_attempt ?? 1;
+
+      // Frontend (AssessmentQuiz.jsx) reads: resultRes?.submission and resultRes?.maxAttempt
+      return ctx.send({ submission: submission || null, maxAttempt });
     },
 
     // ----------------------------------------------------------
@@ -94,7 +126,8 @@ module.exports = createCoreController(
         if (!course) return ctx.badRequest("Invalid course");
 
         const minPassingScore = course.min_passing_score;
-        const maxAttempt = course.quiz?.max_attempt ?? 1;
+        // quiz is a repeatable component → array
+        const maxAttempt = course.quiz?.[0]?.max_attempt ?? 1;
 
         // ------------------------------------------------------
         // 2. Fetch user's last submission
@@ -149,10 +182,13 @@ module.exports = createCoreController(
 
         // ------------------------------------------------------
         // 6. Create quiz submission
+        // strapi.entityService handles repeatable components (answers)
+        // correctly; strapi.db.query().create() cannot build component
+        // records from raw data and throws "Invalid id" on [object Object].
         // ------------------------------------------------------
-        const entry = await strapi.db
-          .query("api::quiz-submission.quiz-submission")
-          .create({
+        const entry = await strapi.entityService.create(
+          "api::quiz-submission.quiz-submission",
+          {
             data: {
               answers,
               score,
@@ -160,10 +196,12 @@ module.exports = createCoreController(
               course: courseId,
               submitted_by: userId,
               attempt_number: nextAttempt,
-              submitted_at: new Date()
-            }
-          });
-
+              submitted_at: new Date(),
+              publishedAt: new Date(), // publish immediately, not draft
+            },
+          }
+        );
+  
         // ------------------------------------------------------
         // 7. Update user progress
         // ------------------------------------------------------
@@ -196,8 +234,8 @@ module.exports = createCoreController(
       });
 
     } catch (err) {
-      console.error(err);
-      return ctx.internalServerError("Failed to submit quiz");
+      console.error("[quiz submit error]", err);
+      return ctx.internalServerError(err?.message || "Failed to submit quiz");
     }
     }
 

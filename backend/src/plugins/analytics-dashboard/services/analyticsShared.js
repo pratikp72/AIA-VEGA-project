@@ -47,11 +47,14 @@ module.exports = ({ strapi }) => {
 
   self.getEmployeesList = async function (params = {}) {
     const where = { blocked: { $eq: false } };
+
     const companyVal = params.company && String(params.company).trim() && !/^all\s*companies?$/i.test(String(params.company));
     if (companyVal) {
       const c = String(params.company).trim();
-      where.company = c === 'vega' ? 'Vega' : c === 'aia' ? 'AIA' : c;
+      const cl = c.toLowerCase();
+      where.company = cl === 'vega' ? 'Vega' : cl === 'aia' ? 'AIA' : c;
     }
+
     const deptVal = params.department && String(params.department).trim() && String(params.department).toLowerCase() !== 'all';
     if (deptVal) {
       const deptId = params.department;
@@ -70,6 +73,11 @@ module.exports = ({ strapi }) => {
         where.department = { $containsi: String(deptId) };
       }
     }
+
+    if (params.location && String(params.location).trim()) {
+      where.working_location = { $containsi: String(params.location).trim() };
+    }
+
     if (params.search && String(params.search).trim()) {
       const search = String(params.search).trim();
       const numericId = parseInt(search, 10);
@@ -86,14 +94,29 @@ module.exports = ({ strapi }) => {
         ];
       }
     }
+
+    const sortFieldMap = {
+      'name-asc':     { employee_name: 'ASC' },
+      'name-desc':    { employee_name: 'DESC' },
+      'join-newest':  { joining_date: 'DESC' },
+      'join-oldest':  { joining_date: 'ASC' },
+    };
+    const orderBy = sortFieldMap[params.sortBy] || { employee_name: 'ASC' };
+
+    const page     = Math.max(1, parseInt(params.page, 10) || 1);
+    const pageSize = Math.min(100, Math.max(1, parseInt(params.pageSize, 10) || 9));
+    const offset   = (page - 1) * pageSize;
+
     try {
+      const total = await strapi.db.query('plugin::users-permissions.user').count({ where });
       const users = await strapi.db.query('plugin::users-permissions.user').findMany({
         where,
-        orderBy: { employee_name: 'ASC' },
-        limit: params.search ? 100 : 500,
+        orderBy,
+        limit: pageSize,
+        offset,
       });
       const list = Array.isArray(users) ? users : [];
-      return list.map((u) => ({
+      const items = list.map((u) => ({
         id: u.id,
         documentId: u.documentId ?? u.document_id ?? null,
         employee_name: u.employee_name || u.username || u.email || '—',
@@ -104,10 +127,19 @@ module.exports = ({ strapi }) => {
         department: typeof u.department === 'object' && u.department?.name != null ? u.department.name : (u.department ?? '—'),
         designation: typeof u.designation === 'string' ? u.designation : (u.designation?.title ?? '—'),
         company: u.company ?? '—',
+        working_location: u.working_location ?? '—',
+        joining_date: u.joining_date ?? null,
       }));
+      return {
+        items,
+        total,
+        page,
+        pageSize,
+        totalPages: Math.ceil(total / pageSize),
+      };
     } catch (e) {
       strapi.log.error('getEmployeesList error:', e?.message || e);
-      return [];
+      return { items: [], total: 0, page, pageSize, totalPages: 0 };
     }
   };
 
