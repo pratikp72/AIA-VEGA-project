@@ -32,10 +32,19 @@ module.exports = (strapi) => {
    * Emit socket.io event to target user(s)
    */
   function triggerSocket(userIds, payload) {
-    if (!strapi.io || !Array.isArray(userIds) || userIds.length === 0) return;
+    if (!strapi.io) {
+      strapi.log.warn('[notification] Socket skipped: strapi.io not available');
+      return;
+    }
+    if (!Array.isArray(userIds) || userIds.length === 0) {
+      strapi.log.warn('[notification] Socket skipped: no userIds provided');
+      return;
+    }
     const ids = userIds.filter(Boolean).map(String);
     ids.forEach((id) => {
-      strapi.io.to(`user_${id}`).emit('new-notification', payload);
+      const room = `user_${id}`;
+      strapi.io.to(room).emit('new-notification', payload);
+      strapi.log.info('[notification] Socket emitted to room:', room, 'type:', payload?.type);
     });
   }
 
@@ -43,10 +52,19 @@ module.exports = (strapi) => {
    * Emit socket.io event to admin user(s)
    */
   function triggerAdminSocket(adminIds, payload) {
-    if (!strapi.io || !Array.isArray(adminIds) || adminIds.length === 0) return;
+    if (!strapi.io) {
+      strapi.log.warn('[notification] Admin socket skipped: strapi.io not available');
+      return;
+    }
+    if (!Array.isArray(adminIds) || adminIds.length === 0) {
+      strapi.log.warn('[notification] Admin socket skipped: no adminIds provided');
+      return;
+    }
     const ids = adminIds.filter(Boolean).map(String);
     ids.forEach((id) => {
-      strapi.io.to(`admin_${id}`).emit('new-notification', payload);
+      const room = `admin_${id}`;
+      strapi.io.to(room).emit('new-notification', payload);
+      strapi.log.info('[notification] Socket emitted to admin room:', room, 'type:', payload?.type);
     });
   }
 

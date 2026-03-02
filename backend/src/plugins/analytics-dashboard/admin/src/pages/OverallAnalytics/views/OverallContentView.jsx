@@ -23,10 +23,7 @@ export function OverallContentView({ data }) {
           <StatCard label="News Items" value={kpis.totalNews} subtext="" colorIndex={2} />
         </Box>
         <Box style={{ flex: '1 1 200px', minWidth: 180 }}>
-          <StatCard label="Events" value={kpis.totalEvents} subtext="" colorIndex={3} />
-        </Box>
-        <Box style={{ flex: '1 1 200px', minWidth: 180 }}>
-          <StatCard label="Townhalls" value={kpis.totalTownhalls} subtext="" colorIndex={4} />
+          <StatCard label="Townhalls" value={kpis.totalTownhalls} subtext="" colorIndex={3} />
         </Box>
       </Flex>
 
@@ -58,17 +55,6 @@ export function OverallContentView({ data }) {
             <BarChart
               data={data.newsByCategory}
               title="News by Category"
-              nameKey="name"
-              dataKey="value"
-              height={260}
-            />
-          </Box>
-        )}
-        {data?.eventsByType?.length > 0 && (
-          <Box style={{ flex: '1 1 350px', minWidth: 280 }}>
-            <BarChart
-              data={data.eventsByType}
-              title="Events by Type"
               nameKey="name"
               dataKey="value"
               height={260}

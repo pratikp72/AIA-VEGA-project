@@ -12,9 +12,9 @@ const TABLE_FONT_STYLE = { fontSize: '14px' };
 const AuditLogPage = () => {
     const [search, setSearch] = useState('');
   const [logs, setLogs] = useState([]);
+  const [allLogs, setAllLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [pagination, setPagination] = useState({ page: 1, pageSize: 25, total: 0 });
-  // pageSize state for DataTable
   const [pageSize, setPageSize] = useState(25);
   const [dateRange, setDateRange] = useState({ start: null, end: null });
   const [action, setAction] = useState('');
@@ -32,6 +32,7 @@ const AuditLogPage = () => {
   const fetchLogs = async (page = 1, pageSizeArg) => {
     try {
       setLoading(true);
+      setAllLogs([]);
       const params = new URLSearchParams({
         page: page.toString(),
         pageSize: (pageSizeArg || pageSize).toString(),
@@ -48,8 +49,28 @@ const AuditLogPage = () => {
       const { data } = await get(`/audit-log/logs?${params}`);
       
       if (isMounted.current) {
-        setLogs(data.data || []);
-        setPagination({ page, pageSize: pageSizeArg, total: data.pagination?.total || 0 });
+        const rows = data.data || [];
+        setLogs(rows);
+        const total = data.pagination?.total || 0;
+        setPagination({ page, pageSize: pageSizeArg, total });
+        if (total > 0 && total > (pageSizeArg || pageSize)) {
+          const allParams = new URLSearchParams({
+            page: '1',
+            pageSize: String(total),
+            sortBy: 'createdAt',
+            sortOrder: 'desc',
+          });
+          if (dateRange.start) allParams.append('dateFrom', dateRange.start.toISOString().slice(0, 10));
+          if (dateRange.end) allParams.append('dateTo', dateRange.end.toISOString().slice(0, 10));
+          allParams.append('contentType', contentType);
+          if (action) allParams.append('action', action);
+          if (companyFilter) allParams.append('company', companyFilter);
+          get(`/audit-log/logs?${allParams}`)
+            .then(({ data: allData }) => isMounted.current && setAllLogs(allData.data || []))
+            .catch(() => setAllLogs([]));
+        } else {
+          setAllLogs(rows);
+        }
       }
     } catch (error) {
       console.error('Failed to fetch audit logs:', error);
@@ -182,34 +203,28 @@ const AuditLogPage = () => {
           {/* <Box background="neutral0" hasRadius shadow="tableShadow" padding={6}> */}
             <DataTable
               data={
-                logs
-                  .filter((log) => {
-                    const q = (search || '').toLowerCase().trim();
-                    const company = (log.user?.company || log.company || '').toLowerCase();
-                    // Company filter
-                    if (companyFilter && company !== companyFilter.toLowerCase()) return false;
-                    // Enhanced search
-                    if (!q) return true;
-                    const user = log.user || {};
-                    const matches = (
-                      (user.username && user.username.toLowerCase().includes(q)) ||
-                      (user.firstname && user.firstname.toLowerCase().includes(q)) ||
-                      (user.lastname && user.lastname.toLowerCase().includes(q)) ||
-                      (user.emp_code && String(user.emp_code).toLowerCase().includes(q)) ||
-                      (user.emp_id && String(user.emp_id).toLowerCase().includes(q)) ||
-                      (user.id && String(user.id).toLowerCase().includes(q)) ||
-                      (log.userId && String(log.userId).toLowerCase().includes(q))
-                    );
-                    // Company-specific strictness
-                    if (company === 'aia' && /^\d+$/.test(q)) {
-                      return user.emp_code && String(user.emp_code).includes(q);
-                    } else if (company === 'vega' && /^emp\d+$/i.test(q)) {
-                      return user.emp_id && String(user.emp_id).toLowerCase().includes(q);
-                    }
-                    return matches;
-                  })
-                  .slice((pagination.page - 1) * pageSize, (pagination.page - 1) * pageSize + pageSize)
+                logs.filter((log) => {
+                  const q = (search || '').toLowerCase().trim();
+                  const company = (log.user?.company || log.company || '').toLowerCase();
+                  if (companyFilter && company !== companyFilter.toLowerCase()) return false;
+                  if (!q) return true;
+                  const user = log.user || {};
+                  const matches = (
+                    (user.username && user.username.toLowerCase().includes(q)) ||
+                    (user.firstname && user.firstname.toLowerCase().includes(q)) ||
+                    (user.lastname && user.lastname.toLowerCase().includes(q)) ||
+                    (user.emp_code && String(user.emp_code).toLowerCase().includes(q)) ||
+                    (user.emp_id && String(user.emp_id).toLowerCase().includes(q)) ||
+                    (user.id && String(user.id).toLowerCase().includes(q)) ||
+                    (log.userId && String(log.userId).toLowerCase().includes(q))
+                  );
+                  if (company === 'aia' && /^\d+$/.test(q)) return user.emp_code && String(user.emp_code).includes(q);
+                  if (company === 'vega' && /^emp\d+$/i.test(q)) return user.emp_id && String(user.emp_id).toLowerCase().includes(q);
+                  return matches;
+                })
               }
+              fullData={allLogs.length > 0 ? allLogs : logs}
+              paginatedData={logs}
               columns={[
                 { key: 'createdAt', label: 'Date & Time', render: (val) => <Typography variant="omega">{formatDate(val)}</Typography> },
                 { key: 'action', label: 'Action', render: (val) => <Badge variant={getActionColor(val)}>{val}</Badge> },

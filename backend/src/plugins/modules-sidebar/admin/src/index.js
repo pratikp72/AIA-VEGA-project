@@ -19,7 +19,7 @@ import { PLUGIN_ID } from './pluginId';
 
 // Icon components must be React components (NOT strings).
 // Use an available icon from @strapi/icons (Refresh may not exist in all versions)
-import { PuzzlePiece, Question } from '@strapi/icons';
+import { PuzzlePiece, Question, Bell } from '@strapi/icons';
 
 const name = pluginPkg.strapi.name;
 
@@ -3016,6 +3016,22 @@ export default {
        */
       // Import the JSX page entry (Vite needs .jsx for JSX parsing)
       Component: () => import('./pages/AllModules/index.jsx'),
+    });
+
+    app.addMenuLink({
+      to: `plugins/${PLUGIN_ID}/notifications`,
+      icon: Bell,
+      intlLabel: {
+        id: `${PLUGIN_ID}.menu.my-notifications`,
+        defaultMessage: 'My Notifications',
+      },
+      permissions: [
+        {
+          action: `plugin::${PLUGIN_ID}.read`,
+          subject: null,
+        },
+      ],
+      Component: () => import('./pages/AdminNotificationsPage.jsx'),
     });
 
     // No need to manually add routes here: `addMenuLink` already mounts the route via `Component`.

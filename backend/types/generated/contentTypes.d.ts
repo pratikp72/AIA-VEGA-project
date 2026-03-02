@@ -1179,6 +1179,7 @@ export interface ApiNotificationNotification
         'course_assigned',
         'quiz_reattempt_requested',
         'quiz_reattempt_approved',
+        'quiz_reattempt_rejected',
         'quiz_submitted',
         'feedback_submitted',
         'news_liked',
