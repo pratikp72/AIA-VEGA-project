@@ -1375,26 +1375,19 @@ export interface ApiUnitLocationUnitLocation
     active: Schema.Attribute.Boolean &
       Schema.Attribute.Required &
       Schema.Attribute.DefaultTo<true>;
-    address: Schema.Attribute.Text & Schema.Attribute.Required;
-    alternative_contact: Schema.Attribute.String;
     city: Schema.Attribute.Relation<'manyToOne', 'api::city.city'>;
     company: Schema.Attribute.Relation<'manyToMany', 'api::company.company'>;
-    contact: Schema.Attribute.String & Schema.Attribute.Required;
     createdAt: Schema.Attribute.DateTime;
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
-    factory_location: Schema.Attribute.Boolean & Schema.Attribute.Required;
     locale: Schema.Attribute.String & Schema.Attribute.Private;
     localizations: Schema.Attribute.Relation<
       'oneToMany',
       'api::unit-location.unit-location'
     > &
       Schema.Attribute.Private;
-    location_images: Schema.Attribute.Media<'images', true> &
-      Schema.Attribute.Required;
     name: Schema.Attribute.String & Schema.Attribute.Required;
     note: Schema.Attribute.Blocks;
-    office_location: Schema.Attribute.Boolean & Schema.Attribute.Required;
     publishedAt: Schema.Attribute.DateTime;
     units: Schema.Attribute.Component<'routes.bus-route', true> &
       Schema.Attribute.Required;

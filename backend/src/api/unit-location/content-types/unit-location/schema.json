@@ -15,25 +15,6 @@
       "type": "string",
       "required": true
     },
-    "address": {
-      "type": "text",
-      "required": true
-    },
-    "contact": {
-      "type": "string",
-      "required": true
-    },
-    "alternative_contact": {
-      "type": "string"
-    },
-    "location_images": {
-      "type": "media",
-      "multiple": true,
-      "required": true,
-      "allowedTypes": [
-        "images"
-      ]
-    },
     "active": {
       "type": "boolean",
       "required": true,
@@ -43,14 +24,6 @@
       "type": "relation",
       "relation": "manyToMany",
       "target": "api::company.company"
-    },
-    "office_location": {
-      "type": "boolean",
-      "required": true
-    },
-    "factory_location": {
-      "type": "boolean",
-      "required": true
     },
     "units": {
       "type": "component",

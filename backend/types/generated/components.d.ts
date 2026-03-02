@@ -252,11 +252,16 @@ export interface RoutesBusRoute extends Struct.ComponentSchema {
     displayName: 'Bus route';
   };
   attributes: {
+    address: Schema.Attribute.String & Schema.Attribute.Required;
+    contact: Schema.Attribute.String & Schema.Attribute.Required;
+    hr_manager: Schema.Attribute.String;
     map_link: Schema.Attribute.String & Schema.Attribute.Required;
     routes: Schema.Attribute.Component<'routes.bus-stop', true>;
+    site_manager: Schema.Attribute.String;
     unit_id: Schema.Attribute.String &
       Schema.Attribute.Required &
       Schema.Attribute.Unique;
+    unit_img: Schema.Attribute.Media<'images'> & Schema.Attribute.Required;
     unit_name: Schema.Attribute.String & Schema.Attribute.Required;
   };
 }

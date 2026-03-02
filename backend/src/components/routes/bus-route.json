@@ -22,6 +22,28 @@
     "map_link": {
       "type": "string",
       "required": true
+    },
+    "unit_img": {
+      "type": "media",
+      "multiple": false,
+      "required": true,
+      "allowedTypes": [
+        "images"
+      ]
+    },
+    "address": {
+      "type": "string",
+      "required": true
+    },
+    "contact": {
+      "type": "string",
+      "required": true
+    },
+    "site_manager": {
+      "type": "string"
+    },
+    "hr_manager": {
+      "type": "string"
     }
   },
   "config": {}
