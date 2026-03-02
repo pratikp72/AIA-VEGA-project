@@ -2,8 +2,10 @@ module.exports = ({ strapi }) => ({
   async getRequests(ctx) {
     try {
       const data = await strapi.plugin('quiz-reattempt-requests').service('quizReattemptService').getAll();
+      strapi.log.info('[quiz-reattempt plugin] getRequests returning', Array.isArray(data) ? data.length : 0, 'entries');
       ctx.body = { data };
     } catch (error) {
+      strapi.log.error('[quiz-reattempt plugin] getRequests error:', error);
       ctx.throw(500, error);
     }
   },

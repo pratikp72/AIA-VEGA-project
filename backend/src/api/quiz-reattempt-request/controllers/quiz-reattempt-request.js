@@ -7,7 +7,9 @@ module.exports = createCoreController(
   ({ strapi }) => ({
 
     async send(ctx) {
-      const { userId, courseId } = ctx.request.body;
+      // Use captured body (fixes empty body from frontend) or fallback to ctx.request.body
+      const body = ctx.state.quizReattemptBody || ctx.request.body || {};
+      const { userId, courseId } = body;
 
       if (!userId || !courseId) {
         return ctx.badRequest("userId and courseId required");
@@ -42,17 +44,23 @@ module.exports = createCoreController(
 
       const nextAttempt = lastSubmission.attempt_number + 1;
 
-      // Create new pending request
-      const request = await strapi.db
-        .query("api::quiz-reattempt-request.quiz-reattempt-request")
-        .create({
-          data: {
-            users_permissions_user: userId,
-            course: courseId,
-            request_status: "Pending",
-            requested_for_attempt: nextAttempt,
-          },
-        });
+      // Create new pending request (db.query for reliable persistence; plugin admin reads same collection)
+      let request;
+      try {
+        request = await strapi.db
+          .query("api::quiz-reattempt-request.quiz-reattempt-request")
+          .create({
+            data: {
+              users_permissions_user: Number(userId),
+              course: Number(courseId),
+              request_status: "Pending",
+              requested_for_attempt: nextAttempt,
+            },
+          });
+      } catch (createErr) {
+        strapi.log.error('[quiz-reattempt send] create failed:', createErr);
+        return ctx.internalServerError(createErr?.message || "Failed to create reattempt request");
+      }
 
       // Notification: send to LMadmin + admin
       const meta = { courseId, userId };
@@ -72,6 +80,23 @@ module.exports = createCoreController(
         message: "Reattempt request sent successfully.",
         request,
       });
+    },
+
+    async checkPending(ctx) {
+      const { userId, courseId } = ctx.query;
+      if (!userId || !courseId) {
+        return ctx.badRequest("userId and courseId are required");
+      }
+      const existing = await strapi.db
+        .query("api::quiz-reattempt-request.quiz-reattempt-request")
+        .findOne({
+          where: {
+            users_permissions_user: Number(userId),
+            course: Number(courseId),
+            request_status: "Pending",
+          },
+        });
+      return ctx.send({ hasPending: !!existing });
     },
 
     async approve(ctx) {

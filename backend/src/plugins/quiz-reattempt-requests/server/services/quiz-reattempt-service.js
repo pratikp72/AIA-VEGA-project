@@ -1,38 +1,42 @@
+const UID = 'api::quiz-reattempt-request.quiz-reattempt-request';
+
 module.exports = ({ strapi }) => ({
   async getAll() {
-    const entries = await strapi.entityService.findMany('api::quiz-reattempt-request.quiz-reattempt-request', {
-      populate: {
-        users_permissions_user: {
-          fields: ['username', 'email', 'employee_name', 'company', 'emp_code', 'emp_id'],
-        },
-        course: {
-          fields: ['title'],
-        },
-      },
-      sort: { createdAt: 'desc' },
+    // Use db.query to read directly from DB (entityService may filter out records created via db.query)
+    const entries = await strapi.db.query(UID).findMany({
+      populate: ['users_permissions_user', 'course'],
+      orderBy: { createdAt: 'desc' },
     });
+
+    strapi.log.info('[quiz-reattempt plugin] getAll count:', entries?.length ?? 0);
 
     return entries;
   },
 
   async updateStatus(id, newStatus) {
-    const idStr = String(id).trim();
-    const isNumeric = /^\d+$/.test(idStr);
-    const where = isNumeric ? { id: Number(idStr) } : { documentId: idStr };
+    // id can be documentId (string) or numeric id
+    const isNumeric = /^\d+$/.test(String(id));
+    const where = isNumeric ? { id: Number(id) } : { documentId: String(id) };
 
-    const request = await strapi.db.query('api::quiz-reattempt-request.quiz-reattempt-request').findOne({
-      where,
-      populate: ['users_permissions_user', 'course'],
-    });
-    if (!request) return null;
+    const existing = await strapi.db.query(UID).findOne({ where });
+    if (!existing) {
+      strapi.log.warn('[quiz-reattempt plugin] updateStatus: not found', id);
+      throw new Error('Request not found');
+    }
 
-    const updated = await strapi.db.query('api::quiz-reattempt-request.quiz-reattempt-request').update({
-      where,
+    await strapi.db.query(UID).update({
+      where: { id: existing.id },
       data: { request_status: newStatus },
     });
 
-    const user = request.users_permissions_user;
-    const course = request.course;
+    const updated = await strapi.db.query(UID).findOne({
+      where: { id: existing.id },
+      populate: ['users_permissions_user', 'course'],
+    });
+    if (!updated) return null;
+
+    const user = updated.users_permissions_user;
+    const course = updated.course;
     const courseTitle = (course?.title ?? course?.attributes?.title ?? 'the course') || 'the course';
     const notifUtil = strapi.utils?.notification;
     if (notifUtil && user) {
