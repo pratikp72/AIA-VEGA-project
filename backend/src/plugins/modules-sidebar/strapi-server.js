@@ -190,6 +190,45 @@ module.exports = {
         },
         config: { auth: false, policies: [] },
       },
+      {
+        method: 'GET',
+        path: '/modules-sidebar/admin-notifications',
+        handler: async (ctx) => {
+          try {
+            let adminUser = ctx.state?.user || ctx.state?.admin;
+            if (!adminUser) {
+              adminUser = await getAdminUserFromToken(ctx, strapi);
+              if (adminUser) ctx.state.admin = adminUser;
+            }
+            if (!adminUser) return ctx.unauthorized('Authentication required');
+
+            const adminId = adminUser.id;
+            const limit = Math.min(Number(ctx.query?.limit) || 100, 200);
+            const notifications = await strapi.db.query('api::notification.notification').findMany({
+              where: { admin_user: adminId },
+              orderBy: { createdAt: 'desc' },
+              limit,
+            });
+
+            ctx.body = {
+              data: (notifications || []).map((n) => ({
+                id: n.id,
+                documentId: n.documentId,
+                type: n.type,
+                title: n.title,
+                message: n.message,
+                is_read: n.is_read,
+                meta: n.meta || {},
+                createdAt: n.createdAt,
+              })),
+            };
+          } catch (error) {
+            strapi.log.error('modules-sidebar admin-notifications error:', error);
+            ctx.throw(500, error.message);
+          }
+        },
+        config: { auth: false, policies: [] },
+      },
     ]);
   },
 };

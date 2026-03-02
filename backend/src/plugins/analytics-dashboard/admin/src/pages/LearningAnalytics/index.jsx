@@ -52,6 +52,8 @@ export default function LearningAnalyticsPage() {
   const departmentsFetchCompanyRef = useRef(null);
   // Personal view: full list of enrolled courses so course dropdown shows all even when one course is selected
   const [personalEnrolledCourses, setPersonalEnrolledCourses] = useState([]);
+  // Employee table: full list of rows for "All rows" export (when total > pageSize)
+  const [allEmployeeRows, setAllEmployeeRows] = useState([]);
 
   const { fetchLearningGlobal, fetchLearningPersonal, fetchLearningEmployeeTable, fetchDepartments, fetchUnitLocations, fetchCoursesByDepartment, fetchCourseModules } = useAnalytics();
 
@@ -278,7 +280,33 @@ export default function LearningAnalyticsPage() {
     }
 
     fetcher()
-      .then(setData)
+      .then((res) => {
+        setData(res);
+        if (viewMode === 'table' && res?.rows && res?.total != null && res.total > (res.pageSize || 10)) {
+          const tableParams = {
+            ...params,
+            sortBy: 'courseCompletionTimeMinutes',
+            sortOrder,
+            page: 1,
+            pageSize: res.total,
+            ...(searchDebounced?.trim() && { search: searchDebounced.trim() }),
+            ...(filterCourse && { courseId: filterCourse }),
+            ...(filterStatus && { status: filterStatus }),
+            ...(filterTimeMin && { filterTimeMin }),
+            ...(filterTimeMax && { filterTimeMax }),
+          };
+          if (dateFrom) tableParams.dateFrom = dateFrom;
+          if (dateTo) tableParams.dateTo = dateTo;
+          if (company) tableParams.company = company;
+          fetchLearningEmployeeTable(tableParams)
+            .then((full) => setAllEmployeeRows(full?.rows || []))
+            .catch(() => setAllEmployeeRows([]));
+        } else if (viewMode === 'table' && res?.rows) {
+          setAllEmployeeRows(res.rows || []);
+        } else {
+          setAllEmployeeRows([]);
+        }
+      })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
   }, [viewMode, employeeId, dateFrom, dateTo, department, company, searchDebounced, sortOrder, page, pageSize, filterCourse, filterModule, filterStatus, filterTimeMin, filterTimeMax, filterCourseCategory, unitLocation, filterQuizStatus, filterFeedbackGiven, courseModules]);
@@ -388,6 +416,7 @@ export default function LearningAnalyticsPage() {
           {!loading && data && viewMode === 'table' && (
             <LearningTableView
               data={data}
+              allRows={allEmployeeRows}
               search={search}
               filterCourse={filterCourse}
               sortOrder={sortOrder}

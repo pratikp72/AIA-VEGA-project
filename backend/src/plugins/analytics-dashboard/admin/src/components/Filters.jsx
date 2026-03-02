@@ -50,11 +50,13 @@ export function Filters({
   filterModule = '',
   setFilterModule = null,
   moduleOptions = [],
+  newsId = '',
+  onNewsIdChange = null,
+  newsList = [],
 }) {
   const activityTypeOptions = [
     { value: '', label: 'All Pages' },
     { value: 'News', label: 'News' },
-    { value: 'Event', label: 'Event' },
     { value: 'Location', label: 'Location' },
     { value: 'Routes', label: 'Routes' },
     { value: 'People', label: 'People' },
@@ -522,6 +524,31 @@ export function Filters({
                 ))}
               </select>
             </Box>
+            {activityType === 'News' && onNewsIdChange && (
+              <Box style={{ minWidth: 220 }}>
+                <Typography variant="pi" textColor="neutral600" style={{ marginBottom: 4 }}>
+                  News
+                </Typography>
+                <select
+                  value={newsId || ''}
+                  onChange={(e) => onNewsIdChange(e.target.value || '')}
+                  style={{
+                    padding: '8px 12px',
+                    border: '1px solid #dcdce4',
+                    borderRadius: '4px',
+                    fontSize: '14px',
+                    minWidth: '100%',
+                  }}
+                >
+                  <option value="">All News</option>
+                  {newsList.map((n) => (
+                    <option key={n.id} value={String(n.documentId ?? n.id)}>
+                      {n.title} {n.likesCount != null ? `(${n.likesCount} likes)` : ''}
+                    </option>
+                  ))}
+                </select>
+              </Box>
+            )}
             {departments.length > 0 && !activityTrackingEmployeeId && (
               <Box style={{ minWidth: 180 }}>
                 <Typography variant="pi" textColor="neutral600" style={{ marginBottom: 4 }}>

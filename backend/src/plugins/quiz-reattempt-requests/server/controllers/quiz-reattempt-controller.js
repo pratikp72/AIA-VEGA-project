@@ -11,7 +11,7 @@ module.exports = ({ strapi }) => ({
   async updateStatus(ctx) {
     try {
       const { id } = ctx.params;
-      const { request_status } = ctx.request.body.data || {};
+      const { request_status } = ctx.request.body.data || ctx.request.body || {};
       
       if (!request_status) {
         return ctx.throw(400, 'request_status is required');
@@ -20,7 +20,8 @@ module.exports = ({ strapi }) => ({
       const updated = await strapi.plugin('quiz-reattempt-requests').service('quizReattemptService').updateStatus(id, request_status);
       ctx.body = { data: updated };
     } catch (error) {
-      ctx.throw(500, error);
+      strapi.log.error('Quiz reattempt updateStatus error:', error?.message || error);
+      ctx.throw(500, error?.message || 'Internal Server Error');
     }
   },
 });

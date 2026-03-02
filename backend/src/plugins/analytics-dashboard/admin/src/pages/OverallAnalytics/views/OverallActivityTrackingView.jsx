@@ -19,8 +19,11 @@ const COUNT_OPTIONS = [
  */
 export function OverallActivityTrackingView({
   activityLogData,
+  activityLogFullRows = [],
   activityKpis = {},
   activityPagesStats = {},
+  activityType = '',
+  newsId = '',
   setActivityLogPage,
   setActivityLogPageSize,
   activityLogSortBy = 'timestamp',
@@ -159,10 +162,21 @@ export function OverallActivityTrackingView({
         <Box>
           <DataTable
             data={activityLogData.rows}
+            fullData={activityLogFullRows.length > 0 ? activityLogFullRows : activityLogData.rows}
+            paginatedData={activityLogData.rows}
             columns={[
               { key: 'userName', label: 'USER' },
               { key: 'company', label: 'COMPANY' },
               { key: 'activity', label: 'PAGE', sortable: true, sortKey: 'activity' },
+              ...(activityType === 'News'
+                ? [
+                    {
+                      key: 'likesDisplay',
+                      label: 'LIKES',
+                      render: (val) => (val != null && val !== '' ? String(val) : '—'),
+                    },
+                  ]
+                : []),
               { key: 'duration', label: 'DURATION', sortable: true, sortKey: 'duration' },
               {
                 key: 'timestamp',

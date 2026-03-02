@@ -266,6 +266,8 @@ export default function QuizReattemptRequestsPage() {
               {/* <Box background="neutral0" hasRadius shadow="tableShadow" padding={6}> */}
                 <DataTable
                   data={pageList}
+                  fullData={filteredList}
+                  paginatedData={pageList}
                   columns={[
                     { key: 'id', label: 'UserID', render: (val, row) => {
                         const attrs = row.attributes || row;

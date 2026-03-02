@@ -63,6 +63,7 @@ export function useAnalytics() {
     fetchActivityLog: (params) => fetchApi('/api/analytics/activity/log', params),
     fetchActivityTrackingKpis: (params) => fetchApi('/api/analytics/activity/kpis', params),
     fetchActivityPagesStats: (params) => fetchApi('/api/analytics/activity/pages-stats', params),
+    fetchActivityNewsList: () => fetchApi('/api/analytics/activity/news-list'),
   };
 }
 
