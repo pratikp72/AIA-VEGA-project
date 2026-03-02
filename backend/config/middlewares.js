@@ -7,6 +7,7 @@ module.exports = [
   'strapi::cors',
   'strapi::poweredBy',
   'strapi::query',
+  'global::capture-feedback-body',
   'strapi::body',
   'strapi::session',
   'strapi::favicon',

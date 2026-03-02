@@ -19,7 +19,11 @@ module.exports = createCoreController(
         where: { id: courseId },
         populate: {
           quiz: {
-            populate: ["quiz_questions"]
+            populate: {
+              quiz_questions: {
+                populate: { correct_multiSelect_answers: true }
+              }
+            }
           }
         }
       });
@@ -33,7 +37,7 @@ module.exports = createCoreController(
       let totalPoints = 0;
 
       // Sum all possible points across every question
-      questions.forEach(q => { totalPoints += q.point || 0; });
+      questions.forEach(q => { totalPoints += Number(q.point) || 0; });
       if (totalPoints === 0) return 0;
 
       // 2. Compare submitted answers with correct answers
@@ -47,7 +51,7 @@ module.exports = createCoreController(
           // -----------------------------
           if (ans.question_type === "Multiple_choice") {
             if (ans.selected_answer_for_multiChoice === q.correct_answer) {
-              earnedPoints += q.point || 0;
+              earnedPoints += Number(q.point) || 0;
             }
           }
 
@@ -66,7 +70,7 @@ module.exports = createCoreController(
               u.every((v, idx) => v === c[idx]);
 
             if (match) {
-              earnedPoints += q.point || 0;
+              earnedPoints += Number(q.point) || 0;
             }
           }
         });
@@ -111,6 +115,8 @@ module.exports = createCoreController(
       try {
         const { userId, courseId, answers } = ctx.request.body;
 
+        console.log("[quiz submit] received body → userId:", userId, "courseId:", courseId, "type:", typeof courseId);
+
         if (!userId || !courseId) {
           return ctx.badRequest("userId and courseId required");
         }
@@ -119,11 +125,13 @@ module.exports = createCoreController(
         // 1. Fetch course (for passing score + attempt limit)
         // ------------------------------------------------------
         const course = await strapi.db.query("api::course.course").findOne({
-          where: { id: courseId },
+          where: { id: Number(courseId) },
           populate: { quiz: true }
         });
 
-        if (!course) return ctx.badRequest("Invalid course");
+        console.log("[quiz submit] findOne result:", course ? `found id=${course.id}` : "NOT FOUND");
+
+        if (!course) return ctx.badRequest(`Invalid course (id=${courseId})`);
 
         const minPassingScore = course.min_passing_score;
         // quiz is a repeatable component → array

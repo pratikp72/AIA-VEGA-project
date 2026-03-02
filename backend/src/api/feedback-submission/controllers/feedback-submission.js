@@ -9,36 +9,72 @@ const { createCoreController } = require('@strapi/strapi').factories;
 module.exports = createCoreController("api::feedback-submission.feedback-submission", ({ strapi }) => ({
 
   async submit(ctx) {
-    const { userId, courseId, answers } = ctx.request.body;
+    if (ctx.method === 'OPTIONS') return ctx.send({ ok: true });
+
+    // Use body from capture-feedback-body middleware (fixes empty body from frontend) or fallback to ctx.request.body
+    const rawBody = ctx.state.feedbackBody || ctx.request.body || {};
+    const data = rawBody.data || (rawBody.answers != null ? rawBody : null);
+
+    if (!data) return ctx.badRequest("Missing data object");
+    const { users_permissions_user: userId, course: courseId, answers: rawAnswers } = data;
 
     if (!userId || !courseId) return ctx.badRequest("userId and courseId required");
 
-    const entry = await strapi.db.query("api::feedback-submission.feedback-submission").create({
-      data: {
-        answers,
-        course: courseId,
-        users_permissions_user: userId,
-        submitted_at: new Date(),
-      },
-    });
+    // Transform frontend object { "q-1": 3, "additionalFeedback": "text" } into schema format:
+    // [{ question_id, question, answer_type, answer }, ...]
+    const answers = Array.isArray(rawAnswers)
+      ? rawAnswers
+      : Object.entries(rawAnswers || {}).map(([questionId, value]) => ({
+          question_id: questionId,
+          question: questionId,
+          answer_type: typeof value === 'number' ? 'Rating' : 'Text',
+          answer: String(value ?? ''),
+        }));
 
-    // Finalize course
-    await strapi
-      .controller("api::user-progress.user-progress")
-      .finalizeCourse(courseId, userId);
+    if (!answers.length) return ctx.badRequest("At least one answer required");
 
-    // Notification: send to admin + LMadmin
-    const meta = { courseId, userId };
-    const notifUtil = strapi.utils?.notification;
-    if (notifUtil) {
-      await notifUtil.sendNotification(
-        'feedback_submitted',
-        'Course Feedback Submitted',
-        `User ${userId} submitted feedback for course ${courseId}.`,
-        [],
-        meta,
-        ['admin', 'LMadmin']
+    let entry;
+    try {
+      // Use entityService (not db.query) - db.query cannot build component records
+      entry = await strapi.entityService.create(
+        "api::feedback-submission.feedback-submission",
+        {
+          data: {
+            answers,
+            course: courseId,
+            users_permissions_user: userId,
+            publishedAt: new Date(), // publish immediately (draftAndPublish: true)
+          },
+        }
       );
+    } catch (err) {
+      strapi.log.error('Feedback submission error:', err);
+      return ctx.internalServerError('Failed to create feedback submission: ' + err.message);
+    }
+
+    try {
+      await strapi
+        .controller("api::user-progress.user-progress")
+        .finalizeCourse(courseId, userId);
+    } catch (err) {
+      strapi.log.error('Finalize course error:', err);
+    }
+
+    try {
+      const meta = { courseId, userId };
+      const notifUtil = strapi.utils?.notification;
+      if (notifUtil) {
+        await notifUtil.sendNotification(
+          'feedback_submitted',
+          'Course Feedback Submitted',
+          `User ${userId} submitted feedback for course ${courseId}.`,
+          [],
+          meta,
+          ['admin', 'LMadmin']
+        );
+      }
+    } catch (err) {
+      strapi.log.error('Notification error:', err);
     }
 
     return ctx.send({
