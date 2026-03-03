@@ -40,7 +40,8 @@ function registerFeedbackSubmissionLifecycles(strapi) {
           message,
           [],
           meta,
-          ['admin', 'LMadmin']
+          ['admin', 'LMadmin'],
+          { sendEmail: true, sendSocket: true }
         );
       } catch (e) {
         strapi.log.error('[feedback-submission] notification afterCreate:', e?.message || e);

@@ -31,7 +31,8 @@ module.exports = createCoreController('api::news.news', ({ strapi }) => ({
   },
 
   /**
-   * Like a news item (add current user to likes)
+   * Like a news item (add current user to likes).
+   * Same user cannot like again – we read likes from DB (same source as likes-state).
    * POST /api/news/:id/like
    */
   async like(ctx) {
@@ -46,45 +47,45 @@ module.exports = createCoreController('api::news.news', ({ strapi }) => ({
         return ctx.badRequest('News ID is required');
       }
 
-      // Get current news with likes
-      const news = await strapi.documents('api::news.news').findOne({
-        documentId: id,
-        populate: ['likes'],
+      // Read current likes from DB (same as likes-state) so we never double-add
+      const news = await strapi.db.query('api::news.news').findOne({
+        where: { documentId: id },
+        populate: { likes: true },
       });
 
       if (!news) {
         return ctx.notFound('News not found');
       }
 
-      // Check if user already liked
-      const alreadyLiked = news.likes?.some(u => u.id === user.id);
+      const currentLikeIds = (news.likes || []).map((u) => (u && (u.id ?? u.documentId))).filter(Boolean);
+      const alreadyLiked = currentLikeIds.some(
+        (uid) => Number(uid) === Number(user.id) || String(uid) === String(user.documentId)
+      );
       if (alreadyLiked) {
-        return ctx.body = { success: true, message: 'Already liked', likesCount: news.likes.length };
+        ctx.body = { success: true, message: 'Already liked', likesCount: currentLikeIds.length };
+        return;
       }
 
-      // Add user to likes
-      const currentLikes = news.likes?.map(u => u.id) || [];
-      await strapi.documents('api::news.news').update({
-        documentId: id,
-        data: {
-          likes: [...currentLikes, user.id],
-        },
+      const updatedLikeIds = [...currentLikeIds.map((uid) => Number(uid)).filter((n) => !Number.isNaN(n)), user.id];
+      await strapi.entityService.update('api::news.news', news.id, {
+        data: { likes: updatedLikeIds },
       });
-      // Notification: send to admin + HRadmin
+      // Notification + email: Admin (all) and HR Admin (news_liked)
       const meta = { newsId: id, userId: user.id };
       const notifUtil = strapi.utils?.notification;
       if (notifUtil) {
         await notifUtil.sendNotification(
           'news_liked',
           'News Liked',
-          `User ${user.id} liked news item ${id}.`,
+          `A user liked a news item.`,
           [],
           meta,
-          ['admin', 'HRadmin']
+          ['admin', 'HRadmin'],
+          { sendEmail: true, sendSocket: true }
         );
       }
 
-      ctx.body = { success: true, message: 'News liked', likesCount: currentLikes.length + 1 };
+      ctx.body = { success: true, message: 'News liked', likesCount: updatedLikeIds.length };
     } catch (error) {
       strapi.log.error('News like error:', error);
       ctx.body = { success: false, error: error?.message || 'Failed to like news' };
@@ -93,7 +94,7 @@ module.exports = createCoreController('api::news.news', ({ strapi }) => ({
   },
 
   /**
-   * Unlike a news item (remove current user from likes)
+   * Unlike a news item (remove current user from likes).
    * POST /api/news/:id/unlike
    */
   async unlike(ctx) {
@@ -108,31 +109,126 @@ module.exports = createCoreController('api::news.news', ({ strapi }) => ({
         return ctx.badRequest('News ID is required');
       }
 
-      // Get current news with likes
-      const news = await strapi.documents('api::news.news').findOne({
-        documentId: id,
-        populate: ['likes'],
+      // Read current likes from DB (same source as like() and likes-state)
+      const news = await strapi.db.query('api::news.news').findOne({
+        where: { documentId: id },
+        populate: { likes: true },
       });
 
       if (!news) {
         return ctx.notFound('News not found');
       }
 
-      // Remove user from likes
-      const currentLikes = news.likes?.map(u => u.id) || [];
-      const updatedLikes = currentLikes.filter(userId => userId !== user.id);
-
-      await strapi.documents('api::news.news').update({
-        documentId: id,
-        data: {
-          likes: updatedLikes,
-        },
+      const currentLikeIds = (news.likes || []).map((u) => (u && (u.id ?? u.documentId))).filter(Boolean);
+      const updatedLikeIds = currentLikeIds
+        .filter((uid) => Number(uid) !== Number(user.id) && String(uid) !== String(user.documentId))
+        .map((uid) => Number(uid))
+        .filter((n) => !Number.isNaN(n));
+      await strapi.entityService.update('api::news.news', news.id, {
+        data: { likes: updatedLikeIds },
       });
 
-      ctx.body = { success: true, message: 'News unliked', likesCount: updatedLikes.length };
+      ctx.body = { success: true, message: 'News unliked', likesCount: updatedLikeIds.length };
     } catch (error) {
       strapi.log.error('News unlike error:', error);
       ctx.body = { success: false, error: error?.message || 'Failed to unlike news' };
+      ctx.status = 500;
+    }
+  },
+
+  /**
+   * Resolve portal user from JWT when route has auth: false (so we still get correct "liked" when token sent).
+   */
+  async _getUserFromToken(ctx) {
+    const authHeader = ctx.request?.header?.authorization || ctx.request?.headers?.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) return null;
+    const token = authHeader.slice(7).trim();
+    if (!token) return null;
+    try {
+      const jwtService = strapi.plugins?.['users-permissions']?.services?.jwt;
+      if (!jwtService) return null;
+      const decoded = await jwtService.verify(token);
+      const userId = decoded?.id ?? decoded?._id;
+      if (!userId) return null;
+      const user = await strapi.db.query('plugin::users-permissions.user').findOne({
+        where: { id: userId },
+        select: ['id'],
+      });
+      return user || null;
+    } catch (e) {
+      return null;
+    }
+  },
+
+  /**
+   * Get like counts for multiple news items (for listing/cards).
+   * GET /api/news-items/likes-counts?documentIds=id1,id2,id3
+   */
+  async likesCounts(ctx) {
+    try {
+      const raw = ctx.query?.documentIds || ctx.request?.query?.documentIds || '';
+      const documentIds = (typeof raw === 'string' ? raw.split(',') : Array.isArray(raw) ? raw : [])
+        .map((id) => (id && String(id).trim()) || null)
+        .filter(Boolean);
+      if (documentIds.length === 0) {
+        ctx.body = {};
+        return;
+      }
+
+      const list = await strapi.db.query('api::news.news').findMany({
+        where: { documentId: { $in: documentIds } },
+        populate: { likes: true },
+      });
+
+      const counts = {};
+      for (const doc of list || []) {
+        const id = doc.documentId || doc.id;
+        if (id) counts[id] = Array.isArray(doc.likes) ? doc.likes.length : 0;
+      }
+      for (const id of documentIds) {
+        if (!(id in counts)) counts[id] = 0;
+      }
+      ctx.body = counts;
+    } catch (error) {
+      strapi.log.error('News likesCounts error:', error);
+      ctx.body = { error: error?.message || 'Failed to load likes counts' };
+      ctx.status = 500;
+    }
+  },
+
+  /**
+   * Get likes count and whether current user liked this news.
+   * GET /api/news-items/:id/likes-state (auth: false; optional Bearer for "liked")
+   */
+  async likesState(ctx) {
+    try {
+      let user = ctx.state?.user || null;
+      if (!user) user = await this._getUserFromToken(ctx);
+      const { id } = ctx.params;
+      if (!id) {
+        return ctx.badRequest('News ID is required');
+      }
+
+      // Read directly from DB by documentId to avoid any content-API sanitization issues.
+      const news = await strapi.db.query('api::news.news').findOne({
+        where: { documentId: id },
+        populate: { likes: true },
+      });
+
+      if (!news) {
+        return ctx.notFound('News not found');
+      }
+
+      const likes = Array.isArray(news.likes) ? news.likes : [];
+      const likesCount = likes.length;
+      const liked = user
+        ? likes.some((u) => u && Number(u.id) === Number(user.id))
+        : false;
+
+      ctx.body = { likesCount, liked };
+    } catch (error) {
+      strapi.log.error('News likesState error:', error);
+      ctx.body = { error: error?.message || 'Failed to load likes state' };
       ctx.status = 500;
     }
   },

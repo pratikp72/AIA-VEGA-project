@@ -210,18 +210,27 @@ module.exports = {
               limit,
             });
 
-            ctx.body = {
-              data: (notifications || []).map((n) => ({
-                id: n.id,
-                documentId: n.documentId,
-                type: n.type,
-                title: n.title,
-                message: n.message,
-                is_read: n.is_read,
-                meta: n.meta || {},
-                createdAt: n.createdAt,
-              })),
-            };
+            const notifUtil = strapi.utils?.notification;
+            const enriched = await Promise.all(
+              (notifications || []).map(async (n) => {
+                const meta = n.meta || {};
+                const enrichedMeta = notifUtil?.enrichMeta
+                  ? await notifUtil.enrichMeta(meta)
+                  : meta;
+                return {
+                  id: n.id,
+                  documentId: n.documentId,
+                  type: n.type,
+                  title: n.title,
+                  message: n.message,
+                  is_read: n.is_read,
+                  meta: enrichedMeta,
+                  createdAt: n.createdAt,
+                };
+              })
+            );
+
+            ctx.body = { data: enriched };
           } catch (error) {
             strapi.log.error('modules-sidebar admin-notifications error:', error);
             ctx.throw(500, error.message);

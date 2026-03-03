@@ -223,7 +223,7 @@ module.exports = createCoreController(
       await userProgressController.updateAfterQuiz(courseId, userId, passed);
 
         // ------------------------------------------------------
-        // 8. Notification: send to admin + LMadmin
+        // 8. Notification + email: Admin and LM Admin
         // ------------------------------------------------------
         const meta = { courseId, userId, score, passed };
         const notifUtil = strapi.utils?.notification;
@@ -231,10 +231,11 @@ module.exports = createCoreController(
           await notifUtil.sendNotification(
             'quiz_submitted',
             'Quiz Submitted',
-            `User ${userId} submitted a quiz for course ${courseId}.`,
+            'A user submitted a quiz.',
             [],
             meta,
-            ['admin', 'LMadmin']
+            ['admin', 'LMadmin'],
+            { sendEmail: true, sendSocket: true }
           );
         }
 

@@ -24,6 +24,7 @@ module.exports = createCoreController('api::course-assignment.course-assignment'
       users = await util.getUsersByWorkLocation(workLocationId);
     }
 
+    // Admin → User: only the assigned user gets notification (bell) + email
     const meta = { courseId, assignedBy, level };
     await util.sendNotification(
       'course_assigned',
@@ -31,7 +32,7 @@ module.exports = createCoreController('api::course-assignment.course-assignment'
       'A new course has been assigned to you.',
       users,
       meta,
-      ['LMadmin', 'admin']
+      [] // no admin roles: notification goes only to user's bell + email
     );
     return ctx.send({ message: 'Course assigned and notifications sent.' });
   },

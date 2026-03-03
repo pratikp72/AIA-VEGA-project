@@ -169,10 +169,11 @@ module.exports = createCoreController("api::feedback-submission.feedback-submiss
         await notifUtil.sendNotification(
           'feedback_submitted',
           'Course Feedback Submitted',
-          `User ${userId} submitted feedback for course ${courseId}.`,
+          'A user submitted course feedback.',
           [],
           meta,
-          ['admin', 'LMadmin']
+          ['admin', 'LMadmin'],
+          { sendEmail: true, sendSocket: true }
         );
       }
     } catch (err) {

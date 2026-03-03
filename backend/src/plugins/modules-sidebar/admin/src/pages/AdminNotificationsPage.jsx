@@ -145,12 +145,34 @@ export default function AdminNotificationsPage() {
                         </Typography>
                       )}
                     </Flex>
-                    <Typography variant="delta" textColor="neutral800" fontWeight="semiBold">
-                      {n.title || '—'}
-                    </Typography>
-                    <Typography variant="pi" textColor="neutral600" style={{ marginTop: 4 }}>
-                      {n.message || '—'}
-                    </Typography>
+                    {(n.meta && (n.meta.userId != null || n.meta.userName || n.meta.courseId != null || n.meta.courseTitle || n.meta.newsId != null || n.meta.newsTitle)) && (
+                      <Box marginTop={2}>
+                        {(n.meta.userId != null || n.meta.userName) && (
+                          <Typography variant="pi" textColor="primary700">
+                            User:{' '}
+                            {n.meta.userName
+                              ? `${n.meta.userName} (ID: ${n.meta.userId ?? '—'})`
+                              : `ID: ${String(n.meta.userId)}`}
+                          </Typography>
+                        )}
+                        {(n.meta.courseId != null || n.meta.courseTitle) && (
+                          <Typography variant="pi" textColor="primary700">
+                            Course:{' '}
+                            {n.meta.courseTitle
+                              ? `${n.meta.courseTitle} (ID: ${n.meta.courseId ?? '—'})`
+                              : `ID: ${String(n.meta.courseId)}`}
+                          </Typography>
+                        )}
+                        {n.meta.courseId == null && (n.meta.newsId != null || n.meta.newsTitle) && (
+                          <Typography variant="pi" textColor="primary700">
+                            News:{' '}
+                            {n.meta.newsTitle
+                              ? `${n.meta.newsTitle} (ID: ${n.meta.newsId ?? '—'})`
+                              : `ID: ${String(n.meta.newsId)}`}
+                          </Typography>
+                        )}
+                      </Box>
+                    )}
                   </Box>
                 );
               })}

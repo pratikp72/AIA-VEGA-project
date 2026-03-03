@@ -416,13 +416,14 @@ function registerUserProgressLifecycles(strapi) {
             });
             const levelMap = { Individual: 'individual', Department: 'department', Company: 'company', Location: 'work_location' };
             const meta = { courseId, assignedBy: null, level: levelMap[targetType] || targetType };
+            // Only notify assigned users (bell + email); admin/LM do not receive course_assigned
             await notifUtil.sendNotification(
               'course_assigned',
               'Course Assigned',
               'A new course has been assigned to you.',
               usersWithEmail || [],
               meta,
-              ['LMadmin', 'admin']
+              []
             );
           } catch (notifErr) {
             strapi.log.error('user-progress-automation: notification failed', notifErr?.message || notifErr);

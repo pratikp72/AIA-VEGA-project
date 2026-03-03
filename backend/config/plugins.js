@@ -48,11 +48,17 @@ module.exports = ({ env }) => ({
       providerOptions: {
         host: env('SMTP_HOST', 'smtp.gmail.com'),
         port: env.int('SMTP_PORT', 587),
-        secure: false,
-        auth: {
-          user: env('SMTP_USERNAME'),
-          pass: env('SMTP_PASSWORD'),
-        },
+        secure: env.bool('SMTP_SECURE', false),
+        requireTLS: true,
+        tls: { rejectUnauthorized: true },
+        ...(env('SMTP_USERNAME') && env('SMTP_PASSWORD')
+          ? {
+              auth: {
+                user: String(env('SMTP_USERNAME')).trim(),
+                pass: String(env('SMTP_PASSWORD')).trim(),
+              },
+            }
+          : {}),
       },
       settings: {
         defaultFrom: env('EMAIL_FROM', 'noreply@example.com'),
