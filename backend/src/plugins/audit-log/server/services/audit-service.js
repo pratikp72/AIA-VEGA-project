@@ -34,50 +34,49 @@ module.exports = ({ strapi }) => ({
     sortOrder = 'desc',
     company = null,
   }) {
-    const filters = {};
+    const where = {};
 
     // Date filtering
     if (dateFrom || dateTo) {
-      filters.createdAt = {};
-      if (dateFrom) filters.createdAt.$gte = new Date(dateFrom);
+      where.createdAt = {};
+      if (dateFrom) where.createdAt.$gte = new Date(dateFrom);
       if (dateTo) {
         const endDate = new Date(dateTo);
         endDate.setHours(23, 59, 59, 999);
-        filters.createdAt.$lte = endDate;
+        where.createdAt.$lte = endDate;
       }
     }
 
     // Content type filtering
     if (contentType && contentType !== '') {
-      filters.contentType = { $eq: contentType };
+      where.contentType = contentType;
     }
 
-    // Action filtering
+    // Action filtering (created, updated, deleted)
     if (action && action !== '') {
-      filters.action = { $eq: action };
+      where.action = action;
     }
 
     // Company filtering (now stored as top-level field)
     if (company && company !== '') {
-      filters["company"] = { $eq: company };
+      where.company = company;
     }
 
-    const entries = await strapi.entityService.findPage('plugin::audit-log.audit-entry', {
-      page,
-      pageSize,
-      sort: `${sortBy}:${sortOrder}`,
-      filters,
-      populate: ['adminUser'],
-    });
+    const offset = Math.max(0, (Number(page) || 1) - 1) * Math.max(1, Number(pageSize) || 25);
+    const limit = Math.max(1, Math.min(100, Number(pageSize) || 25));
+    const orderDir = (sortOrder || 'desc').toLowerCase() === 'asc' ? 'asc' : 'desc';
+    const orderField = sortBy || 'createdAt';
 
-    // TEMP: Log snapshot data for debugging company filter
-    entries.results.forEach(entry => {
-      const snapshot = entry.snapshot || {};
-      strapi.log.info(`[AUDIT-LOG DEBUG] entryId=${entry.id} snapshot.company=`, snapshot.company, 'snapshot=', JSON.stringify(snapshot));
+    const [entries, total] = await strapi.db.query('plugin::audit-log.audit-entry').findWithCount({
+      where: Object.keys(where).length > 0 ? where : undefined,
+      limit,
+      offset,
+      orderBy: { [orderField]: orderDir },
+      populate: { adminUser: true },
     });
 
     return {
-      data: entries.results.map(entry => {
+      data: entries.map(entry => {
         // Extract userId, username, company, emp_code, emp_id from snapshot (if available)
         const snapshot = entry.snapshot || {};
         return {
@@ -111,7 +110,12 @@ module.exports = ({ strapi }) => ({
           createdAt: entry.createdAt,
         };
       }),
-      pagination: entries.pagination,
+      pagination: {
+        page: Number(page) || 1,
+        pageSize: limit,
+        pageCount: Math.ceil(total / limit) || 1,
+        total,
+      },
     };
   },
 

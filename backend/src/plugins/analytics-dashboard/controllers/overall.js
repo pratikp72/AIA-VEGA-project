@@ -12,12 +12,11 @@ module.exports = ({ strapi }) => {
   return {
     async overallGlobal(ctx) {
       const emptyOverall = () => ({
-        kpis: { totalUsers: 0, totalActiveUsers: 0, totalHolidays: 0, totalNews: 0, totalEvents: 0, totalTownhalls: 0 },
+        kpis: { totalUsers: 0, totalActiveUsers: 0, totalHolidays: 0, totalNews: 0, totalTownhalls: 0 },
         holidayByMonth: [],
         employeesByCompany: [],
         activeUsersByCompany: [],
         newsByCategory: [],
-        eventsByType: [],
         townhallByContentType: [],
       });
       try {

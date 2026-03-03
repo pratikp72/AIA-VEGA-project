@@ -101,6 +101,18 @@ module.exports = ({ strapi }) => {
       }
     },
 
+    async activityNewsList(ctx) {
+      try {
+        const service = getAnalyticsService();
+        const data = await service.getNewsForActivityFilter();
+        ctx.body = data || [];
+      } catch (error) {
+        strapi.log.error('Analytics activityNewsList error:', error?.message || error);
+        ctx.body = [];
+        ctx.status = 200;
+      }
+    },
+
     async activityTrack(ctx) {
       try {
         const user = ctx.state?.user;

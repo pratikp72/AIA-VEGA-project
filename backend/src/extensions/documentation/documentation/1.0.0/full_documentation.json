@@ -8975,6 +8975,85 @@
       }
     },
     "/quiz-reattempt-requests": {
+      "post": {
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuizReattemptRequestResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Quiz-reattempt-request"
+        ],
+        "parameters": [],
+        "operationId": "post/quiz-reattempt-requests",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QuizReattemptRequestRequest"
+              }
+            }
+          }
+        }
+      },
       "get": {
         "responses": {
           "200": {
@@ -9146,85 +9225,6 @@
           }
         ],
         "operationId": "get/quiz-reattempt-requests"
-      },
-      "post": {
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/QuizReattemptRequestResponse"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Bad Request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Forbidden",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not Found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Internal Server Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        },
-        "tags": [
-          "Quiz-reattempt-request"
-        ],
-        "parameters": [],
-        "operationId": "post/quiz-reattempt-requests",
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/QuizReattemptRequestRequest"
-              }
-            }
-          }
-        }
       }
     },
     "/quiz-reattempt-requests/{id}": {
@@ -64796,6 +64796,7 @@
                   "course_assigned",
                   "quiz_reattempt_requested",
                   "quiz_reattempt_approved",
+                  "quiz_reattempt_rejected",
                   "quiz_submitted",
                   "feedback_submitted",
                   "news_liked",
@@ -64926,6 +64927,7 @@
               "course_assigned",
               "quiz_reattempt_requested",
               "quiz_reattempt_approved",
+              "quiz_reattempt_rejected",
               "quiz_submitted",
               "feedback_submitted",
               "news_liked",
@@ -66256,6 +66258,7 @@
                     "course_assigned",
                     "quiz_reattempt_requested",
                     "quiz_reattempt_approved",
+                    "quiz_reattempt_rejected",
                     "quiz_submitted",
                     "feedback_submitted",
                     "news_liked",

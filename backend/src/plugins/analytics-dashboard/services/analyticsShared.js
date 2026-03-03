@@ -212,7 +212,7 @@ module.exports = ({ strapi }) => {
     const list = Array.isArray(logs) ? logs : [];
     const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
     const byDate = {};
-    const pageTypes = ['News', 'Event', 'Location', 'Routes', 'People', 'Gallery', 'Home'];
+    const pageTypes = ['News', 'Location', 'Routes', 'People', 'Gallery', 'Home'];
     list.forEach((log) => {
       if (!log.timestamp) return;
       const d = new Date(log.timestamp);
@@ -264,6 +264,9 @@ module.exports = ({ strapi }) => {
       }
     }
     if (params.activityType) where.activity_type = params.activityType;
+
+    /* When newsId is selected: do NOT filter by activity_description - frontend often sends generic "News".
+       Show all News activity; likes column will show Yes/No for the selected news. */
 
     if (params.userId != null && params.userId !== '') {
       let numericId = null;
@@ -371,7 +374,7 @@ module.exports = ({ strapi }) => {
     return { totalUser, uniqueUser, timeSpentMin, avgTimeSpentMin };
   };
 
-  const ACTIVITY_PAGES = ['News', 'Event', 'Location', 'Routes', 'People', 'Gallery', 'Home', 'Company policy', 'Form & Templates', 'Calendar'];
+  const ACTIVITY_PAGES = ['News', 'Location', 'Routes', 'People', 'Gallery', 'Home', 'Company policy', 'Form & Templates', 'Calendar'];
 
   /**
    * Top pages by time (desc) and least used pages by time (asc) for Activity Tracking charts.
@@ -409,6 +412,42 @@ module.exports = ({ strapi }) => {
   /** Allowed sort fields for activity log: activity_type, activity_duration, timestamp. */
   const ACTIVITY_LOG_SORT_FIELDS = ['activity_type', 'activity_duration', 'timestamp'];
 
+  /**
+   * Returns list of news with id, documentId, title, likesCount for activity filter dropdown (when activityType is News).
+   * Likes count: News has a manyToMany relation "likes" to plugin::users-permissions.user. We populate likes and use
+   * the length of that array = number of users who liked this news.
+   */
+  self.getNewsForActivityFilter = async function () {
+    try {
+      const items = await strapi.db.query('api::news.news').findMany({
+        where: { publishedAt: { $notNull: true } },
+        orderBy: { title: 'ASC' },
+        limit: 500,
+        select: ['id', 'documentId', 'title'],
+        // populate: { likes: { select: ['id'] } },
+      });
+      const list = Array.isArray(items) ? items : [];
+      const seen = new Set();
+      const result = [];
+      for (const n of list) {
+        const docId = n.documentId ?? n.document_id ?? null;
+        const key = docId != null ? String(docId) : `id:${n.id}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        result.push({
+          id: n.id,
+          documentId: docId,
+          title: n.title || '—',
+          // likesCount: Array.isArray(n.likes) ? n.likes.length : (n.likes?.length ?? 0),
+        });
+      }
+      return result;
+    } catch (e) {
+      strapi.log.warn('getNewsForActivityFilter error:', e?.message);
+      return [];
+    }
+  };
+
   self.getActivityLog = async function (params = {}) {
     const page = Math.max(1, parseInt(params.page, 10) || 1);
     const pageSize = Math.min(50, Math.max(5, parseInt(params.pageSize, 10) || 10));
@@ -438,7 +477,7 @@ module.exports = ({ strapi }) => {
       populate: ['user', 'company'],
     });
     const list = Array.isArray(logs) ? logs : [];
-    const rows = list.map((log) => {
+    let rows = list.map((log) => {
       const mins = log.activity_duration || 0;
       const secs = mins * 60;
       const m = Math.floor(secs / 60);
@@ -447,10 +486,125 @@ module.exports = ({ strapi }) => {
       if (mins === 0) duration = 0;
       else if (s === 0) duration = `${m}m`;
       else duration = `${m}m ${s}s`;
+      const userId = log.user?.id ?? log.user_id ?? (typeof log.user === 'number' ? log.user : null);
+      const userDocumentId = log.user?.documentId ?? log.user?.document_id ?? null;
       const userName = log.user ? (log.user.employee_name || log.user.username || log.user.email || `User ${log.user.id}`) : '—';
       const companyName = log.company?.name ?? log.user?.company ?? '—';
-      return { userName, company: companyName, activity: log.activity_type || log.activity_description || '—', duration, timestamp: log.timestamp };
+      const activityDesc = (log.activity_description || log.activity_type || '—').trim();
+      return {
+        userId,
+        userDocumentId,
+        userName,
+        company: companyName,
+        activity: log.activity_type || log.activity_description || '—',
+        activityDescription: activityDesc,
+        duration,
+        timestamp: log.timestamp,
+      };
     });
+
+    if (params.activityType === 'News' && rows.length > 0) {
+      try {
+        const newsList = await strapi.db.query('api::news.news').findMany({
+          where: { publishedAt: { $notNull: true } },
+          select: ['id', 'documentId', 'title'],
+          populate: { likes: { select: ['id', 'documentId'] } },
+        });
+        const toUserKey = (u) => {
+          if (u == null) return null;
+          if (typeof u === 'number') return `id:${u}`;
+          if (u?.id != null) return `id:${u.id}`;
+          if (u?.documentId != null) return `doc:${u.documentId}`;
+          if (u?.document_id != null) return `doc:${u.document_id}`;
+          return null;
+        };
+        const allUserKeys = (u) => {
+          const keys = [];
+          if (u == null) return keys;
+          if (typeof u === 'number') return [`id:${u}`];
+          if (u?.id != null) keys.push(`id:${u.id}`);
+          if (u?.documentId != null) keys.push(`doc:${u.documentId}`);
+          if (u?.document_id != null) keys.push(`doc:${u.document_id}`);
+          return keys;
+        };
+        const newsWithLikes = (newsList || []).map((n) => {
+          const keys = new Set();
+          const likes = Array.isArray(n.likes) ? n.likes : [];
+          for (const u of likes) {
+            for (const kk of allUserKeys(u)) keys.add(kk);
+          }
+          return {
+            id: n.id,
+            documentId: n.documentId ?? n.document_id ?? null,
+            title: (n.title || '').trim().toLowerCase(),
+            titleOriginal: n.title || '—',
+            likedByUserKeys: keys,
+          };
+        });
+
+        const rowUserKeys = (r) => {
+          const keys = [];
+          if (r.userId != null) keys.push(`id:${r.userId}`);
+          if (r.userDocumentId != null) keys.push(`doc:${r.userDocumentId}`);
+          return keys;
+        };
+        const rowMatchesLikes = (r, likedByKeys) => rowUserKeys(r).some((k) => likedByKeys.has(k));
+        const countForRow = (r, userLikesCount) => {
+          let c = 0;
+          for (const k of rowUserKeys(r)) {
+            c = Math.max(c, userLikesCount.get(k) || 0);
+          }
+          return c;
+        };
+
+        if (params.newsId) {
+          const newsIdVal = String(params.newsId).trim();
+          const isNumeric = /^\d+$/.test(newsIdVal);
+          const targetNews = newsWithLikes.find((n) =>
+            isNumeric
+              ? n.id === Number(newsIdVal)
+              : String(n.documentId ?? '') === newsIdVal
+          );
+          if (targetNews) {
+            rows = rows.map((r) => ({
+              ...r,
+              likesDisplay: rowMatchesLikes(r, targetNews.likedByUserKeys) ? 'Yes' : 'No',
+            }));
+          }
+        } else {
+          const userLikesCount = new Map();
+          for (const n of newsList || []) {
+            const users = Array.isArray(n.likes) ? n.likes : [];
+            const seenCanonical = new Set();
+            for (const u of users) {
+              const canon = toUserKey(u);
+              if (!canon || seenCanonical.has(canon)) continue;
+              seenCanonical.add(canon);
+              const count = (userLikesCount.get(canon) || 0) + 1;
+              userLikesCount.set(canon, count);
+              for (const k of allUserKeys(u)) {
+                if (k !== canon) userLikesCount.set(k, count);
+              }
+            }
+          }
+          rows = rows.map((r) => {
+            const count = countForRow(r, userLikesCount);
+            const desc = (r.activityDescription || '').toLowerCase();
+            const match = newsWithLikes.find(
+              (n) => n.title && (desc.includes(n.title) || desc === n.title)
+            );
+            return {
+              ...r,
+              likesDisplay: String(count),
+              newsTitle: match ? match.titleOriginal : null,
+            };
+          });
+        }
+      } catch (e) {
+        strapi.log.warn('getActivityLog: enrich news likes failed', e?.message);
+      }
+    }
+
     return { rows, total, page, pageSize };
   };
 

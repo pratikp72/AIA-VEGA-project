@@ -157,9 +157,11 @@ module.exports = createCoreController(
         const passed = score >= minPassingScore;
 
         // ------------------------------------------------------
-        // 4. If FAILED + reached max_attempt → block
+        // 4. If FAILED + would exceed max_attempt → block (do not save)
+        // Show re-attempt when current attempt === max_attempt, not only when trying attempt > max.
+        // So block when they already used all attempts and are trying to submit again.
         // ------------------------------------------------------
-        if (!passed && lastAttempt >= maxAttempt) {
+        if (!passed && nextAttempt > maxAttempt) {
           return ctx.send({
             message: `Max attempts reached (${maxAttempt}). Request reattempt.`,
             reattempt_required: true
@@ -236,9 +238,13 @@ module.exports = createCoreController(
           );
         }
 
+        // When user failed and this attempt used all allowed attempts → show re-attempt (e.g. max_attempt=1, failed 1st time)
+        const reattemptRequired = !passed && nextAttempt >= maxAttempt;
+
       return ctx.send({
         message: "Quiz submitted successfully",
         submission: entry,
+        ...(reattemptRequired && { reattempt_required: true }),
       });
 
     } catch (err) {

@@ -170,6 +170,15 @@ module.exports = {
         },
       },
       {
+        method: 'GET',
+        path: '/api/analytics/activity/news-list',
+        handler: analytics.activityNewsList,
+        config: {
+          auth: false,
+          policies: [],
+        },
+      },
+      {
         method: 'POST',
         path: '/api/analytics/activity/track',
         handler: analytics.activityTrack,

@@ -1,25 +1,14 @@
 import React from 'react';
 import { Box } from '@strapi/design-system';
 import { DataTable } from '../../../components/DataTable';
-import { useAnalytics } from '../../../hooks/useAnalytics';
 
 /**
  * Learning Analytics – Employee Table view.
  * Receives data and filter state from parent; renders the employee learning summary table.
  */
-export function LearningTableView({
-  data,
-  search,
-  filterCourse,
-  sortOrder,
-  setSortOrder,
-  setPage,
-  setPageSize,
-}) {
-  const [downloadStyle, setDownloadStyle] = React.useState('shown');
-  const rows = data?.rows || [];
+function applyEmployeeFilters(rows, search, filterCourse) {
   const q = (search || '').toLowerCase().trim();
-  let filtered = rows;
+  let filtered = rows || [];
   if (filterCourse) {
     filtered = filtered.filter((row) => {
       if (Array.isArray(row.coursesEnrolledIds)) {
@@ -53,27 +42,27 @@ export function LearningTableView({
       }
     }
   }
+  return filtered;
+}
 
-  // Use backend pagination directly
+export function LearningTableView({
+  data,
+  allRows = [],
+  search,
+  filterCourse,
+  sortOrder,
+  setSortOrder,
+  setPage,
+  setPageSize,
+}) {
+  const [downloadStyle, setDownloadStyle] = React.useState('shown');
+  const rows = data?.rows || [];
+  const tableRows = allRows.length > 0 ? applyEmployeeFilters(allRows, search, filterCourse) : applyEmployeeFilters(rows, search, filterCourse);
+  const paginatedTableData = data?.rows || [];
+
   const page = data?.page || 1;
   const pageSize = data?.pageSize || 10;
   const total = data?.total || 0;
-
-  // Define tableRows and paginatedTableData for DataTable
-  // tableRows: all filtered rows (for download/export)
-  // paginatedTableData: current page's filtered rows (for display)
-  const tableRows = filtered;
-  const paginatedTableData = data?.rows || [];
-
-  const { exportLearningEmployeeTable } = useAnalytics();
-
-  const handleDownload = async (style) => {
-    setDownloadStyle(style);
-    if (style === 'all') {
-      // Trigger backend export for all rows
-      await exportLearningEmployeeTable();
-    }
-  };
 
   return (
     <Box marginBottom={6}>

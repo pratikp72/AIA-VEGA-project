@@ -14,6 +14,7 @@ export default function OverallAnalyticsPage() {
     fetchActivityLog,
     fetchActivityTrackingKpis,
     fetchActivityPagesStats,
+    fetchActivityNewsList,
   } = useAnalytics();
   const [viewMode] = useState('activityTracking');
   const [dateFrom, setDateFrom] = useState(null);
@@ -22,11 +23,14 @@ export default function OverallAnalyticsPage() {
   const [company, setCompany] = useState('');
   const [unitLocation, setUnitLocation] = useState('');
   const [activityType, setActivityType] = useState('');
+  const [newsId, setNewsId] = useState('');
+  const [newsList, setNewsList] = useState([]);
   const [employeeId, setEmployeeId] = useState(null);
   const [employeeDetail, setEmployeeDetail] = useState(null);
   const [departments, setDepartments] = useState([]);
   const [unitLocations, setUnitLocations] = useState([]);
   const [activityLogData, setActivityLogData] = useState({ rows: [], total: 0, page: 1, pageSize: 10 });
+  const [activityLogFullRows, setActivityLogFullRows] = useState([]);
   const [activityKpis, setActivityKpis] = useState({ totalUser: 0, uniqueUser: 0, timeSpentMin: 0, avgTimeSpentMin: 0 });
   const [activityPagesStats, setActivityPagesStats] = useState({ topPagesByVisit: [], leastUsedPages: [] });
   const [activityLogPage, setActivityLogPage] = useState(1);
@@ -51,6 +55,19 @@ export default function OverallAnalyticsPage() {
     if (viewMode === 'activityTracking') setActivityLogPage(1);
   }, [viewMode, activityType, dateFrom, dateTo, company, department, unitLocation, employeeId]);
 
+  useEffect(() => {
+    if (activityType === 'News') {
+      fetchActivityNewsList()
+        .then((list) => setNewsList(Array.isArray(list) ? list : []))
+        .catch(() => setNewsList([]));
+    } else {
+      setNewsList([]);
+      setNewsId('');
+    }
+    // Only re-fetch when activityType changes; fetchActivityNewsList is stable from useAnalytics
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- fetchActivityNewsList intentionally omitted to avoid infinite loop (new ref every render)
+  }, [activityType]);
+
   const handleActivityLogSortChange = (sortBy, sortOrder) => {
     setActivityLogSortBy(sortBy);
     setActivityLogSortOrder(sortOrder);
@@ -67,6 +84,7 @@ export default function OverallAnalyticsPage() {
     if (department) params.department = department;
     if (unitLocation) params.unitLocation = unitLocation;
     if (activityType) params.activityType = activityType;
+    if (activityType === 'News' && newsId) params.newsId = newsId;
     if (employeeId) params.userId = employeeId;
 
     Promise.all([
@@ -81,13 +99,29 @@ export default function OverallAnalyticsPage() {
       fetchActivityPagesStats(params),
     ])
       .then(([logData, kpis, pagesStats]) => {
-        setActivityLogData(logData || { rows: [], total: 0, page: 1, pageSize: 10 });
+        const data = logData || { rows: [], total: 0, page: 1, pageSize: 10 };
+        setActivityLogData(data);
         setActivityKpis(kpis || { totalUser: 0, uniqueUser: 0, timeSpentMin: 0, avgTimeSpentMin: 0 });
         setActivityPagesStats(pagesStats || { topPagesByVisit: [], leastUsedPages: [] });
+        const total = data.total || 0;
+        const pageSize = data.pageSize || 10;
+        if (total > 0 && total > pageSize) {
+          fetchActivityLog({
+            ...params,
+            page: 1,
+            pageSize: total,
+            sortBy: activityLogSortBy,
+            sortOrder: activityLogSortOrder,
+          })
+            .then((full) => setActivityLogFullRows(full?.rows || []))
+            .catch(() => setActivityLogFullRows([]));
+        } else {
+          setActivityLogFullRows(data.rows || []);
+        }
       })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
-  }, [employeeId, dateFrom, dateTo, company, department, unitLocation, activityType, activityLogPage, activityLogPageSize, activityLogSortBy, activityLogSortOrder]);
+  }, [employeeId, dateFrom, dateTo, company, department, unitLocation, activityType, newsId, activityLogPage, activityLogPageSize, activityLogSortBy, activityLogSortOrder]);
 
   useEffect(() => {
     loadData();
@@ -128,6 +162,9 @@ export default function OverallAnalyticsPage() {
               unitLocations={unitLocations}
               activityType={activityType}
               onActivityTypeChange={setActivityType}
+              newsId={newsId}
+              onNewsIdChange={setNewsId}
+              newsList={newsList}
               activityTrackingEmployeeId={employeeId}
               hideViewFilter
               search=""
@@ -157,8 +194,11 @@ export default function OverallAnalyticsPage() {
                 )}
                 <OverallActivityTrackingView
                   activityLogData={activityLogData}
+                  activityLogFullRows={activityLogFullRows}
                   activityKpis={activityKpis}
                   activityPagesStats={activityPagesStats}
+                  activityType={activityType}
+                  newsId={newsId}
                   setActivityLogPage={setActivityLogPage}
                   setActivityLogPageSize={setActivityLogPageSize}
                   activityLogSortBy={activityLogSortBy}

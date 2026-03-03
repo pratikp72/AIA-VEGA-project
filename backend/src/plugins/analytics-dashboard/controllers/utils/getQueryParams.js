@@ -14,6 +14,7 @@ function getQueryParams(ctx) {
     unitLocation: ctx.query.unitLocation || ctx.query.unit_location,
     location: ctx.query.location,
     activityType: ctx.query.activityType || ctx.query.activity_type,
+    newsId: ctx.query.newsId || ctx.query.news_id,
     courseCategory: ctx.query.courseCategory || ctx.query.course_category,
     search: ctx.query.search,
     sortBy: ctx.query.sortBy || ctx.query.sort_by,

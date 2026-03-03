@@ -91,6 +91,14 @@ module.exports = {
       strapi.log.error('User-progress automation bootstrap failed:', e?.message || e);
     }
 
+    // Feedback-submission: admin notification when created via Content Manager
+    try {
+      const { registerFeedbackSubmissionLifecycles } = require('./lifecycles/feedback-submission-notification');
+      registerFeedbackSubmissionLifecycles(strapi);
+    } catch (e) {
+      strapi.log.error('Feedback-submission notification bootstrap failed:', e?.message || e);
+    }
+
     // Fallback: ensure department when user is created/updated via Content Manager
     const plugin = strapi.plugin('content-manager');
     if (!plugin) return;
