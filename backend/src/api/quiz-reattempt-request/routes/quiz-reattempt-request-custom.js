@@ -20,5 +20,23 @@ module.exports = {
         policies: [],
       },
     },
+    {
+      method: "POST",
+      path: "/quiz-reattempt-request/approve",
+      handler: "api::quiz-reattempt-request.quiz-reattempt-request.approve",
+      config: {
+        auth: false,
+        policies: [],
+      },
+    },
+    {
+      method: "POST",
+      path: "/quiz-reattempt-request/reject",
+      handler: "api::quiz-reattempt-request.quiz-reattempt-request.reject",
+      config: {
+        auth: false,
+        policies: [],
+      },
+    },
   ],
 };

@@ -1,0 +1,63 @@
+'use strict';
+
+/**
+ * When a quiz reattempt request is updated to Approved or Rejected,
+ * send notification to the user (bell + email). Single place for both
+ * plugin UI and Content Manager / API updates.
+ */
+
+const QUIZ_REATTEMPT_UID = 'api::quiz-reattempt-request.quiz-reattempt-request';
+
+function getRelationId(rel) {
+  if (rel == null) return null;
+  if (typeof rel === 'number') return rel;
+  if (typeof rel === 'object' && rel !== null) return rel.id ?? rel.documentId ?? rel.document_id ?? null;
+  return null;
+}
+
+function registerQuizReattemptNotificationLifecycles(strapi) {
+  strapi.db.lifecycles.subscribe({
+    models: [QUIZ_REATTEMPT_UID],
+    async afterUpdate(event) {
+      try {
+        const { result } = event;
+        const status = result?.request_status;
+        if (status !== 'Approved' && status !== 'Rejected') return;
+
+        const userId = getRelationId(result.users_permissions_user) ?? result.users_permissions_user_id;
+        const courseId = getRelationId(result.course) ?? result.course_id;
+        if (!userId) return;
+
+        const notifUtil = strapi.utils?.notification;
+        if (!notifUtil) return;
+
+        const user = await strapi.db.query('plugin::users-permissions.user').findOne({
+          where: { id: Number(userId) },
+          select: ['id', 'email'],
+        });
+        if (!user) return;
+
+        const meta = { courseId: courseId || null, requestId: result.id ?? result.documentId };
+        const isApproved = status === 'Approved';
+
+        await notifUtil.sendNotification(
+          isApproved ? 'quiz_reattempt_approved' : 'quiz_reattempt_rejected',
+          isApproved ? 'Quiz Reattempt Approved' : 'Quiz Reattempt Rejected',
+          isApproved
+            ? 'Your quiz reattempt request has been approved.'
+            : 'Your quiz reattempt request has been rejected.',
+          [{ id: user.id, email: user.email }],
+          meta,
+          [], // admin does not get this; only the user sees it in their bell + email
+          { sendEmail: true, sendSocket: true }
+        );
+      } catch (e) {
+        strapi.log.error('[quiz-reattempt-notification] afterUpdate:', e?.message || e);
+      }
+    },
+  });
+
+  strapi.log.info('Quiz reattempt: user notification on approve/reject');
+}
+
+module.exports = { registerQuizReattemptNotificationLifecycles };

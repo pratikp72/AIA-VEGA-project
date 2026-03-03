@@ -99,6 +99,14 @@ module.exports = {
       strapi.log.error('Feedback-submission notification bootstrap failed:', e?.message || e);
     }
 
+    // Quiz reattempt: user notification (bell + email) when admin approves or rejects
+    try {
+      const { registerQuizReattemptNotificationLifecycles } = require('./lifecycles/quiz-reattempt-notification');
+      registerQuizReattemptNotificationLifecycles(strapi);
+    } catch (e) {
+      strapi.log.error('Quiz reattempt notification bootstrap failed:', e?.message || e);
+    }
+
     // Fallback: ensure department when user is created/updated via Content Manager
     const plugin = strapi.plugin('content-manager');
     if (!plugin) return;

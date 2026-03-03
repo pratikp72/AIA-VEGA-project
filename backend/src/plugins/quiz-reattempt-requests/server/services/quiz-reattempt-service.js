@@ -35,35 +35,7 @@ module.exports = ({ strapi }) => ({
     });
     if (!updated) return null;
 
-    const user = updated.users_permissions_user;
-    const course = updated.course;
-    const courseTitle = (course?.title ?? course?.attributes?.title ?? 'the course') || 'the course';
-    const notifUtil = strapi.utils?.notification;
-    if (notifUtil && user) {
-      const userId = user.id ?? user.documentId;
-      const userObj = { id: userId, email: user.email ?? user.attributes?.email };
-      const meta = { courseId: course?.id ?? course?.documentId, requestId: id };
-      if (newStatus === 'Approved') {
-        await notifUtil.sendNotification(
-          'quiz_reattempt_approved',
-          'Quiz Reattempt Approved',
-          `Your quiz reattempt request for "${courseTitle}" has been approved.`,
-          [userObj],
-          meta,
-          []
-        );
-      } else if (newStatus === 'Rejected') {
-        await notifUtil.sendNotification(
-          'quiz_reattempt_rejected',
-          'Quiz Reattempt Rejected',
-          `Your quiz reattempt request for "${courseTitle}" has been rejected.`,
-          [userObj],
-          meta,
-          []
-        );
-      }
-    }
-
+    // User notification (bell + email) is sent by quiz-reattempt-notification lifecycle on status change
     return updated;
   },
 });

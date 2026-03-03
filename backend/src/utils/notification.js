@@ -11,6 +11,75 @@ module.exports = (strapi) => {
   const USER_UID = 'plugin::users-permissions.user';
 
   /**
+   * Enrich meta with human-readable names (userName, courseTitle, newsTitle)
+   * so the admin UI can show friendly labels without extra API calls.
+   */
+  async function enrichMeta(meta = {}) {
+    const out = { ...(meta || {}) };
+
+    // Resolve userName from userId (portal user: employee_name, username, email)
+    if (out.userId != null && out.userId !== '' && !out.userName) {
+      try {
+        const userRow = await strapi.db.query(USER_UID).findOne({
+          where: { id: Number(out.userId) },
+          select: ['id', 'username', 'email', 'employee_name'],
+        });
+        if (userRow) {
+          out.userName =
+            userRow.employee_name ||
+            userRow.username ||
+            userRow.email ||
+            `User ${userRow.id}`;
+        }
+      } catch (err) {
+        strapi.log.warn('[notification] enrichMeta user error:', err?.message || err);
+      }
+    }
+
+    // Resolve courseTitle from courseId (numeric id or documentId)
+    if (out.courseId != null && out.courseId !== '' && !out.courseTitle) {
+      try {
+        const courseId = Number(out.courseId);
+        let courseRow = null;
+        if (!Number.isNaN(courseId)) {
+          courseRow = await strapi.db.query('api::course.course').findOne({
+            where: { id: courseId },
+            select: ['id', 'title'],
+          });
+        }
+        if (!courseRow && String(out.courseId)) {
+          courseRow = await strapi.db.query('api::course.course').findOne({
+            where: { documentId: String(out.courseId) },
+            select: ['id', 'documentId', 'title'],
+          });
+        }
+        if (courseRow?.title) {
+          out.courseTitle = courseRow.title;
+        }
+      } catch (err) {
+        strapi.log.warn('[notification] enrichMeta course error:', err?.message || err);
+      }
+    }
+
+    // Optional: resolve newsTitle from newsId (documentId)
+    if (out.newsId && !out.newsTitle) {
+      try {
+        const newsRow = await strapi.db.query('api::news.news').findOne({
+          where: { documentId: String(out.newsId) },
+          select: ['id', 'title'],
+        });
+        if (newsRow?.title) {
+          out.newsTitle = newsRow.title;
+        }
+      } catch (err) {
+        strapi.log.warn('[notification] enrichMeta news error:', err?.message || err);
+      }
+    }
+
+    return out;
+  }
+
+  /**
    * Send email via Strapi email plugin (Nodemailer)
    */
   async function sendEmail(to, subject, body) {
@@ -69,35 +138,58 @@ module.exports = (strapi) => {
   }
 
   /**
-   * Get admin users by role codes (admin, LMadmin, HRadmin)
+   * Get admin users by conceptual role codes (admin, LMadmin, HRadmin).
+   *
+   * Implementation note:
+   * - We fetch all admin users and filter in JS by role name so we don't
+   *   depend on the exact shape of the role/roles relation.
+   * - Current project roles (from screenshot):
+   *     "Admin"       → main admin
+   *     "HR admin"    → HR Admin
+   *     "LM admin"    → LM Admin
+   *     "Super Admin" → super admin
    */
   async function getAdminUsersByRoles(roleCodes) {
     if (!Array.isArray(roleCodes) || roleCodes.length === 0) return [];
+
+    const wantsAdmin = roleCodes.includes('admin');
+    const wantsLM = roleCodes.includes('LMadmin');
+    const wantsHR = roleCodes.includes('HRadmin');
+    if (!wantsAdmin && !wantsLM && !wantsHR) return [];
+
+    let admins = [];
     try {
-      const users = await strapi.db.query('admin::user').findMany({
-        where: {
-          role: {
-            code: { $in: roleCodes },
-          },
-        },
-        populate: ['role'],
+      admins = await strapi.db.query('admin::user').findMany({
+        populate: ['role', 'roles'],
         select: ['id', 'email'],
       });
-      if (users && users.length > 0) return users;
-      const fallback = await strapi.db.query('admin::user').findMany({
-        where: {
-          roles: {
-            code: { $in: roleCodes },
-          },
-        },
-        populate: ['roles'],
-        select: ['id', 'email'],
-      });
-      return fallback || [];
     } catch (err) {
-      strapi.log.error('[notification] getAdminUsersByRoles error:', err?.message || err);
+      strapi.log.error('[notification] getAdminUsersByRoles fetch error:', err?.message || err);
       return [];
     }
+
+    const result = [];
+    for (const admin of admins || []) {
+      const singleRoleName = admin.role?.name;
+      const multiRoleNames = Array.isArray(admin.roles)
+        ? admin.roles.map((r) => r?.name).filter(Boolean)
+        : [];
+      const allNames = [singleRoleName, ...multiRoleNames].filter(Boolean);
+      if (allNames.length === 0) continue;
+
+      const hasAdminName = allNames.some((n) => n === 'Admin' || n === 'Super Admin');
+      const hasHRName = allNames.some((n) => n === 'HR admin');
+      const hasLMName = allNames.some((n) => n === 'LM admin');
+
+      if (
+        (wantsAdmin && hasAdminName) ||
+        (wantsHR && hasHRName) ||
+        (wantsLM && hasLMName)
+      ) {
+        result.push(admin);
+      }
+    }
+    return result;
   }
 
   /**
@@ -178,20 +270,24 @@ module.exports = (strapi) => {
 
   /**
    * Main send notification function.
+   * - User notifications (toUser): stored for portal bell + email + socket to user.
+   * - Admin notifications (admin_user, forRole): stored for Strapi admin bell + email to admin/LM/HR.
+   * Targeting: admin gets all; HR gets news_liked; LM gets course-related (feedback, quiz submit, quiz reattempt).
    * @param {string} type - Notification type (enum)
    * @param {string} title - Notification title
    * @param {string} message - Notification message
    * @param {Array} usersArray - Array of user objects { id, email } (portal users)
    * @param {Object} meta - Additional metadata
-   * @param {Array} adminRoles - Admin role codes to notify: ['admin','LMadmin','HRadmin']
+   * @param {Array} adminRoles - Admin role codes: ['admin','LMadmin','HRadmin']
    * @param {Object} options - { sendEmail: true, sendSocket: true }
    */
   async function sendNotification(type, title, message, usersArray = [], meta = {}, adminRoles = [], options = {}) {
     const { sendEmail: doEmail = true, sendSocket: doSocket = true } = options;
     const users = Array.isArray(usersArray) ? usersArray.filter(Boolean) : [];
     const roles = Array.isArray(adminRoles) ? adminRoles.filter(Boolean) : [];
+    const enrichedMeta = await enrichMeta(meta);
 
-    const payload = { type, title, message, meta };
+    const payload = { type, title, message, meta: enrichedMeta };
 
     for (const user of users) {
       const userId = user?.id ?? user?.documentId;
@@ -204,7 +300,7 @@ module.exports = (strapi) => {
             message,
             is_read: false,
             toUser: userId,
-            meta,
+            meta: enrichedMeta,
           },
         });
         if (doEmail && user?.email) {
@@ -232,7 +328,7 @@ module.exports = (strapi) => {
               is_read: false,
               admin_user: adminId,
               forRole: roleCode,
-              meta,
+              meta: enrichedMeta,
             },
           });
           if (doEmail && admin?.email) {
@@ -251,6 +347,7 @@ module.exports = (strapi) => {
   return {
     sendNotification,
     sendEmail,
+    enrichMeta,
     triggerSocket,
     triggerAdminSocket,
     getAdminUsersByRoles,
