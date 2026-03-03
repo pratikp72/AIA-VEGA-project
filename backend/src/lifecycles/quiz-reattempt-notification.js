@@ -24,12 +24,23 @@ function registerQuizReattemptNotificationLifecycles(strapi) {
         const status = result?.request_status;
         if (status !== 'Approved' && status !== 'Rejected') return;
 
-        const userId = getRelationId(result.users_permissions_user) ?? result.users_permissions_user_id;
-        const courseId = getRelationId(result.course) ?? result.course_id;
-        if (!userId) return;
+        const recordId = result?.id ?? result?.documentId;
+        if (recordId == null) return;
 
         const notifUtil = strapi.utils?.notification;
         if (!notifUtil) return;
+
+        const refetched = await strapi.db.query(QUIZ_REATTEMPT_UID).findOne({
+          where: Number.isFinite(Number(recordId)) ? { id: Number(recordId) } : { documentId: recordId },
+          populate: { users_permissions_user: true, course: true },
+        });
+        if (!refetched) return;
+
+        const userId = getRelationId(refetched.users_permissions_user)
+          ?? refetched.users_permissions_user_id
+          ?? refetched.users_permissions_user;
+        const courseId = getRelationId(refetched.course) ?? refetched.course_id;
+        if (!userId) return;
 
         const user = await strapi.db.query('plugin::users-permissions.user').findOne({
           where: { id: Number(userId) },
@@ -37,7 +48,7 @@ function registerQuizReattemptNotificationLifecycles(strapi) {
         });
         if (!user) return;
 
-        const meta = { courseId: courseId || null, requestId: result.id ?? result.documentId };
+        const meta = { courseId: courseId || null, requestId: refetched.id ?? refetched.documentId };
         const isApproved = status === 'Approved';
 
         await notifUtil.sendNotification(

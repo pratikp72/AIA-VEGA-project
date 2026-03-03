@@ -80,20 +80,42 @@ module.exports = (strapi) => {
   }
 
   /**
-   * Send email via Strapi email plugin (Nodemailer)
+   * Send email via Strapi email plugin (Nodemailer).
+   * Requires .env: SMTP_HOST, SMTP_PORT, SMTP_USERNAME, SMTP_PASSWORD, EMAIL_FROM
    */
   async function sendEmail(to, subject, body) {
     if (!to || !subject) return;
+    console.log('[notification] Sending email → to:', to, '| subject:', subject);
+    const text = body || '';
+    const html = text ? text.replace(/\n/g, '<br>') : '';
+    const payload = {
+      to,
+      subject,
+      ...(text && { text }),
+      ...(html && { html }),
+    };
+    if (!payload.text && !payload.html) payload.text = '(No content)';
+
+    const emailService =
+      strapi.plugin?.('email')?.service?.('email') ||
+      strapi.plugins?.email?.services?.email;
+    if (!emailService || typeof emailService.send !== 'function') {
+      console.warn('[notification] Email plugin not available – skipping send. Set SMTP_* in .env and restart.');
+      strapi.log.warn('[notification] Email plugin not available – skipping send. Enable email in config/plugins.js and set SMTP_* in .env');
+      return;
+    }
     try {
-      await strapi.plugins.email.services.email.send({
-        to,
-        subject,
-        text: body,
-        html: body,
-      });
+      await emailService.send(payload);
+      console.log('[notification] Email sent successfully to:', to);
       strapi.log.info('[notification] Email sent to:', to);
     } catch (err) {
-      strapi.log.error('[notification] Email send error:', err?.message || err);
+      const msg = err?.message || String(err);
+      console.error('[notification] Email send failed:', msg);
+      strapi.log.error('[notification] Email send failed:', msg);
+      if (/auth|credentials|login|ECONNREFUSED|ETIMEDOUT|Invalid login/i.test(msg)) {
+        console.warn('[notification] Check .env: SMTP_HOST, SMTP_PORT, SMTP_USERNAME, SMTP_PASSWORD (e.g. Gmail app password)');
+        strapi.log.warn('[notification] Check .env: SMTP_HOST, SMTP_PORT, SMTP_USERNAME, SMTP_PASSWORD (e.g. Gmail app password)');
+      }
     }
   }
 
@@ -269,10 +291,28 @@ module.exports = (strapi) => {
   }
 
   /**
+   * Build a readable email body for admin notifications (includes user/course/news context from meta).
+   */
+  function buildAdminEmailBody(title, message, meta = {}) {
+    const lines = [title, '', message];
+    if (meta.userName != null || meta.userId != null) {
+      lines.push('', `User: ${meta.userName || `ID ${meta.userId}`}`);
+    }
+    if (meta.courseTitle != null || meta.courseId != null) {
+      lines.push(`Course: ${meta.courseTitle || `ID ${meta.courseId}`}`);
+    }
+    if (meta.newsTitle != null || meta.newsId != null) {
+      lines.push(`News: ${meta.newsTitle || meta.newsId}`);
+    }
+    return lines.join('\n');
+  }
+
+  /**
    * Main send notification function.
    * - User notifications (toUser): stored for portal bell + email + socket to user.
    * - Admin notifications (admin_user, forRole): stored for Strapi admin bell + email to admin/LM/HR.
    * Targeting: admin gets all; HR gets news_liked; LM gets course-related (feedback, quiz submit, quiz reattempt).
+   * Admin emails are always sent when adminRoles are provided (sendEmail option applies to both user and admin).
    * @param {string} type - Notification type (enum)
    * @param {string} title - Notification title
    * @param {string} message - Notification message
@@ -332,7 +372,8 @@ module.exports = (strapi) => {
             },
           });
           if (doEmail && admin?.email) {
-            await sendEmail(admin.email, title, message);
+            const emailBody = buildAdminEmailBody(title, message, enrichedMeta);
+            await sendEmail(admin.email, title, emailBody);
           }
           if (doSocket && strapi.io) {
             triggerAdminSocket([String(adminId)], { ...payload, id: notification?.id });

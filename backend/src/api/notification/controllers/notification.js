@@ -47,17 +47,24 @@ module.exports = createCoreController('api::notification.notification', ({ strap
     }
 
     const limit = Math.min(Number(ctx.query?.limit) || 50, 200);
+    const userId = Number(user.id);
+    if (!Number.isFinite(userId)) {
+      return ctx.unauthorized('Invalid user');
+    }
 
     const notifications = await strapi.db
       .query('api::notification.notification')
       .findMany({
-        where: { toUser: user.id, is_read: false },
+        where: { toUser: userId, is_read: false },
         orderBy: { createdAt: 'desc' },
         limit,
       });
 
     ctx.send({
-      data: notifications || [],
+      data: (notifications || []).map((n) => ({
+        ...n,
+        id: n.id ?? n.documentId,
+      })),
     });
   },
 
@@ -77,18 +84,25 @@ module.exports = createCoreController('api::notification.notification', ({ strap
     const limit = Math.min(Number(ctx.query?.limit) || 100, 500);
     const offsetRaw = Number(ctx.query?.offset);
     const offset = Number.isFinite(offsetRaw) && offsetRaw > 0 ? offsetRaw : 0;
+    const userId = Number(user.id);
+    if (!Number.isFinite(userId)) {
+      return ctx.unauthorized('Invalid user');
+    }
 
     const notifications = await strapi.db
       .query('api::notification.notification')
       .findMany({
-        where: { toUser: user.id },
+        where: { toUser: userId },
         orderBy: { createdAt: 'desc' },
         limit,
         offset,
       });
 
     ctx.send({
-      data: notifications || [],
+      data: (notifications || []).map((n) => ({
+        ...n,
+        id: n.id ?? n.documentId,
+      })),
     });
   },
 
@@ -120,13 +134,17 @@ module.exports = createCoreController('api::notification.notification', ({ strap
       return ctx.badRequest('id or ids required');
     }
 
+    const userId = Number(user.id);
+    if (!Number.isFinite(userId)) {
+      return ctx.unauthorized('Invalid user');
+    }
     try {
       for (const id of ids) {
         try {
           await strapi.db.query('api::notification.notification').update({
             where: {
               id,
-              toUser: user.id,
+              toUser: userId,
             },
             data: { is_read: true },
           });

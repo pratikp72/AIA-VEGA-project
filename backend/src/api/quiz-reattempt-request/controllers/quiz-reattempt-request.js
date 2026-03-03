@@ -62,17 +62,18 @@ module.exports = createCoreController(
         return ctx.internalServerError(createErr?.message || "Failed to create reattempt request");
       }
 
-      // Notification: send to LMadmin + admin
+      // Notification + email: Admin and LM Admin
       const meta = { courseId, userId };
       const notifUtil = strapi.utils?.notification;
       if (notifUtil) {
         await notifUtil.sendNotification(
           "quiz_reattempt_requested",
           "Quiz Reattempt Requested",
-          `User ${userId} requested a quiz reattempt for course ${courseId}.`,
+          "A user requested a quiz reattempt.",
           [],
           meta,
-          ["LMadmin", "admin"]
+          ["admin", "LMadmin"],
+          { sendEmail: true, sendSocket: true }
         );
       }
 

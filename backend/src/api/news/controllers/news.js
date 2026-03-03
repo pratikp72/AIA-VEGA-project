@@ -70,17 +70,18 @@ module.exports = createCoreController('api::news.news', ({ strapi }) => ({
       await strapi.entityService.update('api::news.news', news.id, {
         data: { likes: updatedLikeIds },
       });
-      // Notification: send to admin + HRadmin
+      // Notification + email: Admin (all) and HR Admin (news_liked)
       const meta = { newsId: id, userId: user.id };
       const notifUtil = strapi.utils?.notification;
       if (notifUtil) {
         await notifUtil.sendNotification(
           'news_liked',
           'News Liked',
-          `User ${user.id} liked news item ${id}.`,
+          `A user liked a news item.`,
           [],
           meta,
-          ['admin', 'HRadmin']
+          ['admin', 'HRadmin'],
+          { sendEmail: true, sendSocket: true }
         );
       }
 
