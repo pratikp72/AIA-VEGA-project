@@ -713,7 +713,7 @@ export interface ApiCourseCourse extends Struct.CollectionTypeSchema {
       >;
     modules: Schema.Attribute.Component<'course.module', true> &
       Schema.Attribute.Required;
-    orientation_detail: Schema.Attribute.Component<'course.orientation', false>;
+    orientation_detail: Schema.Attribute.Component<'course.orientation', true>;
     orientation_required: Schema.Attribute.Boolean &
       Schema.Attribute.CustomField<
         'global::yes-no-toggle',

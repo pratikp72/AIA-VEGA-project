@@ -14,7 +14,7 @@
       "name": "Apache 2.0",
       "url": "https://www.apache.org/licenses/LICENSE-2.0.html"
     },
-    "x-generation-date": "2026-03-03T12:52:40.654Z"
+    "x-generation-date": "2026-03-05T10:34:19.761Z"
   },
   "x-strapi-config": {
     "plugins": [
@@ -6444,179 +6444,7 @@
         "operationId": "delete/important-links/{id}"
       }
     },
-    "/module-video-progresses": {
-      "get": {
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ModuleVideoProgressListResponse"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Bad Request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Forbidden",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not Found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Internal Server Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        },
-        "tags": [
-          "Module-video-progress"
-        ],
-        "parameters": [
-          {
-            "name": "sort",
-            "in": "query",
-            "description": "Sort by attributes ascending (asc) or descending (desc)",
-            "deprecated": false,
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "pagination[withCount]",
-            "in": "query",
-            "description": "Return page/pageSize (default: true)",
-            "deprecated": false,
-            "required": false,
-            "schema": {
-              "type": "boolean"
-            }
-          },
-          {
-            "name": "pagination[page]",
-            "in": "query",
-            "description": "Page number (default: 0)",
-            "deprecated": false,
-            "required": false,
-            "schema": {
-              "type": "integer"
-            }
-          },
-          {
-            "name": "pagination[pageSize]",
-            "in": "query",
-            "description": "Page size (default: 25)",
-            "deprecated": false,
-            "required": false,
-            "schema": {
-              "type": "integer"
-            }
-          },
-          {
-            "name": "pagination[start]",
-            "in": "query",
-            "description": "Offset value (default: 0)",
-            "deprecated": false,
-            "required": false,
-            "schema": {
-              "type": "integer"
-            }
-          },
-          {
-            "name": "pagination[limit]",
-            "in": "query",
-            "description": "Number of entities to return (default: 25)",
-            "deprecated": false,
-            "required": false,
-            "schema": {
-              "type": "integer"
-            }
-          },
-          {
-            "name": "fields",
-            "in": "query",
-            "description": "Fields to return (ex: title,author)",
-            "deprecated": false,
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "populate",
-            "in": "query",
-            "description": "Relations to return",
-            "deprecated": false,
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "filters",
-            "in": "query",
-            "description": "Filters to apply",
-            "deprecated": false,
-            "required": false,
-            "schema": {
-              "type": "object",
-              "additionalProperties": true
-            },
-            "style": "deepObject"
-          },
-          {
-            "name": "locale",
-            "in": "query",
-            "description": "Locale to apply",
-            "deprecated": false,
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "operationId": "get/module-video-progresses"
-      },
+    "/module-video-progresses/mark-as-read": {
       "post": {
         "responses": {
           "200": {
@@ -6684,7 +6512,7 @@
           "Module-video-progress"
         ],
         "parameters": [],
-        "operationId": "post/module-video-progresses",
+        "operationId": "post/module-video-progresses/mark-as-read",
         "requestBody": {
           "required": true,
           "content": {
@@ -6695,259 +6523,6 @@
             }
           }
         }
-      }
-    },
-    "/module-video-progresses/{id}": {
-      "get": {
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ModuleVideoProgressResponse"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Bad Request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Forbidden",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not Found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Internal Server Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        },
-        "tags": [
-          "Module-video-progress"
-        ],
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "description": "",
-            "deprecated": false,
-            "required": true,
-            "schema": {
-              "type": "number"
-            }
-          }
-        ],
-        "operationId": "get/module-video-progresses/{id}"
-      },
-      "put": {
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ModuleVideoProgressResponse"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Bad Request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Forbidden",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not Found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Internal Server Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        },
-        "tags": [
-          "Module-video-progress"
-        ],
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "description": "",
-            "deprecated": false,
-            "required": true,
-            "schema": {
-              "type": "number"
-            }
-          }
-        ],
-        "operationId": "put/module-video-progresses/{id}",
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ModuleVideoProgressRequest"
-              }
-            }
-          }
-        }
-      },
-      "delete": {
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "integer",
-                  "format": "int64"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Bad Request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Forbidden",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not Found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Internal Server Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        },
-        "tags": [
-          "Module-video-progress"
-        ],
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "description": "",
-            "deprecated": false,
-            "required": true,
-            "schema": {
-              "type": "number"
-            }
-          }
-        ],
-        "operationId": "delete/module-video-progresses/{id}"
       }
     },
     "/news-items": {
@@ -15743,7 +15318,10 @@
                                       "type": "boolean"
                                     },
                                     "orientation_detail": {
-                                      "$ref": "#/components/schemas/CourseOrientationComponent"
+                                      "type": "array",
+                                      "items": {
+                                        "$ref": "#/components/schemas/CourseOrientationComponent"
+                                      }
                                     },
                                     "feedback": {
                                       "type": "array",
@@ -17117,6 +16695,14 @@
             "enum": [
               "Before Course Completion",
               "After Course Completion"
+            ]
+          },
+          "language": {
+            "type": "string",
+            "enum": [
+              "English",
+              "Hindi",
+              "Gujarati"
             ]
           },
           "trainer_name": {
@@ -18802,7 +18388,10 @@
                                       "type": "boolean"
                                     },
                                     "orientation_detail": {
-                                      "$ref": "#/components/schemas/CourseOrientationComponent"
+                                      "type": "array",
+                                      "items": {
+                                        "$ref": "#/components/schemas/CourseOrientationComponent"
+                                      }
                                     },
                                     "feedback": {
                                       "type": "array",
@@ -21561,7 +21150,10 @@
                                       "type": "boolean"
                                     },
                                     "orientation_detail": {
-                                      "$ref": "#/components/schemas/CourseOrientationComponent"
+                                      "type": "array",
+                                      "items": {
+                                        "$ref": "#/components/schemas/CourseOrientationComponent"
+                                      }
                                     },
                                     "feedback": {
                                       "type": "array",
@@ -24820,7 +24412,10 @@
                                       "type": "boolean"
                                     },
                                     "orientation_detail": {
-                                      "$ref": "#/components/schemas/CourseOrientationComponent"
+                                      "type": "array",
+                                      "items": {
+                                        "$ref": "#/components/schemas/CourseOrientationComponent"
+                                      }
                                     },
                                     "feedback": {
                                       "type": "array",
@@ -26359,7 +25954,10 @@
                 "type": "boolean"
               },
               "orientation_detail": {
-                "$ref": "#/components/schemas/CourseOrientationComponent"
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/CourseOrientationComponent"
+                }
               },
               "feedback": {
                 "type": "array",
@@ -29107,7 +28705,10 @@
                   "type": "boolean"
                 },
                 "orientation_detail": {
-                  "$ref": "#/components/schemas/CourseOrientationComponent"
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CourseOrientationComponent"
+                  }
                 },
                 "feedback": {
                   "type": "array",
@@ -29242,7 +28843,10 @@
             "type": "boolean"
           },
           "orientation_detail": {
-            "$ref": "#/components/schemas/CourseOrientationComponent"
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CourseOrientationComponent"
+            }
           },
           "feedback": {
             "type": "array",
@@ -32006,7 +31610,10 @@
                 "type": "boolean"
               },
               "orientation_detail": {
-                "$ref": "#/components/schemas/CourseOrientationComponent"
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/CourseOrientationComponent"
+                }
               },
               "feedback": {
                 "type": "array",
@@ -33842,7 +33449,10 @@
                                     "type": "boolean"
                                   },
                                   "orientation_detail": {
-                                    "$ref": "#/components/schemas/CourseOrientationComponent"
+                                    "type": "array",
+                                    "items": {
+                                      "$ref": "#/components/schemas/CourseOrientationComponent"
+                                    }
                                   },
                                   "feedback": {
                                     "type": "array",
@@ -36692,7 +36302,10 @@
                                       "type": "boolean"
                                     },
                                     "orientation_detail": {
-                                      "$ref": "#/components/schemas/CourseOrientationComponent"
+                                      "type": "array",
+                                      "items": {
+                                        "$ref": "#/components/schemas/CourseOrientationComponent"
+                                      }
                                     },
                                     "feedback": {
                                       "type": "array",
@@ -40993,7 +40606,10 @@
                 "type": "boolean"
               },
               "orientation_detail": {
-                "$ref": "#/components/schemas/CourseOrientationComponent"
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/CourseOrientationComponent"
+                }
               },
               "feedback": {
                 "type": "array",
@@ -43931,7 +43547,10 @@
                                       "type": "boolean"
                                     },
                                     "orientation_detail": {
-                                      "$ref": "#/components/schemas/CourseOrientationComponent"
+                                      "type": "array",
+                                      "items": {
+                                        "$ref": "#/components/schemas/CourseOrientationComponent"
+                                      }
                                     },
                                     "feedback": {
                                       "type": "array",
@@ -47562,7 +47181,10 @@
                                       "type": "boolean"
                                     },
                                     "orientation_detail": {
-                                      "$ref": "#/components/schemas/CourseOrientationComponent"
+                                      "type": "array",
+                                      "items": {
+                                        "$ref": "#/components/schemas/CourseOrientationComponent"
+                                      }
                                     },
                                     "feedback": {
                                       "type": "array",
@@ -50947,7 +50569,10 @@
                                           "type": "boolean"
                                         },
                                         "orientation_detail": {
-                                          "$ref": "#/components/schemas/CourseOrientationComponent"
+                                          "type": "array",
+                                          "items": {
+                                            "$ref": "#/components/schemas/CourseOrientationComponent"
+                                          }
                                         },
                                         "feedback": {
                                           "type": "array",
@@ -53877,7 +53502,10 @@
                                       "type": "boolean"
                                     },
                                     "orientation_detail": {
-                                      "$ref": "#/components/schemas/CourseOrientationComponent"
+                                      "type": "array",
+                                      "items": {
+                                        "$ref": "#/components/schemas/CourseOrientationComponent"
+                                      }
                                     },
                                     "feedback": {
                                       "type": "array",
@@ -55568,41 +55196,6 @@
                     }
                   ],
                   "example": "string or id"
-                }
-              }
-            }
-          }
-        }
-      },
-      "ModuleVideoProgressListResponse": {
-        "type": "object",
-        "properties": {
-          "data": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/ModuleVideoProgress"
-            }
-          },
-          "meta": {
-            "type": "object",
-            "properties": {
-              "pagination": {
-                "type": "object",
-                "properties": {
-                  "page": {
-                    "type": "integer"
-                  },
-                  "pageSize": {
-                    "type": "integer",
-                    "minimum": 25
-                  },
-                  "pageCount": {
-                    "type": "integer",
-                    "maximum": 1
-                  },
-                  "total": {
-                    "type": "integer"
-                  }
                 }
               }
             }
@@ -58130,7 +57723,10 @@
                 "type": "boolean"
               },
               "orientation_detail": {
-                "$ref": "#/components/schemas/CourseOrientationComponent"
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/CourseOrientationComponent"
+                }
               },
               "feedback": {
                 "type": "array",
@@ -60302,7 +59898,10 @@
                                           "type": "boolean"
                                         },
                                         "orientation_detail": {
-                                          "$ref": "#/components/schemas/CourseOrientationComponent"
+                                          "type": "array",
+                                          "items": {
+                                            "$ref": "#/components/schemas/CourseOrientationComponent"
+                                          }
                                         },
                                         "feedback": {
                                           "type": "array",
@@ -63507,7 +63106,10 @@
                                       "type": "boolean"
                                     },
                                     "orientation_detail": {
-                                      "$ref": "#/components/schemas/CourseOrientationComponent"
+                                      "type": "array",
+                                      "items": {
+                                        "$ref": "#/components/schemas/CourseOrientationComponent"
+                                      }
                                     },
                                     "feedback": {
                                       "type": "array",
@@ -70623,7 +70225,10 @@
                 "type": "boolean"
               },
               "orientation_detail": {
-                "$ref": "#/components/schemas/CourseOrientationComponent"
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/CourseOrientationComponent"
+                }
               },
               "feedback": {
                 "type": "array",
@@ -73609,7 +73214,10 @@
                 "type": "boolean"
               },
               "orientation_detail": {
-                "$ref": "#/components/schemas/CourseOrientationComponent"
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/CourseOrientationComponent"
+                }
               },
               "feedback": {
                 "type": "array",
@@ -76253,7 +75861,10 @@
                                       "type": "boolean"
                                     },
                                     "orientation_detail": {
-                                      "$ref": "#/components/schemas/CourseOrientationComponent"
+                                      "type": "array",
+                                      "items": {
+                                        "$ref": "#/components/schemas/CourseOrientationComponent"
+                                      }
                                     },
                                     "feedback": {
                                       "type": "array",
@@ -79503,7 +79114,10 @@
                                       "type": "boolean"
                                     },
                                     "orientation_detail": {
-                                      "$ref": "#/components/schemas/CourseOrientationComponent"
+                                      "type": "array",
+                                      "items": {
+                                        "$ref": "#/components/schemas/CourseOrientationComponent"
+                                      }
                                     },
                                     "feedback": {
                                       "type": "array",
@@ -83778,7 +83392,10 @@
                 "type": "boolean"
               },
               "orientation_detail": {
-                "$ref": "#/components/schemas/CourseOrientationComponent"
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/CourseOrientationComponent"
+                }
               },
               "feedback": {
                 "type": "array",
@@ -86074,7 +85691,10 @@
                                     "type": "boolean"
                                   },
                                   "orientation_detail": {
-                                    "$ref": "#/components/schemas/CourseOrientationComponent"
+                                    "type": "array",
+                                    "items": {
+                                      "$ref": "#/components/schemas/CourseOrientationComponent"
+                                    }
                                   },
                                   "feedback": {
                                     "type": "array",

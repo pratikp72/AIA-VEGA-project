@@ -109,7 +109,7 @@
         }
       },
       "component": "course.orientation",
-      "repeatable": false
+      "repeatable": true
     },
     "feedback": {
       "type": "component",

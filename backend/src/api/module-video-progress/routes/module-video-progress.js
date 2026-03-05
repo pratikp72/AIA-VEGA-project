@@ -4,7 +4,15 @@
  * module-video-progress router
  */
 
-const { createCoreRouter } = require('@strapi/strapi').factories;
 
-module.exports = createCoreRouter('api::module-video-progress.module-video-progress');
+module.exports = {
+  routes: [
+    // Default CRUD routes (if needed, can be added here)
+    {
+      method: 'POST',
+      path: '/module-video-progresses/mark-as-read',
+      handler: 'module-video-progress.markAsRead',
+    },
+  ],
+};
 

@@ -40,6 +40,8 @@ export interface CourseOrientation extends Struct.ComponentSchema {
     displayName: 'Orientation';
   };
   attributes: {
+    language: Schema.Attribute.Enumeration<['English', 'Hindi', 'Gujarati']> &
+      Schema.Attribute.Required;
     orientation_flow: Schema.Attribute.Enumeration<
       ['Before Course Completion', 'After Course Completion']
     > &

@@ -13,6 +13,15 @@
         "After Course Completion"
       ]
     },
+    "language": {
+      "type": "enumeration",
+      "required": true,
+      "enum": [
+        "English",
+        "Hindi",
+        "Gujarati"
+      ]
+    },
     "trainer_name": {
       "type": "string",
       "required": true

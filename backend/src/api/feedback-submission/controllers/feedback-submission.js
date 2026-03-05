@@ -154,6 +154,19 @@ module.exports = createCoreController("api::feedback-submission.feedback-submiss
       return ctx.internalServerError('Failed to create feedback submission: ' + err.message);
     }
 
+    // Fetch the entry with course relation populated
+    let populatedEntry = null;
+    try {
+      populatedEntry = await strapi.entityService.findOne(
+        "api::feedback-submission.feedback-submission",
+        entry.id,
+        { populate: { course: true } }
+      );
+    } catch (err) {
+      strapi.log.warn('Could not populate course relation for feedback-submission:', err);
+      populatedEntry = entry;
+    }
+
     try {
       await strapi
         .controller("api::user-progress.user-progress")
@@ -182,7 +195,7 @@ module.exports = createCoreController("api::feedback-submission.feedback-submiss
 
     return ctx.send({
       message: "Feedback submitted successfully & course completed",
-      submission: entry,
+      submission: populatedEntry,
     });
   },
 
