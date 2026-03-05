@@ -30,6 +30,21 @@ module.exports = createCoreController(
         return ctx.badRequest("You already have a pending reattempt request.");
       }
 
+      // If admin already rejected a reattempt request, user cannot apply again
+      const existingRejected = await strapi.db
+        .query("api::quiz-reattempt-request.quiz-reattempt-request")
+        .findOne({
+          where: {
+            users_permissions_user: Number(userId),
+            course: Number(courseId),
+            request_status: "Rejected",
+          },
+        });
+
+      if (existingRejected) {
+        return ctx.badRequest("Your reattempt request was rejected. You cannot apply again for this assessment.");
+      }
+
       // Find last submission to know next attempt
       const lastSubmission = await strapi.db
         .query("api::quiz-submission.quiz-submission")
@@ -62,11 +77,11 @@ module.exports = createCoreController(
         return ctx.internalServerError(createErr?.message || "Failed to create reattempt request");
       }
 
-      // Notification + email: Admin and LM Admin
+      // Notification + email: Admin and LM Admin (run in background so response returns quickly)
       const meta = { courseId, userId };
       const notifUtil = strapi.utils?.notification;
       if (notifUtil) {
-        await notifUtil.sendNotification(
+        notifUtil.sendNotification(
           "quiz_reattempt_requested",
           "Quiz Reattempt Requested",
           "A user requested a quiz reattempt.",
@@ -74,7 +89,7 @@ module.exports = createCoreController(
           meta,
           ["admin", "LMadmin"],
           { sendEmail: true, sendSocket: true }
-        );
+        ).catch((err) => strapi.log.error('[quiz-reattempt send] notification error:', err?.message || err));
       }
 
       return ctx.send({
@@ -88,16 +103,29 @@ module.exports = createCoreController(
       if (!userId || !courseId) {
         return ctx.badRequest("userId and courseId are required");
       }
-      const existing = await strapi.db
-        .query("api::quiz-reattempt-request.quiz-reattempt-request")
-        .findOne({
-          where: {
-            users_permissions_user: Number(userId),
-            course: Number(courseId),
-            request_status: "Pending",
-          },
-        });
-      return ctx.send({ hasPending: !!existing });
+      const uid = Number(userId);
+      const cid = Number(courseId);
+      const [pending, rejected] = await Promise.all([
+        strapi.db
+          .query("api::quiz-reattempt-request.quiz-reattempt-request")
+          .findOne({
+            where: {
+              users_permissions_user: uid,
+              course: cid,
+              request_status: "Pending",
+            },
+          }),
+        strapi.db
+          .query("api::quiz-reattempt-request.quiz-reattempt-request")
+          .findOne({
+            where: {
+              users_permissions_user: uid,
+              course: cid,
+              request_status: "Rejected",
+            },
+          }),
+      ]);
+      return ctx.send({ hasPending: !!pending, hasRejected: !!rejected });
     },
 
     async approve(ctx) {

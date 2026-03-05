@@ -122,6 +122,24 @@ module.exports = createCoreController(
         }
 
         // ------------------------------------------------------
+        // 0. If admin rejected a reattempt request for this user+course → block assessment
+        // ------------------------------------------------------
+        const rejectedRequest = await strapi.db
+          .query("api::quiz-reattempt-request.quiz-reattempt-request")
+          .findOne({
+            where: {
+              course: Number(courseId),
+              users_permissions_user: Number(userId),
+              request_status: "Rejected",
+            },
+          });
+        if (rejectedRequest) {
+          return ctx.forbidden(
+            "Your reattempt request was rejected. You cannot take this assessment."
+          );
+        }
+
+        // ------------------------------------------------------
         // 1. Fetch course (for passing score + attempt limit)
         // ------------------------------------------------------
         const course = await strapi.db.query("api::course.course").findOne({
