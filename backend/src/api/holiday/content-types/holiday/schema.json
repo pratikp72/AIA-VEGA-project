@@ -74,6 +74,16 @@
       "type": "relation",
       "relation": "manyToOne",
       "target": "api::work-location.work-location",
+      "conditions": {
+        "visible": {
+          "==": [
+            {
+              "var": "holiday_for"
+            },
+            "Unit_location"
+          ]
+        }
+      },
       "inversedBy": "holidays"
     }
   }

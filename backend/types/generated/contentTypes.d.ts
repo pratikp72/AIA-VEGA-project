@@ -870,9 +870,6 @@ export interface ApiFormTemplateFormTemplate
     createdAt: Schema.Attribute.DateTime;
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
-    custom_yes_no: Schema.Attribute.Boolean &
-      Schema.Attribute.Required &
-      Schema.Attribute.CustomField<'global::yes-no-toggle'>;
     description: Schema.Attribute.Text & Schema.Attribute.Required;
     form_excel: Schema.Attribute.Media<'files'> & Schema.Attribute.Required;
     form_pdf: Schema.Attribute.Media<'files'> & Schema.Attribute.Required;

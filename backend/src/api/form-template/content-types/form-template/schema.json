@@ -15,11 +15,6 @@
       "type": "string",
       "required": true
     },
-    "custom_yes_no": {
-      "type": "customField",
-      "customField": "global::yes-no-toggle",
-      "required": true
-    },
     "form_type": {
       "type": "enumeration",
       "required": true,
@@ -88,31 +83,11 @@
       "type": "boolean",
       "conditions": {
         "visible": {
-          "or": [
+          "==": [
             {
-              "==": [
-                {
-                  "var": "form_type"
-                },
-                "PDF"
-              ]
+              "var": "form_type"
             },
-            {
-              "==": [
-                {
-                  "var": "form_type"
-                },
-                "Excel"
-              ]
-            },
-            {
-              "==": [
-                {
-                  "var": "form_type"
-                },
-                "Word"
-              ]
-            }
+            "PDF"
           ]
         }
       },
