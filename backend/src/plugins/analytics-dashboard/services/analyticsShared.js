@@ -129,6 +129,7 @@ module.exports = ({ strapi }) => {
         company: u.company ?? '—',
         working_location: u.working_location ?? '—',
         joining_date: u.joining_date ?? null,
+        date_of_birth: u.date_of_birth ?? null,
       }));
       return {
         items,
