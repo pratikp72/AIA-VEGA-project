@@ -15,10 +15,6 @@
       "type": "string",
       "required": true
     },
-    "description": {
-      "type": "blocks",
-      "required": true
-    },
     "thumbnail": {
       "type": "media",
       "multiple": false,
@@ -115,6 +111,12 @@
       "type": "component",
       "component": "feedback-form.feedback-form",
       "repeatable": true
+    },
+    "course_assignments": {
+      "type": "relation",
+      "relation": "manyToMany",
+      "target": "api::course-assignment.course-assignment",
+      "inversedBy": "courses"
     }
   }
 }

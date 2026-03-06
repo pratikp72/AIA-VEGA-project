@@ -6,6 +6,7 @@ export interface CourseModule extends Struct.ComponentSchema {
     displayName: 'Module';
   };
   attributes: {
+    description: Schema.Attribute.Blocks & Schema.Attribute.Required;
     language: Schema.Attribute.Enumeration<['English', 'Hindi', 'Gujarati']> &
       Schema.Attribute.Required;
     mark_as_read: Schema.Attribute.Boolean &

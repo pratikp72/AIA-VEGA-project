@@ -627,7 +627,7 @@ export interface ApiCourseAssignmentCourseAssignment
     > &
       Schema.Attribute.Required;
     companies: Schema.Attribute.Relation<'manyToMany', 'api::company.company'>;
-    course: Schema.Attribute.Relation<'manyToOne', 'api::course.course'>;
+    courses: Schema.Attribute.Relation<'manyToMany', 'api::course.course'>;
     createdAt: Schema.Attribute.DateTime;
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
@@ -672,6 +672,10 @@ export interface ApiCourseCourse extends Struct.CollectionTypeSchema {
       Schema.Attribute.Required &
       Schema.Attribute.DefaultTo<true>;
     company: Schema.Attribute.Relation<'manyToMany', 'api::company.company'>;
+    course_assignments: Schema.Attribute.Relation<
+      'manyToMany',
+      'api::course-assignment.course-assignment'
+    >;
     course_category: Schema.Attribute.Enumeration<
       ['Mandatory', 'Orientation', 'Other']
     > &
@@ -695,7 +699,6 @@ export interface ApiCourseCourse extends Struct.CollectionTypeSchema {
     createdAt: Schema.Attribute.DateTime;
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
-    description: Schema.Attribute.Blocks & Schema.Attribute.Required;
     feedback: Schema.Attribute.Component<'feedback-form.feedback-form', true>;
     locale: Schema.Attribute.String & Schema.Attribute.Private;
     localizations: Schema.Attribute.Relation<

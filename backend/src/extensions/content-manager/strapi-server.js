@@ -47,6 +47,27 @@ module.exports = (plugin) => {
   const relationsController = plugin.controllers.relations;
   const defaultFindAvailable = relationsController.findAvailable.bind(relationsController);
 
+  const runFindAvailableSafely = async (ctx) => {
+    try {
+      return await defaultFindAvailable(ctx);
+    } catch (err) {
+      const msg = String(err?.message || '');
+      const isStrapiRelationsDestructureBug =
+        msg.includes("Cannot destructure property 'locale'") &&
+        String(err?.stack || '').includes('content-manager') &&
+        String(err?.stack || '').includes('relations.js');
+
+      if (isStrapiRelationsDestructureBug) {
+        strapi.log.warn(
+          'content-manager relations.findAvailable failed due to permission-denied destructure path; returning 403'
+        );
+        return ctx.forbidden('You do not have permission to read this relation.');
+      }
+
+      throw err;
+    }
+  };
+
   relationsController.findAvailable = async function findAvailable(ctx) {
     const { model: sourceUid, targetField } = ctx.params;
     const id = ctx.request?.query?.id;
@@ -61,7 +82,7 @@ module.exports = (plugin) => {
     }
 
     if (!ctx.state._departmentCompanyFilter) {
-      return defaultFindAvailable(ctx);
+      return runFindAvailableSafely(ctx);
     }
 
     const originalQuery = strapi.db.query.bind(strapi.db);
@@ -84,7 +105,7 @@ module.exports = (plugin) => {
     };
 
     try {
-      return await defaultFindAvailable(ctx);
+      return await runFindAvailableSafely(ctx);
     } finally {
       strapi.db.query = originalQuery;
     }

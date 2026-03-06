@@ -30,10 +30,11 @@
       "required": true,
       "default": true
     },
-    "course": {
+    "courses": {
       "type": "relation",
-      "relation": "manyToOne",
-      "target": "api::course.course"
+      "relation": "manyToMany",
+      "target": "api::course.course",
+      "mappedBy": "course_assignments"
     },
     "departments": {
       "type": "relation",

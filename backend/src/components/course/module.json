@@ -93,6 +93,20 @@
         "required": true,
         "positiveOnly": true
       }
+    },
+    "description": {
+      "type": "blocks",
+      "conditions": {
+        "visible": {
+          "==": [
+            {
+              "var": "module_content_type"
+            },
+            "Video"
+          ]
+        }
+      },
+      "required": true
     }
   },
   "config": {}

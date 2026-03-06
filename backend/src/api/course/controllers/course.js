@@ -21,13 +21,21 @@ async function getAssignedCourseIdsForUser(strapi, user) {
   const userId = Number(user.id);
   const fullUser = await strapi.db.query('plugin::users-permissions.user').findOne({
     where: { id: userId },
-    select: ['id', 'department', 'company', 'branch', 'working_location'],
+    select: ['id', 'documentId', 'department', 'company', 'branch', 'working_location'],
   });
   if (!fullUser) return [];
 
   const assignments = await strapi.db.query(COURSE_ASSIGNMENT_UID).findMany({
-    where: { active: true },
+    // Keep legacy rows where active may be null; only exclude explicit false.
+    where: {
+      $or: [
+        { active: true },
+        { active: { $null: true } },
+      ],
+    },
     populate: {
+      courses: true,
+      // Backward compatibility for older entries/customizations that used singular relation.
       course: true,
       departments: { select: ['name'] },
       companies: { select: ['name'] },
@@ -37,16 +45,40 @@ async function getAssignedCourseIdsForUser(strapi, user) {
   });
   const list = Array.isArray(assignments) ? assignments : [];
   const allowedIds = new Set();
+  const userDocumentId = fullUser.documentId ?? null;
+
+  // Collect unresolved course documentIds once and resolve in a single query.
+  const pendingCourseDocIds = new Set();
+  const matchedDocIds = new Set();
 
   for (const a of list) {
-    const courseId = a.course && (a.course.id ?? a.course.documentId);
-    if (courseId == null) continue;
+    const assignmentCourseIds = [];
+
+    // New schema: many-to-many relation `courses`.
+    if (Array.isArray(a.courses)) {
+      for (const c of a.courses) {
+        const cid = c?.id ?? c?.documentId;
+        if (cid != null) assignmentCourseIds.push(cid);
+      }
+    }
+
+    // Legacy compatibility: older schema/custom code may still expose `course`.
+    const legacyCourseId = a.course && (a.course.id ?? a.course.documentId);
+    if (legacyCourseId != null) assignmentCourseIds.push(legacyCourseId);
+
+    if (assignmentCourseIds.length === 0) continue;
 
     const targetType = a.assignment_target_type;
     let match = false;
 
     if (targetType === 'Individual' && Array.isArray(a.individual_user)) {
-      match = a.individual_user.some((u) => (u?.id ?? u?.documentId) === userId);
+      match = a.individual_user.some((u) => {
+        const relId = u?.id;
+        const relDocId = u?.documentId ?? u?.document_id;
+        if (relId != null && Number(relId) === userId) return true;
+        if (userDocumentId && relDocId && String(relDocId) === String(userDocumentId)) return true;
+        return false;
+      });
     } else if (targetType === 'Department' && fullUser.department && Array.isArray(a.departments)) {
       const deptNames = (a.departments || []).map((d) => d?.name).filter(Boolean);
       match = deptNames.some((n) => String(n).trim().toLowerCase() === String(fullUser.department).trim().toLowerCase());
@@ -62,8 +94,31 @@ async function getAssignedCourseIdsForUser(strapi, user) {
       }
     }
 
-    const numId = Number(courseId);
-    if (match && Number.isFinite(numId)) allowedIds.add(numId);
+    if (match) {
+      for (const courseId of assignmentCourseIds) {
+        const numId = Number(courseId);
+        if (Number.isFinite(numId)) {
+          allowedIds.add(numId);
+        } else if (typeof courseId === 'string' && courseId.trim()) {
+          const docId = courseId.trim();
+          matchedDocIds.add(docId);
+          pendingCourseDocIds.add(docId);
+        }
+      }
+    }
+  }
+
+  if (pendingCourseDocIds.size > 0) {
+    const rows = await strapi.db.query(COURSE_UID).findMany({
+      where: { documentId: { $in: Array.from(pendingCourseDocIds) } },
+      select: ['id', 'documentId'],
+      limit: 1000,
+    });
+    for (const row of rows || []) {
+      if (row?.documentId && matchedDocIds.has(String(row.documentId)) && row?.id != null) {
+        allowedIds.add(Number(row.id));
+      }
+    }
   }
 
   return Array.from(allowedIds);
