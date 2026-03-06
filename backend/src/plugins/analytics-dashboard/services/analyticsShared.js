@@ -95,24 +95,36 @@ module.exports = ({ strapi }) => {
       }
     }
 
+    let locCondition = null;
     if (params.location && String(params.location).trim()) {
-      where.working_location = { $containsi: String(params.location).trim() };
+      const locVal = String(params.location).trim();
+      locCondition = {
+        $or: [
+          { working_location: { $containsi: locVal } },
+          { branch: { $containsi: locVal } },
+        ],
+      };
     }
 
     if (params.search && String(params.search).trim()) {
       const search = String(params.search).trim();
       const numericId = parseInt(search, 10);
       const isNumericSearch = !Number.isNaN(numericId) && String(numericId) === search;
-      if (isNumericSearch) {
-        where.$or = [{ id: numericId }, { emp_code: search }, { emp_id: search }];
+      const searchOr = isNumericSearch
+        ? [{ id: numericId }, { emp_code: search }, { emp_id: search }]
+        : [
+            { email: { $containsi: search } },
+            { username: { $containsi: search } },
+            { emp_code: { $containsi: search } },
+            { emp_id: { $containsi: search } },
+          ];
+      if (locCondition) {
+        where.$and = (where.$and || []).concat([locCondition, { $or: searchOr }]);
       } else {
-        where.$or = [
-          { email: { $containsi: search } },
-          { username: { $containsi: search } },
-          { emp_code: { $containsi: search } },
-          { emp_id: { $containsi: search } },
-        ];
+        where.$or = searchOr;
       }
+    } else if (locCondition) {
+      Object.assign(where, locCondition);
     }
 
     const sortFieldMap = {
