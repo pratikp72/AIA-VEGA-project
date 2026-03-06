@@ -1321,7 +1321,7 @@ export interface ApiUnitLocationUnitLocation
   extends Struct.CollectionTypeSchema {
   collectionName: 'unit_locations';
   info: {
-    displayName: 'Unit Locations';
+    displayName: 'Locations';
     pluralName: 'unit-locations';
     singularName: 'unit-location';
   };

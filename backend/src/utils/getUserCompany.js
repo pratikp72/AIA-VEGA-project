@@ -1,12 +1,12 @@
 'use strict';
 
 /**
- * event controller
- * Filters events by authenticated user's company (AIA/Vega) when applicable.
+ * Get authenticated user's company name (AIA or Vega) from JWT.
+ * Used for company-scoped filtering across policies, form-templates, unit-locations, etc.
+ * @param {object} strapi - Strapi instance
+ * @param {object} ctx - Koa context
+ * @returns {Promise<string|null>} 'AIA' | 'Vega' | null
  */
-
-const { createCoreController } = require('@strapi/strapi').factories;
-
 async function getUserCompany(strapi, ctx) {
   let userId = ctx.state?.user?.id;
   if (!userId) {
@@ -37,21 +37,4 @@ async function getUserCompany(strapi, ctx) {
   return null;
 }
 
-module.exports = createCoreController('api::event.event', ({ strapi }) => ({
-  async find(ctx) {
-    const userCompany = await getUserCompany(strapi, ctx);
-    const where = { publishedAt: { $notNull: true } };
-    if (userCompany) {
-      where.company = { name: userCompany };
-    }
-    const items = await strapi.db.query('api::event.event').findMany({
-      where,
-      orderBy: { start_date: 'asc' },
-      populate: ['event_image', 'company', 'department'],
-    });
-    ctx.body = {
-      data: items,
-      meta: { pagination: { page: 1, pageSize: items.length, pageCount: 1, total: items.length } },
-    };
-  },
-}));
+module.exports = getUserCompany;
