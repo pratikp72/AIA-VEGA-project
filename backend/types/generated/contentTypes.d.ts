@@ -492,37 +492,6 @@ export interface ApiActivityLogActivityLog extends Struct.CollectionTypeSchema {
   };
 }
 
-export interface ApiCityCity extends Struct.CollectionTypeSchema {
-  collectionName: 'cities';
-  info: {
-    displayName: 'City';
-    pluralName: 'cities';
-    singularName: 'city';
-  };
-  options: {
-    draftAndPublish: true;
-  };
-  attributes: {
-    active: Schema.Attribute.Boolean &
-      Schema.Attribute.Required &
-      Schema.Attribute.DefaultTo<true>;
-    company: Schema.Attribute.Relation<'manyToMany', 'api::company.company'>;
-    country: Schema.Attribute.String & Schema.Attribute.Required;
-    createdAt: Schema.Attribute.DateTime;
-    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
-      Schema.Attribute.Private;
-    locale: Schema.Attribute.String & Schema.Attribute.Private;
-    localizations: Schema.Attribute.Relation<'oneToMany', 'api::city.city'> &
-      Schema.Attribute.Private;
-    name: Schema.Attribute.String & Schema.Attribute.Required;
-    publishedAt: Schema.Attribute.DateTime;
-    state: Schema.Attribute.String & Schema.Attribute.Required;
-    updatedAt: Schema.Attribute.DateTime;
-    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
-      Schema.Attribute.Private;
-  };
-}
-
 export interface ApiCompanyPolicyCompanyPolicy
   extends Struct.CollectionTypeSchema {
   collectionName: 'company_policies';
@@ -880,9 +849,6 @@ export interface ApiFormTemplateFormTemplate
       Schema.Attribute.Required;
     form_url: Schema.Attribute.String & Schema.Attribute.Required;
     form_word: Schema.Attribute.Media<'files'> & Schema.Attribute.Required;
-    is_downloadable: Schema.Attribute.Boolean &
-      Schema.Attribute.Required &
-      Schema.Attribute.DefaultTo<false>;
     locale: Schema.Attribute.String & Schema.Attribute.Private;
     localizations: Schema.Attribute.Relation<
       'oneToMany',
@@ -951,20 +917,11 @@ export interface ApiHolidayHoliday extends Struct.CollectionTypeSchema {
     active: Schema.Attribute.Boolean &
       Schema.Attribute.Required &
       Schema.Attribute.DefaultTo<true>;
-    city: Schema.Attribute.Relation<'manyToOne', 'api::city.city'>;
     companies: Schema.Attribute.Relation<'manyToMany', 'api::company.company'>;
     createdAt: Schema.Attribute.DateTime;
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
     date: Schema.Attribute.Date & Schema.Attribute.Required;
-    departments: Schema.Attribute.Relation<
-      'manyToMany',
-      'api::department.department'
-    >;
-    holiday_for: Schema.Attribute.Enumeration<
-      ['All', 'Unit_location', 'City', 'Department']
-    > &
-      Schema.Attribute.Required;
     locale: Schema.Attribute.String & Schema.Attribute.Private;
     localizations: Schema.Attribute.Relation<
       'oneToMany',
@@ -976,10 +933,6 @@ export interface ApiHolidayHoliday extends Struct.CollectionTypeSchema {
     updatedAt: Schema.Attribute.DateTime;
     updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
-    work_location: Schema.Attribute.Relation<
-      'manyToOne',
-      'api::work-location.work-location'
-    >;
   };
 }
 
@@ -1335,7 +1288,6 @@ export interface ApiUnitLocationUnitLocation
     active: Schema.Attribute.Boolean &
       Schema.Attribute.Required &
       Schema.Attribute.DefaultTo<true>;
-    city: Schema.Attribute.Relation<'manyToOne', 'api::city.city'>;
     company: Schema.Attribute.Relation<'manyToMany', 'api::company.company'>;
     createdAt: Schema.Attribute.DateTime;
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
@@ -1437,7 +1389,6 @@ export interface ApiWorkLocationWorkLocation
     createdAt: Schema.Attribute.DateTime;
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
-    holidays: Schema.Attribute.Relation<'oneToMany', 'api::holiday.holiday'>;
     locale: Schema.Attribute.String & Schema.Attribute.Private;
     localizations: Schema.Attribute.Relation<
       'oneToMany',
@@ -2028,7 +1979,6 @@ declare module '@strapi/strapi' {
       'admin::transfer-token-permission': AdminTransferTokenPermission;
       'admin::user': AdminUser;
       'api::activity-log.activity-log': ApiActivityLogActivityLog;
-      'api::city.city': ApiCityCity;
       'api::company-policy.company-policy': ApiCompanyPolicyCompanyPolicy;
       'api::company.company': ApiCompanyCompany;
       'api::course-assignment.course-assignment': ApiCourseAssignmentCourseAssignment;

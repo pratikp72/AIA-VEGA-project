@@ -29,14 +29,6 @@
       "component": "quiz.options",
       "repeatable": true
     },
-    "point": {
-      "type": "customField",
-      "customField": "global::number-range",
-      "options": {
-        "positiveOnly": true,
-        "min": "1"
-      }
-    },
     "correct_answer": {
       "type": "string",
       "conditions": {

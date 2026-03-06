@@ -24,67 +24,11 @@
       "required": true,
       "default": true
     },
-    "city": {
-      "type": "relation",
-      "relation": "manyToOne",
-      "target": "api::city.city",
-      "conditions": {
-        "visible": {
-          "==": [
-            {
-              "var": "holiday_for"
-            },
-            "City"
-          ]
-        }
-      }
-    },
-    "departments": {
-      "type": "relation",
-      "relation": "manyToMany",
-      "target": "api::department.department",
-      "conditions": {
-        "visible": {
-          "==": [
-            {
-              "var": "holiday_for"
-            },
-            "Department"
-          ]
-        }
-      }
-    },
-    "holiday_for": {
-      "type": "enumeration",
-      "required": true,
-      "enum": [
-        "All",
-        "Unit_location",
-        "City",
-        "Department"
-      ]
-    },
     "companies": {
       "type": "relation",
       "relation": "manyToMany",
       "target": "api::company.company",
       "mappedBy": "holidays"
-    },
-    "work_location": {
-      "type": "relation",
-      "relation": "manyToOne",
-      "target": "api::work-location.work-location",
-      "conditions": {
-        "visible": {
-          "==": [
-            {
-              "var": "holiday_for"
-            },
-            "Unit_location"
-          ]
-        }
-      },
-      "inversedBy": "holidays"
     }
   }
 }

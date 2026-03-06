@@ -79,21 +79,6 @@
         "files"
       ]
     },
-    "is_downloadable": {
-      "type": "boolean",
-      "conditions": {
-        "visible": {
-          "==": [
-            {
-              "var": "form_type"
-            },
-            "PDF"
-          ]
-        }
-      },
-      "required": true,
-      "default": false
-    },
     "form_url": {
       "type": "string",
       "conditions": {

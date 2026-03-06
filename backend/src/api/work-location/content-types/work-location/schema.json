@@ -26,12 +26,6 @@
       "relation": "manyToMany",
       "target": "api::course-assignment.course-assignment",
       "mappedBy": "work_locations"
-    },
-    "holidays": {
-      "type": "relation",
-      "relation": "oneToMany",
-      "target": "api::holiday.holiday",
-      "mappedBy": "work_location"
     }
   }
 }

@@ -19,10 +19,6 @@
         "Gujarati"
       ]
     },
-    "title": {
-      "type": "string",
-      "required": true
-    },
     "quiz_questions": {
       "type": "component",
       "component": "quiz.question",

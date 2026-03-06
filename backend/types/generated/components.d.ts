@@ -175,14 +175,6 @@ export interface QuizQuestion extends Struct.ComponentSchema {
       Schema.Attribute.Required;
     options: Schema.Attribute.Component<'quiz.options', true>;
     order: Schema.Attribute.Integer;
-    point: Schema.Attribute.Integer &
-      Schema.Attribute.CustomField<
-        'global::number-range',
-        {
-          min: '1';
-          positiveOnly: true;
-        }
-      >;
     question_id: Schema.Attribute.String & Schema.Attribute.Required;
     question_text: Schema.Attribute.Text & Schema.Attribute.Required;
     question_type: Schema.Attribute.Enumeration<
@@ -226,7 +218,6 @@ export interface QuizQuiz extends Struct.ComponentSchema {
       Schema.Attribute.Required;
     quiz_questions: Schema.Attribute.Component<'quiz.question', true> &
       Schema.Attribute.Required;
-    title: Schema.Attribute.String & Schema.Attribute.Required;
   };
 }
 

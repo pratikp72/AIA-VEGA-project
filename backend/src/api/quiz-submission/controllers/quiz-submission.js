@@ -36,8 +36,14 @@ module.exports = createCoreController(
       let earnedPoints = 0;
       let totalPoints = 0;
 
+      // Helper: use point from question if present, else 1 point per question (when point field removed)
+      const getPoints = (q) => {
+        const p = Number(q?.point);
+        return p > 0 ? p : 1;
+      };
+
       // Sum all possible points across every question
-      questions.forEach(q => { totalPoints += Number(q.point) || 0; });
+      questions.forEach(q => { totalPoints += getPoints(q); });
       if (totalPoints === 0) return 0;
 
       // 2. Compare submitted answers with correct answers
@@ -46,12 +52,14 @@ module.exports = createCoreController(
           const q = questions.find(q => q.question_id === ans.question_id);
           if (!q) return;
 
+          const pts = getPoints(q);
+
           // -----------------------------
           // MULTIPLE CHOICE LOGIC
           // -----------------------------
           if (ans.question_type === "Multiple_choice") {
             if (ans.selected_answer_for_multiChoice === q.correct_answer) {
-              earnedPoints += Number(q.point) || 0;
+              earnedPoints += pts;
             }
           }
 
@@ -70,7 +78,7 @@ module.exports = createCoreController(
               u.every((v, idx) => v === c[idx]);
 
             if (match) {
-              earnedPoints += Number(q.point) || 0;
+              earnedPoints += pts;
             }
           }
         });
