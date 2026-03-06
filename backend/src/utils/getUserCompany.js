@@ -1,11 +1,12 @@
 'use strict';
 
 /**
- * news-category controller
+ * Get authenticated user's company name (AIA or Vega) from JWT.
+ * Used for company-scoped filtering across policies, form-templates, unit-locations, etc.
+ * @param {object} strapi - Strapi instance
+ * @param {object} ctx - Koa context
+ * @returns {Promise<string|null>} 'AIA' | 'Vega' | null
  */
-
-const { createCoreController } = require('@strapi/strapi').factories;
-
 async function getUserCompany(strapi, ctx) {
   let userId = ctx.state?.user?.id;
   if (!userId) {
@@ -36,20 +37,4 @@ async function getUserCompany(strapi, ctx) {
   return null;
 }
 
-module.exports = createCoreController('api::news-category.news-category', ({ strapi }) => ({
-  async find(ctx) {
-    const userCompany = await getUserCompany(strapi, ctx);
-    const where = { active: true, publishedAt: { $notNull: true } };
-    if (userCompany) {
-      where.company = { name: userCompany };
-    }
-    const items = await strapi.db.query('api::news-category.news-category').findMany({
-      where,
-      orderBy: { name: 'asc' },
-    });
-    ctx.body = {
-      data: items,
-      meta: { pagination: { page: 1, pageSize: items.length, pageCount: 1, total: items.length } },
-    };
-  },
-}));
+module.exports = getUserCompany;

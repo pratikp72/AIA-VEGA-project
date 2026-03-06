@@ -18,7 +18,84 @@ function ensurePublishDateNotPast(data) {
   }
 }
 
+/** Get the authenticated user's company name (lowercase) from DB. */
+async function getUserCompany(strapi, userId) {
+  if (!userId) return null;
+  const user = await strapi.db.query('plugin::users-permissions.user').findOne({
+    where: { id: userId },
+    select: ['company'],
+  });
+  return (user?.company || '').trim().toLowerCase() || null;
+}
+
+/** Populate config used for all news DB queries. */
+const NEWS_POPULATE = {
+  cover_image: true,
+  news_category: true,
+  likes: true,
+  company: { select: ['id', 'name'] },
+};
+
+function applyCompanyFilter(newsItems, userCompany) {
+  if (!userCompany) return newsItems;
+  return newsItems.filter((item) => {
+    const companies = Array.isArray(item.company) ? item.company : [];
+    if (companies.length === 0) return true;
+    return companies.some((c) => (c?.name || '').toLowerCase() === userCompany);
+  });
+}
+
 module.exports = createCoreController('api::news.news', ({ strapi }) => ({
+  async find(ctx) {
+    try {
+      const userCompany = await getUserCompany(strapi, ctx.state?.user?.id);
+
+      const where = { publishedAt: { $notNull: true } };
+      const q = ctx.query || {};
+      const filters = q.filters && typeof q.filters === 'object' ? q.filters : {};
+      const catName = q['filters[news_category][name][$eq]'] ?? filters['news_category']?.name?.$eq;
+      const catId = q['filters[news_category][id][$eq]'] ?? filters['news_category']?.id?.$eq;
+      if (catName) {
+        where.news_category = { name: catName };
+      } else if (catId != null) {
+        const id = Number(catId);
+        if (!Number.isNaN(id)) where.news_category = { id };
+      }
+
+      const newsItems = await strapi.db.query('api::news.news').findMany({
+        populate: NEWS_POPULATE,
+        where,
+        orderBy: { publishedAt: 'desc' },
+      });
+
+      const filtered = applyCompanyFilter(newsItems, userCompany);
+
+      ctx.body = {
+        data: filtered,
+        meta: { pagination: { page: 1, pageSize: filtered.length, pageCount: 1, total: filtered.length } },
+      };
+    } catch (error) {
+      strapi.log.error('News find error:', error);
+      ctx.status = 500;
+      ctx.body = { error: { message: 'Failed to fetch news' } };
+    }
+  },
+
+  async findOne(ctx) {
+    const { id } = ctx.params;
+    try {
+      const item = await strapi.db.query('api::news.news').findOne({
+        where: { $or: [{ documentId: id }, { id: Number(id) || 0 }] },
+        populate: NEWS_POPULATE,
+      });
+      if (!item) return ctx.notFound('News not found');
+      ctx.body = { data: item };
+    } catch (error) {
+      strapi.log.error('News findOne error:', error);
+      ctx.status = 500;
+      ctx.body = { error: { message: 'Failed to fetch news item' } };
+    }
+  },
   async create(ctx) {
     const body = ctx.request?.body?.data ?? ctx.request?.body ?? {};
     ensurePublishDateNotPast(body);
@@ -68,11 +145,11 @@ module.exports = createCoreController('api::news.news', ({ strapi }) => ({
 
       const updatedLikeIds = [...currentLikeIds.map((uid) => Number(uid)).filter((n) => !Number.isNaN(n)), user.id];
       await strapi.entityService.update('api::news.news', news.id, {
-        data: { likes: updatedLikeIds },
+        data: { likes: /** @type {*} */ (updatedLikeIds) },
       });
       // Notification + email: Admin (all) and HR Admin (news_liked)
       const meta = { newsId: id, userId: user.id };
-      const notifUtil = strapi.utils?.notification;
+      const notifUtil = strapi['utils']?.notification;
       if (notifUtil) {
         await notifUtil.sendNotification(
           'news_liked',

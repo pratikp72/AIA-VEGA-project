@@ -4,7 +4,7 @@
   "info": {
     "singularName": "unit-location",
     "pluralName": "unit-locations",
-    "displayName": "Unit Locations"
+    "displayName": "Locations"
   },
   "options": {
     "draftAndPublish": true
