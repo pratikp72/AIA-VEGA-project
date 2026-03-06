@@ -40,7 +40,7 @@ module.exports = {
       return await next();
     });
 
-    // Auto-generate id fields for all components (module_id, quiz_id, question_id, route_id, bus_stop_id) when missing
+    // Auto-generate id fields for all components (module_id, quiz_id, question_id, unit_id, route_id, etc.) when missing
     strapi.documents.use(async (context, next) => {
       if (['create', 'update'].includes(context.action)) {
         const data = context.params?.data;

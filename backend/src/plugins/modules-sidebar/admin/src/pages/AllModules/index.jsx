@@ -934,20 +934,21 @@ const AllModulesPage = () => {
                 </Section>
               )}
 
-              {/* 4. Content & Communication - driven by admin permissions */}
+              {/* 4. Content & Communication - driven by admin permissions (Townhall commented out – client no longer required) */}
               {(canSee('api::notification.notification') ||
                 canSee('api::news.news') ||
                 canSee('api::news-category.news-category') ||
                 canSee('api::event.event') ||
-                canSee('api::important-link.important-link') ||
-                canSee('api::townhall.townhall')) && (
+                canSee('api::important-link.important-link') /* || canSee('api::townhall.townhall') */) && (
                 <Section title="Content & Communication" icon={Message}>
+                  {/* Townhall – commented out; uncomment to show in admin
                   {canSee('api::townhall.townhall') && (
                     <AdminLink
                       label="Townhall"
                       to="/content-manager/collection-types/api::townhall.townhall"
                     />
                   )}
+                  */}
                   {canSee('api::notification.notification') && (
                     <AdminLink
                       label="Notifications"

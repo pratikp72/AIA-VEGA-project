@@ -65,6 +65,17 @@ export default function LearningAnalyticsPage() {
     }));
   }, [courseModules]);
 
+  // Debounce search input for Employee Table so API is not called on every keystroke
+  useEffect(() => {
+    if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+    searchTimeoutRef.current = setTimeout(() => {
+      setSearchDebounced(search);
+    }, 300);
+    return () => {
+      if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+    };
+  }, [search]);
+
   // Clear enrolled courses list when employee or view changes so we don't show previous employee's courses
   useEffect(() => {
     if (viewMode !== 'personal' || !employeeId) setPersonalEnrolledCourses([]);
@@ -181,7 +192,7 @@ export default function LearningAnalyticsPage() {
     const wb = XLSX.utils.book_new();
     const employeeData = [{
       'Employee ID': employeeDetail.id ?? employeeId ?? '',
-      'Name': employeeDetail.employee_name || employeeDetail.username || employeeDetail.name || '',
+      'Name': employeeDetail.username || employeeDetail.name || '',
       'Email': employeeDetail.email ?? '',
       'Company': employeeDetail.company ?? '',
       'Department': employeeDetail.department?.name || employeeDetail.department || '',

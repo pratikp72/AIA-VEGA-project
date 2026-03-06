@@ -20,7 +20,7 @@ function Item({ label, value }) {
 export function EmployeeDetailCard({ employee }) {
   if (!employee) return null;
 
-  const name = employee.employee_name || employee.email || `User ${employee.id}`;
+  const name = employee.username || employee.email || `User ${employee.id}`;
   const email = employee.email || '—';
   const department = employee.department || '—';
   const company = employee.company || '—';

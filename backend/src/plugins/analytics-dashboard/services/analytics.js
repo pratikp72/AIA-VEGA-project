@@ -675,7 +675,7 @@ module.exports = ({ strapi }) => {
         const uid = r.user_id ?? r.user?.id;
         const cid = r.course?.id ?? r.course_id ?? r.course?.documentId;
         const user = (uid != null && userById[uid]) ? userById[uid] : r.user;
-        const userName = user?.employee_name || user?.username || user?.email || `User ${uid}`;
+        const userName = user?.username || user?.email || `User ${uid}`;
         const timeWat = r.time_watched_min ?? 0;
         const duration = r.video_duration_min;
         const mIdx = r.module_index ?? r.moduleIndex;
@@ -802,7 +802,7 @@ module.exports = ({ strapi }) => {
         const cid = r.course_id ?? r.course?.id ?? r.course?.documentId;
         const course = (cid != null && courseById[cid]) ? courseById[cid] : r.course;
         const user = (uid != null && userById[uid]) ? userById[uid] : r.user;
-        const userName = user?.username ?? user?.employee_name ?? user?.name ?? (user?.email || '—');
+        const userName = user?.username ?? user?.name ?? (user?.email || '—');
         const courseTitle = course?.title ?? '—';
         const modTitle = r.module_title ?? r.moduleTitle ?? (r.module_index != null ? `Module ${r.module_index + 1}` : '—');
         const type = r.video_completion_type ?? r.videoCompletionType ?? 'not_started';
@@ -919,7 +919,7 @@ module.exports = ({ strapi }) => {
       const userIds = Object.keys(userModuleMap);
       result.rows = userIds.map((uid) => {
         const user = userById[Number(uid)] || raw.find((r) => (r.user_id ?? r.user?.id) === Number(uid))?.user;
-        const userName = user?.username ?? user?.employee_name ?? user?.name ?? (user?.email || '—');
+        const userName = user?.username ?? user?.name ?? (user?.email || '—');
         const row = { userName };
         courseModules.forEach((m, idx) => {
           const key = `module_${m.index ?? idx}`;
@@ -1058,7 +1058,7 @@ module.exports = ({ strapi }) => {
         const cid = r.course_id ?? r.course?.id ?? r.course?.documentId;
         const course = (cid != null && courseById[cid]) ? courseById[cid] : r.course;
         const user = (uid != null && userById[uid]) ? userById[uid] : r.user;
-        const userName = user?.username ?? user?.employee_name ?? user?.name ?? (user?.email || '—');
+        const userName = user?.username ?? user?.name ?? (user?.email || '—');
         const courseTitle = course?.title ?? '—';
         const modTitle = r.module_title ?? r.moduleTitle ?? (r.module_index != null ? `Module ${r.module_index + 1}` : '—');
         const type = r.video_completion_type ?? r.videoCompletionType ?? 'not_started';
@@ -1779,7 +1779,7 @@ module.exports = ({ strapi }) => {
         userWhere.id = numericId;
       } else {
         userWhere.$or = [
-          { employee_name: { $containsi: search } },
+          { username: { $containsi: search } },
           { email: { $containsi: search } },
           { username: { $containsi: search } },
         ];
@@ -1937,7 +1937,7 @@ module.exports = ({ strapi }) => {
 
       return {
         employeeId: u.id,
-        employeeName: u.employee_name || u.username || u.email || `User ${u.id}`,
+        employeeName: u.username || u.email || `User ${u.id}`,
         company: u.company || '—',
         coursesEnrolled,
         courseCompletionTimeMinutes: totalTimeSpent,
@@ -2033,7 +2033,7 @@ module.exports = ({ strapi }) => {
         userWhere.id = numericId;
       } else {
         userWhere.$or = [
-          { employee_name: { $containsi: search } },
+          { username: { $containsi: search } },
           { email: { $containsi: search } },
           { username: { $containsi: search } },
         ];
@@ -2165,7 +2165,7 @@ module.exports = ({ strapi }) => {
         subs.length > 0 ? Math.round(subs.reduce((s, x) => s + (x.score || 0), 0) / subs.length) : 0;
 
       return {
-        employeeName: u.employee_name || u.username || u.email || `User ${u.id}`,
+        employeeName: u.username || u.email || `User ${u.id}`,
         company: u.company || '—',
         coursesEnrolled,
         totalModulesDone,

@@ -1,7 +1,7 @@
 /**
- * Fills component id fields (module_id, quiz_id, question_id, route_id, bus_stop_id)
+ * Fills component id fields (module_id, quiz_id, question_id, unit_id, route_id, etc.)
  * in the form as soon as the user adds a new component entry, so ids appear before save.
- * Uses the same prefixes as the server-side auto-generate (mod, quiz, q, fb, route, stop).
+ * Uses the same prefixes as the server-side auto-generate (mod, quiz, q, fb, unit, stop).
  */
 
 import React, { useEffect, useRef } from 'react';
@@ -33,11 +33,11 @@ const CONTENT_TYPE_ID_CONFIG = {
     },
   },
   'api::unit-location.unit-location': {
-    bus_routes: {
-      idKey: 'route_id',
-      prefix: 'route',
+    units: {
+      idKey: 'unit_id',
+      prefix: 'unit',
       nested: {
-        route_stops: { idKey: 'bus_stop_id', prefix: 'stop', nested: {} },
+        routes: { idKey: 'route_id', prefix: 'stop', nested: {} },
       },
     },
   },

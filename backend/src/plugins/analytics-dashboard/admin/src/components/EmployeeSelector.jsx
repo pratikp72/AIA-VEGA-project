@@ -31,7 +31,7 @@ export function EmployeeSelector({ value, onChange, company, department }) {
         <SingleSelectOption value="">Select employee</SingleSelectOption>
         {employees.map((emp) => (
           <SingleSelectOption key={emp.id} value={String(emp.id)}>
-            {emp.employee_name || emp.email || `User ${emp.id}`}
+            {emp.username || emp.email || `User ${emp.id}`}
           </SingleSelectOption>
         ))}
       </SingleSelect>

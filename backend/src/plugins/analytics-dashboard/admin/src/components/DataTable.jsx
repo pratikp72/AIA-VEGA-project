@@ -154,7 +154,7 @@ export function DataTable({
                 fontSize: '14px',
               }}
             >
-              {[5, 10, 20, 50].map((n) => (
+              {[5, 10, 20, 25, 50].map((n) => (
                 <option key={n} value={n}>
                   {n}
                 </option>

@@ -1317,47 +1317,6 @@ export interface ApiQuizSubmissionQuizSubmission
   };
 }
 
-export interface ApiTownhallTownhall extends Struct.CollectionTypeSchema {
-  collectionName: 'townhalls';
-  info: {
-    displayName: 'Townhall';
-    pluralName: 'townhalls';
-    singularName: 'townhall';
-  };
-  options: {
-    draftAndPublish: true;
-  };
-  attributes: {
-    active: Schema.Attribute.Boolean &
-      Schema.Attribute.Required &
-      Schema.Attribute.DefaultTo<true>;
-    company: Schema.Attribute.Relation<'manyToMany', 'api::company.company'>;
-    createdAt: Schema.Attribute.DateTime;
-    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
-      Schema.Attribute.Private;
-    description: Schema.Attribute.RichText & Schema.Attribute.Required;
-    locale: Schema.Attribute.String & Schema.Attribute.Private;
-    localizations: Schema.Attribute.Relation<
-      'oneToMany',
-      'api::townhall.townhall'
-    > &
-      Schema.Attribute.Private;
-    meeting_content_type: Schema.Attribute.Enumeration<['Video', 'Pdf']> &
-      Schema.Attribute.Required;
-    meeting_date: Schema.Attribute.Date & Schema.Attribute.Required;
-    meeting_document: Schema.Attribute.Media<'files'> &
-      Schema.Attribute.Required;
-    meeting_owner_name: Schema.Attribute.String;
-    meeting_video: Schema.Attribute.Media<'videos' | 'audios'> &
-      Schema.Attribute.Required;
-    name: Schema.Attribute.String & Schema.Attribute.Required;
-    publishedAt: Schema.Attribute.DateTime;
-    updatedAt: Schema.Attribute.DateTime;
-    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
-      Schema.Attribute.Private;
-  };
-}
-
 export interface ApiUnitLocationUnitLocation
   extends Struct.CollectionTypeSchema {
   collectionName: 'unit_locations';
@@ -1996,6 +1955,7 @@ export interface PluginUsersPermissionsUser
     confirmationToken: Schema.Attribute.String & Schema.Attribute.Private;
     confirmed: Schema.Attribute.Boolean & Schema.Attribute.DefaultTo<false>;
     contact_no: Schema.Attribute.String & Schema.Attribute.Required;
+    contract_validity: Schema.Attribute.String & Schema.Attribute.Required;
     createdAt: Schema.Attribute.DateTime;
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
@@ -2010,10 +1970,11 @@ export interface PluginUsersPermissionsUser
       }>;
     emp_code: Schema.Attribute.String & Schema.Attribute.Required;
     emp_id: Schema.Attribute.String & Schema.Attribute.Required;
-    employee_name: Schema.Attribute.String & Schema.Attribute.Required;
     employment_type: Schema.Attribute.String & Schema.Attribute.Required;
     exit_date: Schema.Attribute.Date;
+    experience_with_vega: Schema.Attribute.String & Schema.Attribute.Required;
     ext: Schema.Attribute.Integer & Schema.Attribute.Required;
+    HOD: Schema.Attribute.String & Schema.Attribute.Required;
     joining_date: Schema.Attribute.Date & Schema.Attribute.Required;
     locale: Schema.Attribute.String & Schema.Attribute.Private;
     localizations: Schema.Attribute.Relation<
@@ -2026,12 +1987,14 @@ export interface PluginUsersPermissionsUser
       Schema.Attribute.SetMinMaxLength<{
         minLength: 6;
       }>;
+    payroll_office: Schema.Attribute.String & Schema.Attribute.Required;
     photograph: Schema.Attribute.Media<
       'images' | 'files' | 'videos' | 'audios'
     > &
       Schema.Attribute.Required;
     provider: Schema.Attribute.String;
     publishedAt: Schema.Attribute.DateTime;
+    region: Schema.Attribute.String & Schema.Attribute.Required;
     resetPasswordToken: Schema.Attribute.String & Schema.Attribute.Private;
     role: Schema.Attribute.Relation<
       'manyToOne',
@@ -2081,7 +2044,6 @@ declare module '@strapi/strapi' {
       'api::profile-edit-request.profile-edit-request': ApiProfileEditRequestProfileEditRequest;
       'api::quiz-reattempt-request.quiz-reattempt-request': ApiQuizReattemptRequestQuizReattemptRequest;
       'api::quiz-submission.quiz-submission': ApiQuizSubmissionQuizSubmission;
-      'api::townhall.townhall': ApiTownhallTownhall;
       'api::unit-location.unit-location': ApiUnitLocationUnitLocation;
       'api::user-progress.user-progress': ApiUserProgressUserProgress;
       'api::work-location.work-location': ApiWorkLocationWorkLocation;

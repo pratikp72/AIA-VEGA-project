@@ -27,9 +27,9 @@ async function main() {
 
     const users = await strapi.db.query('plugin::users-permissions.user').findMany({
       limit: 2,
-      select: ['id', 'document_id', 'employee_name', 'email', 'company'],
+      select: ['id', 'document_id', 'username', 'email', 'company'],
     });
-    console.log('\nUsers sample:', users?.map((u) => ({ id: u.id, document_id: u.document_id, name: u.employee_name, company: u.company })));
+    console.log('\nUsers sample:', users?.map((u) => ({ id: u.id, document_id: u.document_id, name: u.username, company: u.company })));
 
     const companies = await strapi.db.query('api::company.company').findMany({
       limit: 5,

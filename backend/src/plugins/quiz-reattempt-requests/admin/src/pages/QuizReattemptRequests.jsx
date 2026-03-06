@@ -107,7 +107,7 @@ export default function QuizReattemptRequestsPage() {
     const userAttrs = user.attributes ?? user;
     const course = attrs.course?.data ?? attrs.course ?? {};
     const courseAttrs = course.attributes ?? course;
-    const userName = userAttrs.username ?? userAttrs.email ?? userAttrs.employee_name ?? '—';
+    const userName = userAttrs.username ?? userAttrs.email ?? '—';
     const courseTitle = courseAttrs.title ?? '—';
     const statusRaw = attrs.request_status ?? entry.request_status ?? 'Pending';
     const statusVal = typeof statusRaw === 'string' ? statusRaw : 'Pending';

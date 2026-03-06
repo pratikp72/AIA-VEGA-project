@@ -87,7 +87,6 @@ module.exports = ({ strapi }) => {
       } else {
         where.$or = [
           { email: { $containsi: search } },
-          { employee_name: { $containsi: search } },
           { username: { $containsi: search } },
           { emp_code: { $containsi: search } },
           { emp_id: { $containsi: search } },
@@ -96,12 +95,12 @@ module.exports = ({ strapi }) => {
     }
 
     const sortFieldMap = {
-      'name-asc':     { employee_name: 'ASC' },
-      'name-desc':    { employee_name: 'DESC' },
+      'name-asc':     { username: 'ASC' },
+      'name-desc':    { username: 'DESC' },
       'join-newest':  { joining_date: 'DESC' },
       'join-oldest':  { joining_date: 'ASC' },
     };
-    const orderBy = sortFieldMap[params.sortBy] || { employee_name: 'ASC' };
+    const orderBy = sortFieldMap[params.sortBy] || { username: 'ASC' };
 
     const page     = Math.max(1, parseInt(params.page, 10) || 1);
     const pageSize = Math.min(100, Math.max(1, parseInt(params.pageSize, 10) || 9));
@@ -119,7 +118,7 @@ module.exports = ({ strapi }) => {
       const items = list.map((u) => ({
         id: u.id,
         documentId: u.documentId ?? u.document_id ?? null,
-        employee_name: u.employee_name || u.username || u.email || '—',
+        employee_name: u.username || u.email || '—',
         username: u.username ?? '—',
         email: u.email || '—',
         emp_code: u.emp_code ?? '—',
@@ -492,7 +491,7 @@ module.exports = ({ strapi }) => {
       else duration = `${m}m ${s}s`;
       const userId = log.user?.id ?? log.user_id ?? (typeof log.user === 'number' ? log.user : null);
       const userDocumentId = log.user?.documentId ?? log.user?.document_id ?? null;
-      const userName = log.user ? (log.user.employee_name || log.user.username || log.user.email || `User ${log.user.id}`) : '—';
+      const userName = log.user ? (log.user.username || log.user.email || `User ${log.user.id}`) : '—';
       const companyName = log.company?.name ?? log.user?.company ?? '—';
       const activityDesc = (log.activity_description || log.activity_type || '—').trim();
       return {

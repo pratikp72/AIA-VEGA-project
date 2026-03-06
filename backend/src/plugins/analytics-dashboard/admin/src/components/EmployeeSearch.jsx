@@ -22,9 +22,10 @@ export function EmployeeSearch({ value, onChange, onEmployeeFound, company }) {
     setNotFound(false);
     setFoundEmployee(null);
     try {
-      const employees = await fetchEmployees({ search: q, ...(company ? { company } : {}) });
+      const res = await fetchEmployees({ search: q, ...(company ? { company } : {}) });
+      const employees = Array.isArray(res?.items) ? res.items : (Array.isArray(res) ? res : []);
       let found = null;
-      if (Array.isArray(employees) && employees.length > 0) {
+      if (employees.length > 0) {
         const qLower = q.toLowerCase();
         const isAIA = company && company.toLowerCase() === 'aia';
         const isVega = company && company.toLowerCase() === 'vega';
@@ -33,7 +34,7 @@ export function EmployeeSearch({ value, onChange, onEmployeeFound, company }) {
           found = employees[0];
         } else {
           found = employees.find(emp => {
-            const name = (emp.employee_name || emp.username || emp.email || '').toLowerCase();
+            const name = (emp.username || emp.email || '').toLowerCase();
             const empCode = String(emp.emp_code ?? '').toLowerCase();
             const empId = String(emp.emp_id ?? '').toLowerCase();
             const idStr = String(emp.id ?? '').toLowerCase();
