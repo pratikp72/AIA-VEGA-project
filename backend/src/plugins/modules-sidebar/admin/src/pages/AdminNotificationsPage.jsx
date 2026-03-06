@@ -3,35 +3,35 @@
  * Quiz reattempt notifications are clickable and redirect to Quiz Reattempt Requests page.
  */
 
-import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Layouts } from '@strapi/strapi/admin';
-import { Box, Typography, Flex, Loader, Badge } from '@strapi/design-system';
-import { getFetchClient } from '@strapi/strapi/admin';
+import React, { useState, useEffect, useRef } from "react";
+import { useNavigate } from "react-router-dom";
+import { Layouts } from "@strapi/strapi/admin";
+import { Box, Typography, Flex, Loader, Badge } from "@strapi/design-system";
+import { getFetchClient } from "@strapi/strapi/admin";
 
 const QUIZ_REATTEMPT_TYPES = [
-  'quiz_reattempt_requested',
-  'quiz_reattempt_approved',
-  'quiz_reattempt_rejected',
+  "quiz_reattempt_requested",
+  "quiz_reattempt_approved",
+  "quiz_reattempt_rejected",
 ];
 
 function formatDate(dateString) {
-  if (!dateString) return '—';
+  if (!dateString) return "—";
   const d = new Date(dateString);
-  return d.toLocaleString('en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
+  return d.toLocaleString("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
   });
 }
 
 function getTypeBadgeVariant(type) {
-  if (QUIZ_REATTEMPT_TYPES.includes(type)) return 'alternative';
-  if (type === 'feedback_submitted') return 'success';
-  if (type === 'news_liked') return 'warning';
-  return 'neutral';
+  if (QUIZ_REATTEMPT_TYPES.includes(type)) return "alternative";
+  if (type === "feedback_submitted") return "success";
+  if (type === "news_liked") return "warning";
+  return "neutral";
 }
 
 export default function AdminNotificationsPage() {
@@ -47,7 +47,7 @@ export default function AdminNotificationsPage() {
     setLoading(true);
     setError(null);
     const { get } = getFetchClient();
-    get('/modules-sidebar/admin-notifications?limit=100')
+    get("/modules-sidebar/admin-notifications?limit=100")
       .then(({ data }) => {
         if (cancelled || !isMounted.current) return;
         const list = data?.data ?? data ?? [];
@@ -55,7 +55,7 @@ export default function AdminNotificationsPage() {
       })
       .catch((e) => {
         if (cancelled || !isMounted.current) return;
-        setError(e?.message || 'Failed to load notifications');
+        setError(e?.message || "Failed to load notifications");
         setNotifications([]);
       })
       .finally(() => {
@@ -68,13 +68,13 @@ export default function AdminNotificationsPage() {
   }, []);
 
   const handleNotificationClick = (notification) => {
-    const type = notification?.type || '';
+    const type = notification?.type || "";
     if (QUIZ_REATTEMPT_TYPES.includes(type)) {
-      navigate('/plugins/quiz-reattempt-requests');
+      navigate("/plugins/quiz-reattempt-requests");
     }
   };
 
-  const isQuizReattempt = (n) => QUIZ_REATTEMPT_TYPES.includes(n?.type || '');
+  const isQuizReattempt = (n) => QUIZ_REATTEMPT_TYPES.includes(n?.type || "");
 
   return (
     <Layouts.Root>
@@ -82,8 +82,8 @@ export default function AdminNotificationsPage() {
         title="My Notifications"
         subtitle={
           loading
-            ? 'Loading…'
-            : `${notifications.length} notification${notifications.length === 1 ? '' : 's'}`
+            ? "Loading…"
+            : `${notifications.length} notification${notifications.length === 1 ? "" : "s"}`
         }
       />
       <Layouts.Content>
@@ -100,7 +100,9 @@ export default function AdminNotificationsPage() {
             </Flex>
           ) : notifications.length === 0 ? (
             <Box padding={6} background="neutral100" hasRadius>
-              <Typography textColor="neutral600">No notifications yet.</Typography>
+              <Typography textColor="neutral600">
+                No notifications yet.
+              </Typography>
             </Box>
           ) : (
             <Box
@@ -122,20 +124,27 @@ export default function AdminNotificationsPage() {
                     borderWidth="1px"
                     borderStyle="solid"
                     style={{
-                      borderLeft: 'none',
-                      borderRight: 'none',
-                      borderTop: 'none',
-                      cursor: clickable ? 'pointer' : 'default',
+                      borderLeft: "none",
+                      borderRight: "none",
+                      borderTop: "none",
+                      cursor: clickable ? "pointer" : "default",
                     }}
                     onClick={() => clickable && handleNotificationClick(n)}
-                    as={clickable ? 'button' : 'div'}
-                    type={clickable ? 'button' : undefined}
+                    as={clickable ? "button" : "div"}
+                    type={clickable ? "button" : undefined}
                     textAlign="left"
-                    background={clickable ? 'neutral50' : undefined}
+                    background={clickable ? "neutral50" : undefined}
                     hasRadius={false}
                   >
-                    <Flex gap={2} wrap="wrap" alignItems="center" marginBottom={1}>
-                      <Badge variant={getTypeBadgeVariant(n.type)}>{n.type || 'custom'}</Badge>
+                    <Flex
+                      gap={2}
+                      wrap="wrap"
+                      alignItems="center"
+                      marginBottom={1}
+                    >
+                      <Badge variant={getTypeBadgeVariant(n.type)}>
+                        {n.type || "custom"}
+                      </Badge>
                       <Typography variant="sigma" textColor="neutral700">
                         {formatDate(n.createdAt)}
                       </Typography>
@@ -145,34 +154,32 @@ export default function AdminNotificationsPage() {
                         </Typography>
                       )}
                     </Flex>
-                    {(n.meta && (n.meta.userId != null || n.meta.userName || n.meta.courseId != null || n.meta.courseTitle || n.meta.newsId != null || n.meta.newsTitle)) && (
-                      <Box marginTop={2}>
-                        {(n.meta.userId != null || n.meta.userName) && (
-                          <Typography variant="pi" textColor="primary700">
-                            User:{' '}
-                            {n.meta.userName
-                              ? `${n.meta.userName} (ID: ${n.meta.userId ?? '—'})`
-                              : `ID: ${String(n.meta.userId)}`}
-                          </Typography>
-                        )}
-                        {(n.meta.courseId != null || n.meta.courseTitle) && (
-                          <Typography variant="pi" textColor="primary700">
-                            Course:{' '}
-                            {n.meta.courseTitle
-                              ? `${n.meta.courseTitle} (ID: ${n.meta.courseId ?? '—'})`
-                              : `ID: ${String(n.meta.courseId)}`}
-                          </Typography>
-                        )}
-                        {n.meta.courseId == null && (n.meta.newsId != null || n.meta.newsTitle) && (
-                          <Typography variant="pi" textColor="primary700">
-                            News:{' '}
-                            {n.meta.newsTitle
-                              ? `${n.meta.newsTitle} (ID: ${n.meta.newsId ?? '—'})`
-                              : `ID: ${String(n.meta.newsId)}`}
-                          </Typography>
-                        )}
-                      </Box>
-                    )}
+                    {n.meta &&
+                      (n.meta.userId != null ||
+                        n.meta.userName ||
+                        n.meta.courseId != null ||
+                        n.meta.courseTitle ||
+                        n.meta.newsId != null ||
+                        n.meta.newsTitle) && (
+                        <Box marginTop={2}>
+                          {(n.meta.userId != null || n.meta.userName) && (
+                            <Typography variant="pi" textColor="primary700">
+                             User: {n.meta.userName}
+                            </Typography>
+                          )}
+                          {(n.meta.courseId != null || n.meta.courseTitle) && (
+                            <Typography variant="pi" textColor="primary700">
+                              <><br />Course: {n.meta.courseTitle}</>
+                            </Typography>
+                          )}
+                          {n.meta.courseId == null &&
+                            (n.meta.newsId != null || n.meta.newsTitle) && (
+                              <Typography variant="pi" textColor="primary700">
+                               <><br /> News: {n.meta.newsTitle}</>
+                              </Typography>
+                            )}
+                        </Box>
+                      )}
                   </Box>
                 );
               })}
