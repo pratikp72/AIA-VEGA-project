@@ -45,6 +45,14 @@
       "relation": "manyToMany",
       "target": "api::company.company"
     },
+    "course_language": {
+      "type": "customField",
+      "customField": "global::multi-select-dropdown",
+      "options": {
+        "required": true,
+        "optionsList": "English\nHindi\nGujarati"
+      }
+    },
     "course_category": {
       "type": "enumeration",
       "required": true,
@@ -79,14 +87,6 @@
       "options": {
         "positiveOnly": true,
         "required": true
-      }
-    },
-    "course_language": {
-      "type": "customField",
-      "customField": "global::multi-select-dropdown",
-      "options": {
-        "required": true,
-        "optionsList": "English\nHindi\nGujarati"
       }
     },
     "orientation_required": {
