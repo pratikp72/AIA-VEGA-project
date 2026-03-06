@@ -765,11 +765,22 @@ const AllModulesPage = () => {
     });
 
   const iconMap = { Briefcase, PinMap, User, Message, Book, Question, Cog };
+  const HIDDEN_COLLECTION_UIDS = new Set([
+    'api::city.city',
+    'api::townhall.townhall',
+    'api::profile-edit-request.profile-edit-request',
+  ]);
   const effectiveSections = useMemo(() => {
     if (!sectionConfig?.sections?.length) return null;
     const assigned = new Set();
-    sectionConfig.sections.forEach((s) => s.collectionUids?.forEach((u) => assigned.add(u)));
-    const unassigned = (collectionTypes || []).filter((ct) => !assigned.has(ct.uid));
+    sectionConfig.sections.forEach((s) =>
+      (s.collectionUids || []).forEach((u) => {
+        if (!HIDDEN_COLLECTION_UIDS.has(u)) assigned.add(u);
+      })
+    );
+    const unassigned = (collectionTypes || []).filter(
+      (ct) => !assigned.has(ct.uid) && !HIDDEN_COLLECTION_UIDS.has(ct.uid)
+    );
     let sections = [...sectionConfig.sections];
     if (!sections.some((s) => s.id === 'other')) {
       sections = [...sections, { id: 'other', title: 'Other', icon: 'Cog', collectionUids: [] }];
@@ -778,7 +789,7 @@ const AllModulesPage = () => {
     return sections.map((s) => ({
       ...s,
       collectionUids: [
-        ...(s.collectionUids || []),
+        ...(s.collectionUids || []).filter((u) => !HIDDEN_COLLECTION_UIDS.has(u)),
         ...(s.id === otherSectionId ? unassigned.map((ct) => ct.uid) : []),
       ],
     }));
@@ -912,15 +923,11 @@ const AllModulesPage = () => {
 
               {/* 3. Location Management - driven by admin permissions */}
               {(canSee('api::area.area') ||
-                canSee('api::city.city') ||
                 canSee('api::unit-location.unit-location') ||
                 canSee('api::route.route')) && (
                 <Section title="Location Management" icon={PinMap}>
                   {canSee('api::area.area') && (
                     <AdminLink label="Area" to="/content-manager/collection-types/api::area.area" />
-                  )}
-                  {canSee('api::city.city') && (
-                    <AdminLink label="City" to="/content-manager/collection-types/api::city.city" />
                   )}
                   {canSee('api::unit-location.unit-location') && (
                     <AdminLink
@@ -934,21 +941,13 @@ const AllModulesPage = () => {
                 </Section>
               )}
 
-              {/* 4. Content & Communication - driven by admin permissions (Townhall commented out – client no longer required) */}
+              {/* 4. Content & Communication - driven by admin permissions */}
               {(canSee('api::notification.notification') ||
                 canSee('api::news.news') ||
                 canSee('api::news-category.news-category') ||
                 canSee('api::event.event') ||
-                canSee('api::important-link.important-link') /* || canSee('api::townhall.townhall') */) && (
+                canSee('api::important-link.important-link')) && (
                 <Section title="Content & Communication" icon={Message}>
-                  {/* Townhall – commented out; uncomment to show in admin
-                  {canSee('api::townhall.townhall') && (
-                    <AdminLink
-                      label="Townhall"
-                      to="/content-manager/collection-types/api::townhall.townhall"
-                    />
-                  )}
-                  */}
                   {canSee('api::notification.notification') && (
                     <AdminLink
                       label="Notifications"

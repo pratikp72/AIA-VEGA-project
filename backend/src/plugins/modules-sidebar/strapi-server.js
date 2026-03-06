@@ -37,9 +37,8 @@ const DEFAULT_SECTION_CONFIG = {
   sections: [
     { id: 'org', title: 'Organization', icon: 'Briefcase', collectionUids: ['api::company.company', 'api::company-policy.company-policy', 'api::department.department', 'api::designation.designation'] },
     { id: 'hr', title: 'HR Management', icon: 'User', collectionUids: ['plugin::users-permissions.user', 'api::activity-log.activity-log', 'api::holiday.holiday', 'api::gallery-item.gallery-item', 'api::form-template.form-template'] },
-    { id: 'location', title: 'Location Management', icon: 'PinMap', collectionUids: ['api::area.area', 'api::city.city', 'api::unit-location.unit-location', 'api::route.route'] },
-    // Townhall commented out – client no longer required; add back 'api::townhall.townhall' to show in admin
-    { id: 'content', title: 'Content & Communication', icon: 'Message', collectionUids: [/* 'api::townhall.townhall', */ 'api::notification.notification', 'api::news.news', 'api::news-category.news-category', 'api::event.event', 'api::important-link.important-link'] },
+    { id: 'location', title: 'Location Management', icon: 'PinMap', collectionUids: ['api::area.area', 'api::unit-location.unit-location', 'api::route.route'] },
+    { id: 'content', title: 'Content & Communication', icon: 'Message', collectionUids: ['api::notification.notification', 'api::news.news', 'api::news-category.news-category', 'api::event.event', 'api::important-link.important-link'] },
     { id: 'learning', title: 'Learning Management', icon: 'Book', collectionUids: ['api::course.course', 'api::course-category.course-category', 'api::course-assignment.course-assignment'] },
     { id: 'quiz', title: 'Quiz Management', icon: 'Question', collectionUids: ['api::quizze.quizze', 'api::quiz-submission.quiz-submission', 'api::user-progress.user-progress'] },
     { id: 'other', title: 'Other', icon: 'Cog', collectionUids: [] },
