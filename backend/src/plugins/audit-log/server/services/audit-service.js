@@ -23,16 +23,17 @@ module.exports = ({ strapi }) => ({
     }
   },
 
-  async getAuditLogs({ 
-    page = 1, 
-    pageSize = 25, 
-    dateFrom = null, 
-    dateTo = null, 
+  async getAuditLogs({
+    page = 1,
+    pageSize = 25,
+    dateFrom = null,
+    dateTo = null,
     contentType = null,
     action = null,
     sortBy = 'createdAt',
     sortOrder = 'desc',
     company = null,
+    search = null,
   }) {
     const where = {};
 
@@ -62,8 +63,17 @@ module.exports = ({ strapi }) => ({
       where.company = company;
     }
 
+    // Search: filter by entryId (user id) when numeric
+    const searchVal = search && String(search).trim();
+    if (searchVal) {
+      const num = parseInt(searchVal, 10);
+      if (!Number.isNaN(num) && String(num) === searchVal) {
+        where.entryId = num;
+      }
+    }
+
     const offset = Math.max(0, (Number(page) || 1) - 1) * Math.max(1, Number(pageSize) || 25);
-    const limit = Math.max(1, Math.min(100, Number(pageSize) || 25));
+    const limit = Math.max(1, Math.min(500, Number(pageSize) || 25));
     const orderDir = (sortOrder || 'desc').toLowerCase() === 'asc' ? 'asc' : 'desc';
     const orderField = sortBy || 'createdAt';
 

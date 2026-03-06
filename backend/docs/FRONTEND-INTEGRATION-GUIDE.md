@@ -139,7 +139,7 @@ src/plugins/analytics-dashboard/strapi-server.js
 
 **Step 3: User sync**
 - If using SSO/LDAP: Use Strapi's users-permissions or a custom provider
-- Sync users with `company`, `department`, `employee_name`, etc.
+- Sync users with `company`, `department`, `username`, etc.
 - Ensure `plugin::users-permissions.user` has required fields populated
 
 **Step 4: Activity tracking**

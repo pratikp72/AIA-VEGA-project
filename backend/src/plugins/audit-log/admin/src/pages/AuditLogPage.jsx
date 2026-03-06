@@ -14,8 +14,9 @@ const AuditLogPage = () => {
   const [logs, setLogs] = useState([]);
   const [allLogs, setAllLogs] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [pagination, setPagination] = useState({ page: 1, pageSize: 25, total: 0 });
-  const [pageSize, setPageSize] = useState(25);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const [total, setTotal] = useState(0);
   const [dateRange, setDateRange] = useState({ start: null, end: null });
   const [action, setAction] = useState('');
   const contentType = 'plugin::users-permissions.user'; // Fixed to user collection
@@ -45,18 +46,20 @@ const AuditLogPage = () => {
       params.append('contentType', contentType); // Always filter by user collection
       if (action) params.append('action', action);
       if (companyFilter) params.append('company', companyFilter);
+      const q = (search || '').trim();
+      if (q && /^\d+$/.test(q)) params.append('search', q);
 
       const { data } = await get(`/audit-log/logs?${params}`);
       
       if (isMounted.current) {
         const rows = data.data || [];
         setLogs(rows);
-        const total = data.pagination?.total || 0;
-        setPagination({ page, pageSize: pageSizeArg, total });
-        if (total > 0 && total > (pageSizeArg || pageSize)) {
+        const tot = data.pagination?.total || 0;
+        setTotal(tot);
+        if (tot > 0 && tot > (pageSizeArg || pageSize)) {
           const allParams = new URLSearchParams({
             page: '1',
-            pageSize: String(total),
+            pageSize: String(tot),
             sortBy: 'createdAt',
             sortOrder: 'desc',
           });
@@ -65,6 +68,7 @@ const AuditLogPage = () => {
           allParams.append('contentType', contentType);
           if (action) allParams.append('action', action);
           if (companyFilter) allParams.append('company', companyFilter);
+          if (q && /^\d+$/.test(q)) allParams.append('search', q);
           get(`/audit-log/logs?${allParams}`)
             .then(({ data: allData }) => isMounted.current && setAllLogs(allData.data || []))
             .catch(() => setAllLogs([]));
@@ -81,18 +85,19 @@ const AuditLogPage = () => {
     }
   };
 
-  // Initial load
   useEffect(() => {
-    fetchLogs(1, pageSize);
+    fetchLogs(page, pageSize);
+  }, [page, pageSize, dateRange, action, companyFilter, search]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [dateRange, action, companyFilter]);
+
+  useEffect(() => {
     return () => {
       isMounted.current = false;
     };
-  }, [pageSize]);
-
-  // Reload when filters change
-  useEffect(() => {
-    fetchLogs(1, pageSize); // Reset to page 1 when filters change
-  }, [dateRange, action, companyFilter, pageSize]);
+  }, []);
 
   const getActionColor = (action) => {
     switch (action) {
@@ -115,7 +120,12 @@ const AuditLogPage = () => {
   };
 
   const handlePageChange = (newPage) => {
-    fetchLogs(newPage, pageSize);
+    setPage(newPage);
+  };
+
+  const handlePageSizeChange = (newSize) => {
+    setPageSize(Number(newSize));
+    setPage(1);
   };
 
   return (
@@ -246,16 +256,11 @@ const AuditLogPage = () => {
                 { key: 'changes', label: 'Changes', render: (val) => val && val.length > 0 ? val.map(c => c.field).join(', ') : '—' },
               ]}
               pagination={{
-                page: pagination.page,
-                pageSize: pageSize,
-                total: pagination.total,
+                page,
+                pageSize,
+                total,
                 onPageChange: handlePageChange,
-                onPageSizeChange: (newSize) => {
-                  setPageSize(Number(newSize));
-                  setPagination((prev) => ({ ...prev, page: 1, pageSize: Number(newSize) }));
-                  // Immediately fetch logs with new page size
-                  fetchLogs(1, Number(newSize));
-                },
+                onPageSizeChange: handlePageSizeChange,
               }}
               exportFileName={`audit-log-${new Date().toISOString().split('T')[0]}.xlsx`}
               fontSize={TABLE_FONT_STYLE.fontSize}

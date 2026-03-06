@@ -17,16 +17,15 @@ module.exports = (strapi) => {
   async function enrichMeta(meta = {}) {
     const out = { ...(meta || {}) };
 
-    // Resolve userName from userId (portal user: employee_name, username, email)
+    // Resolve userName from userId (portal user: username, email)
     if (out.userId != null && out.userId !== '' && !out.userName) {
       try {
         const userRow = await strapi.db.query(USER_UID).findOne({
           where: { id: Number(out.userId) },
-          select: ['id', 'username', 'email', 'employee_name'],
+          select: ['id', 'username', 'email'],
         });
         if (userRow) {
           out.userName =
-            userRow.employee_name ||
             userRow.username ||
             userRow.email ||
             `User ${userRow.id}`;

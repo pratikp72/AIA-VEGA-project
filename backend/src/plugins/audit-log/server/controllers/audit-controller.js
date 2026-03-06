@@ -2,27 +2,29 @@ module.exports = ({ strapi }) => ({
   async getLogs(ctx) {
     try {
     const {
-    page = 1,
-    pageSize = 25,
-    dateFrom,
-    dateTo,
-    contentType,
-    action,
-    sortBy = 'createdAt',
-    sortOrder = 'desc',
-    company,
+      page = 1,
+      pageSize = 25,
+      dateFrom,
+      dateTo,
+      contentType,
+      action,
+      sortBy = 'createdAt',
+      sortOrder = 'desc',
+      company,
+      search,
     } = ctx.query;
 
     const result = await strapi.plugin('audit-log').service('auditService').getAuditLogs({
-    page: parseInt(page),
-    pageSize: parseInt(pageSize),
-    dateFrom,
-    dateTo,
-    contentType,
-    action,
-    sortBy,
-    sortOrder,
-    company,
+      page: parseInt(page, 10),
+      pageSize: parseInt(pageSize, 10),
+      dateFrom,
+      dateTo,
+      contentType,
+      action,
+      sortBy,
+      sortOrder,
+      company,
+      search,
     });
 
       ctx.body = result;

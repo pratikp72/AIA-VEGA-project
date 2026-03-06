@@ -66,10 +66,6 @@
       "inversedBy": "users",
       "configurable": false
     },
-    "employee_name": {
-      "type": "string",
-      "required": true
-    },
     "joining_date": {
       "type": "date",
       "required": true
@@ -197,6 +193,16 @@
     },
     "active": {
       "type": "boolean",
+      "conditions": {
+        "visible": {
+          "==": [
+            {
+              "var": "company"
+            },
+            "Vega"
+          ]
+        }
+      },
       "required": true,
       "default": true
     },
@@ -237,6 +243,76 @@
     },
     "department": {
       "type": "string",
+      "required": true
+    },
+    "HOD": {
+      "type": "string",
+      "conditions": {
+        "visible": {
+          "==": [
+            {
+              "var": "company"
+            },
+            "Vega"
+          ]
+        }
+      },
+      "required": true
+    },
+    "payroll_office": {
+      "type": "string",
+      "conditions": {
+        "visible": {
+          "==": [
+            {
+              "var": "company"
+            },
+            "Vega"
+          ]
+        }
+      },
+      "required": true
+    },
+    "region": {
+      "type": "string",
+      "conditions": {
+        "visible": {
+          "==": [
+            {
+              "var": "company"
+            },
+            "Vega"
+          ]
+        }
+      },
+      "required": true
+    },
+    "experience_with_vega": {
+      "type": "string",
+      "conditions": {
+        "visible": {
+          "==": [
+            {
+              "var": "company"
+            },
+            "Vega"
+          ]
+        }
+      },
+      "required": true
+    },
+    "contract_validity": {
+      "type": "string",
+      "conditions": {
+        "visible": {
+          "==": [
+            {
+              "var": "company"
+            },
+            "Vega"
+          ]
+        }
+      },
       "required": true
     }
   }

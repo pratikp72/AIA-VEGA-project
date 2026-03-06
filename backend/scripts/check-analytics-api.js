@@ -22,7 +22,7 @@ async function main() {
     console.log('Employees list (no search):', empLen);
     if (empLen > 0) {
       const e0 = employees[0];
-      console.log('  First:', e0 && e0.employee_name, e0 && e0.email, 'id:', e0 && e0.id);
+      console.log('  First:', e0 && e0.username, e0 && e0.email, 'id:', e0 && e0.id);
     }
 
     const learningGlobal = await analytics.getLearningGlobal({});
