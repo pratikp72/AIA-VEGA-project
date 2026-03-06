@@ -46,6 +46,27 @@ module.exports = ({ strapi }) => {
   };
 
   self.getEmployeesList = async function (params = {}) {
+    const mapPhotograph = (media) => {
+      if (!media) return null;
+      return {
+        id: media.id ?? null,
+        documentId: media.documentId ?? media.document_id ?? null,
+        name: media.name ?? null,
+        alternativeText: media.alternativeText ?? null,
+        caption: media.caption ?? null,
+        width: media.width ?? null,
+        height: media.height ?? null,
+        formats: media.formats ?? null,
+        hash: media.hash ?? null,
+        ext: media.ext ?? null,
+        mime: media.mime ?? null,
+        size: media.size ?? null,
+        url: media.url ?? null,
+        previewUrl: media.previewUrl ?? null,
+        provider: media.provider ?? null,
+      };
+    };
+
     const where = { blocked: { $eq: false } };
 
     const companyVal = params.company && String(params.company).trim() && !/^all\s*companies?$/i.test(String(params.company));
@@ -113,6 +134,27 @@ module.exports = ({ strapi }) => {
         orderBy,
         limit: pageSize,
         offset,
+        populate: {
+          photograph: {
+            select: [
+              'id',
+              'documentId',
+              'name',
+              'alternativeText',
+              'caption',
+              'width',
+              'height',
+              'formats',
+              'hash',
+              'ext',
+              'mime',
+              'size',
+              'url',
+              'previewUrl',
+              'provider',
+            ],
+          },
+        },
       });
       const list = Array.isArray(users) ? users : [];
       const items = list.map((u) => ({
@@ -132,6 +174,7 @@ module.exports = ({ strapi }) => {
         description: u.description ?? null,
         branch: u.branch ?? '—',
         contact_no: u.contact_no ?? '—',
+        photograph: mapPhotograph(u.photograph),
       }));
       return {
         items,
