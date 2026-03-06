@@ -54,4 +54,14 @@ module.exports = createCoreController('api::event.event', ({ strapi }) => ({
       meta: { pagination: { page: 1, pageSize: items.length, pageCount: 1, total: items.length } },
     };
   },
+  async findOne(ctx) {
+    const id = ctx.params.documentId ?? ctx.params.id;
+    if (!id) return ctx.badRequest('Missing event id');
+    const item = await strapi.db.query('api::event.event').findOne({
+      where: { $or: [{ documentId: id }, { id: Number(id) || 0 }] },
+      populate: ['event_image', 'company', 'department'],
+    });
+    if (!item) return ctx.notFound();
+    ctx.body = { data: item };
+  },
 }));
