@@ -2,6 +2,30 @@
 
 const { createCoreController } = require("@strapi/strapi").factories;
 
+const REJECTION_COOLDOWN_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+/** Get the most recent rejected request for user+course; returns null if none or if rejection is older than 24h for send (allowRerequestAfter24h). */
+async function getLatestRejectedForUserCourse(strapi, userId, courseId, allowRerequestAfter24h = false) {
+  const list = await strapi.db
+    .query("api::quiz-reattempt-request.quiz-reattempt-request")
+    .findMany({
+      where: {
+        users_permissions_user: Number(userId),
+        course: Number(courseId),
+        request_status: "Rejected",
+      },
+      orderBy: { updatedAt: "desc" },
+      limit: 1,
+    });
+  const latest = Array.isArray(list) && list.length > 0 ? list[0] : null;
+  if (!latest) return null;
+  if (!allowRerequestAfter24h) return latest;
+  const updatedAt = latest.updatedAt ? new Date(latest.updatedAt).getTime() : 0;
+  const now = Date.now();
+  if (now - updatedAt < REJECTION_COOLDOWN_MS) return latest; // still within 24h
+  return null; // older than 24h → allow new request
+}
+
 module.exports = createCoreController(
   "api::quiz-reattempt-request.quiz-reattempt-request",
   ({ strapi }) => ({
@@ -30,19 +54,12 @@ module.exports = createCoreController(
         return ctx.badRequest("You already have a pending reattempt request.");
       }
 
-      // If admin already rejected a reattempt request, user cannot apply again
-      const existingRejected = await strapi.db
-        .query("api::quiz-reattempt-request.quiz-reattempt-request")
-        .findOne({
-          where: {
-            users_permissions_user: Number(userId),
-            course: Number(courseId),
-            request_status: "Rejected",
-          },
-        });
-
-      if (existingRejected) {
-        return ctx.badRequest("Your reattempt request was rejected. You cannot apply again for this assessment.");
+      // If admin rejected a reattempt within the last 24 hours, user cannot apply again until 24h have passed
+      const recentRejection = await getLatestRejectedForUserCourse(strapi, userId, courseId, true);
+      if (recentRejection) {
+        return ctx.badRequest(
+          "Your reattempt request was rejected. You can submit a new request after 24 hours."
+        );
       }
 
       // Find last submission to know next attempt
@@ -105,7 +122,7 @@ module.exports = createCoreController(
       }
       const uid = Number(userId);
       const cid = Number(courseId);
-      const [pending, rejected] = await Promise.all([
+      const [pending, latestRejected] = await Promise.all([
         strapi.db
           .query("api::quiz-reattempt-request.quiz-reattempt-request")
           .findOne({
@@ -115,17 +132,17 @@ module.exports = createCoreController(
               request_status: "Pending",
             },
           }),
-        strapi.db
-          .query("api::quiz-reattempt-request.quiz-reattempt-request")
-          .findOne({
-            where: {
-              users_permissions_user: uid,
-              course: cid,
-              request_status: "Rejected",
-            },
-          }),
+        getLatestRejectedForUserCourse(strapi, uid, cid, false), // get raw latest (no 24h filter)
       ]);
-      return ctx.send({ hasPending: !!pending, hasRejected: !!rejected });
+      const rejectedAt = latestRejected?.updatedAt ? new Date(latestRejected.updatedAt).getTime() : null;
+      const now = Date.now();
+      const hasRejectedWithin24h = rejectedAt != null && (now - rejectedAt) < REJECTION_COOLDOWN_MS;
+      const canRequestAgainAt = rejectedAt != null ? new Date(rejectedAt + REJECTION_COOLDOWN_MS).toISOString() : null;
+      return ctx.send({
+        hasPending: !!pending,
+        hasRejected: hasRejectedWithin24h,
+        canRequestAgainAt: hasRejectedWithin24h ? canRequestAgainAt : null,
+      });
     },
 
     async approve(ctx) {

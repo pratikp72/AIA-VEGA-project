@@ -130,21 +130,28 @@ module.exports = createCoreController(
         }
 
         // ------------------------------------------------------
-        // 0. If admin rejected a reattempt request for this user+course → block assessment
+        // 0. If admin rejected a reattempt within the last 24h → block assessment (after 24h user can request again)
         // ------------------------------------------------------
-        const rejectedRequest = await strapi.db
+        const REJECTION_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+        const rejectedList = await strapi.db
           .query("api::quiz-reattempt-request.quiz-reattempt-request")
-          .findOne({
+          .findMany({
             where: {
               course: Number(courseId),
               users_permissions_user: Number(userId),
               request_status: "Rejected",
             },
+            orderBy: { updatedAt: "desc" },
+            limit: 1,
           });
-        if (rejectedRequest) {
-          return ctx.forbidden(
-            "Your reattempt request was rejected. You cannot take this assessment."
-          );
+        const latestRejected = Array.isArray(rejectedList) && rejectedList.length > 0 ? rejectedList[0] : null;
+        if (latestRejected && latestRejected.updatedAt) {
+          const rejectedAt = new Date(latestRejected.updatedAt).getTime();
+          if (Date.now() - rejectedAt < REJECTION_COOLDOWN_MS) {
+            return ctx.forbidden(
+              "Your reattempt request was rejected. You can submit a new request after 24 hours."
+            );
+          }
         }
 
         // ------------------------------------------------------
