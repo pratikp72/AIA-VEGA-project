@@ -679,6 +679,7 @@ export interface ApiCourseCourse extends Struct.CollectionTypeSchema {
       Schema.Attribute.CustomField<
         'global::number-range',
         {
+          placeholder: 'Example 70%';
           positiveOnly: true;
           required: true;
         }

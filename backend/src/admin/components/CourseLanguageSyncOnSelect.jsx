@@ -316,6 +316,12 @@ function CourseLanguageSyncOnSelect({ slug, model }) {
   const setValues = useForm('useContentManagerContext', (state) => state?.setValues, false);
   const prevLangRef = useRef(null);
   const prevOrientationRequiredRef = useRef(null);
+  const prevLengthsRef = useRef({
+    modules: 0,
+    quiz: 0,
+    feedback: 0,
+    orientation_detail: 0,
+  });
 
   useEffect(() => {
     if (uid !== COURSE_MODEL || !values || typeof setValues !== 'function') return;
@@ -327,6 +333,7 @@ function CourseLanguageSyncOnSelect({ slug, model }) {
     const feedback = ensureArray(values.feedback);
     const orientationRequired = values.orientation_required === true;
     const orientationDetail = ensureArray(values.orientation_detail);
+    const prevLengths = prevLengthsRef.current;
 
     // 1. When course_language changed, sync all components (add/remove entries per language).
     const prevLang = prevLangRef.current;
@@ -337,6 +344,12 @@ function CourseLanguageSyncOnSelect({ slug, model }) {
       prevLangRef.current = languages;
       prevOrientationRequiredRef.current = orientationRequired;
       const synced = buildSyncedValues(values, languages, prevLang);
+      prevLengthsRef.current = {
+        modules: synced.modules.length,
+        quiz: synced.quiz.length,
+        feedback: synced.feedback.length,
+        orientation_detail: synced.orientation_detail.length,
+      };
       setValues(synced);
       return;
     }
@@ -346,51 +359,91 @@ function CourseLanguageSyncOnSelect({ slug, model }) {
     if (orientationRequired && !prevOrientationRequired && N >= 1) {
       prevOrientationRequiredRef.current = orientationRequired;
       const synced = buildSyncedValues(values, languages, prevLang);
+      prevLengthsRef.current = {
+        modules: synced.modules.length,
+        quiz: synced.quiz.length,
+        feedback: synced.feedback.length,
+        orientation_detail: synced.orientation_detail.length,
+      };
       setValues(synced);
       return;
     }
     // When orientation_required changed from true to false: clear orientation entries.
     if (!orientationRequired && prevOrientationRequired) {
       prevOrientationRequiredRef.current = orientationRequired;
+      prevLengthsRef.current = {
+        modules: modules.length,
+        quiz: quiz.length,
+        feedback: feedback.length,
+        orientation_detail: 0,
+      };
       setValues({ ...values, orientation_detail: [] });
       return;
     }
 
     // 3. When user clicks "Add an entry", Strapi adds 1 row. Expand it to N rows (one per language).
-    if (N >= 1 && modules.length >= 1 && modules.length % N === 1) {
+    if (N >= 1 && modules.length >= 1 && modules.length === prevLengths.modules + 1 && modules.length % N === 1) {
       const expanded = expandLastModuleSetToLanguages(modules, languages);
       if (expanded) {
         prevLangRef.current = languages;
+        prevLengthsRef.current = {
+          ...prevLengths,
+          modules: expanded.length,
+        };
         setValues({ ...values, modules: expanded });
         return;
       }
     }
-    if (N >= 1 && quiz.length >= 1 && quiz.length % N === 1) {
+    if (N >= 1 && quiz.length >= 1 && quiz.length === prevLengths.quiz + 1 && quiz.length % N === 1) {
       const expanded = expandLastQuizSetToLanguages(quiz, languages);
       if (expanded) {
         prevLangRef.current = languages;
+        prevLengthsRef.current = {
+          ...prevLengths,
+          quiz: expanded.length,
+        };
         setValues({ ...values, quiz: expanded });
         return;
       }
     }
-    if (N >= 1 && feedback.length >= 1 && feedback.length % N === 1) {
+    if (N >= 1 && feedback.length >= 1 && feedback.length === prevLengths.feedback + 1 && feedback.length % N === 1) {
       const expanded = expandLastFeedbackSetToLanguages(feedback, languages);
       if (expanded) {
         prevLangRef.current = languages;
+        prevLengthsRef.current = {
+          ...prevLengths,
+          feedback: expanded.length,
+        };
         setValues({ ...values, feedback: expanded });
         return;
       }
     }
-    if (orientationRequired && N >= 1 && orientationDetail.length >= 1 && orientationDetail.length % N === 1) {
+    if (
+      orientationRequired &&
+      N >= 1 &&
+      orientationDetail.length >= 1 &&
+      orientationDetail.length === prevLengths.orientation_detail + 1 &&
+      orientationDetail.length % N === 1
+    ) {
       const expanded = expandLastOrientationSetToLanguages(orientationDetail, languages);
       if (expanded) {
         prevLangRef.current = languages;
+        prevLengthsRef.current = {
+          ...prevLengths,
+          orientation_detail: expanded.length,
+        };
         setValues({ ...values, orientation_detail: expanded });
         return;
       }
     }
 
     prevOrientationRequiredRef.current = orientationRequired;
+    prevLengthsRef.current = {
+      modules: modules.length,
+      quiz: quiz.length,
+      feedback: feedback.length,
+      orientation_detail: orientationDetail.length,
+    };
   }, [uid, values, setValues]);
 
   return null;

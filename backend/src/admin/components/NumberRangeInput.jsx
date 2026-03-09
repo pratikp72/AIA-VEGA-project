@@ -40,6 +40,7 @@ const NumberRangeInput = React.forwardRef((props, ref) => {
   const builderOpts = attribute?.options || {};
   const pluginOpts = attribute?.pluginOptions?.customField || attribute?.pluginOptions?.numberRange || {};
   const opts = { ...pluginOpts, ...builderOpts };
+  const placeholderText = opts.placeholder != null ? String(opts.placeholder) : '';
   const integerOnly = opts.integerOnly === true;
   const positiveOnly = opts.positiveOnly === true;
   // Required: from Content Manager (attribute) or from our option in Builder
@@ -149,6 +150,7 @@ const NumberRangeInput = React.forwardRef((props, ref) => {
           type="number"
           name={name}
           value={inputStr}
+          placeholder={placeholderText}
           min={inputMin}
           max={inputMax}
           step={step}

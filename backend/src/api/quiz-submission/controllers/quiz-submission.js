@@ -21,20 +21,99 @@ module.exports = createCoreController(
           quiz: {
             populate: {
               quiz_questions: {
-                populate: { correct_multiSelect_answers: true }
+                populate: {
+                  correct_multiSelect_answers: true,
+                  options: true,
+                }
               }
             }
           }
         }
       });
 
-      // quiz is a repeatable component → array
-      const quiz = course?.quiz?.[0];
+      // quiz is a repeatable component → array. Pick the block that best matches submitted question_ids.
+      const answerQuestionIds = new Set(
+        (Array.isArray(answers) ? answers : [])
+          .map((a) => a?.question_id)
+          .filter((id) => typeof id === 'string' && id.trim().length > 0)
+      );
+
+      const pickBestQuiz = (quizList) => {
+        if (!Array.isArray(quizList) || quizList.length === 0) return null;
+        if (answerQuestionIds.size === 0) return quizList[0];
+
+        let best = quizList[0];
+        let bestMatchCount = -1;
+
+        quizList.forEach((qz) => {
+          const qList = Array.isArray(qz?.quiz_questions) ? qz.quiz_questions : [];
+          const matchCount = qList.reduce((count, q) => {
+            return count + (answerQuestionIds.has(q?.question_id) ? 1 : 0);
+          }, 0);
+
+          if (matchCount > bestMatchCount) {
+            best = qz;
+            bestMatchCount = matchCount;
+          }
+        });
+
+        return best;
+      };
+
+      const quiz = pickBestQuiz(course?.quiz);
       if (!quiz?.quiz_questions || quiz.quiz_questions.length === 0) return 0;
 
       const questions = quiz.quiz_questions;
       let earnedPoints = 0;
       let totalPoints = 0;
+
+      const normalizeToken = (v) => {
+        if (v == null) return '';
+        return String(v).trim().toLowerCase();
+      };
+
+      const areSetsEqual = (a, b) => {
+        if (a.size !== b.size) return false;
+        for (const v of a) {
+          if (!b.has(v)) return false;
+        }
+        return true;
+      };
+
+      // Accept either option key or label in submissions and stored answers.
+      const buildEquivalentChoiceTokens = (question, rawValue) => {
+        const token = normalizeToken(rawValue);
+        const out = new Set();
+        if (!token) return out;
+        out.add(token);
+
+        const options = Array.isArray(question?.options) ? question.options : [];
+        options.forEach((opt) => {
+          const key = normalizeToken(opt?.option_key);
+          const label = normalizeToken(opt?.option_label);
+          if (!key && !label) return;
+          if (token === key || token === label) {
+            if (key) out.add(key);
+            if (label) out.add(label);
+          }
+        });
+
+        return out;
+      };
+
+      const extractSubmittedMultiSelectValues = (submitted) => {
+        if (!Array.isArray(submitted)) return [];
+        return submitted
+          .map((item) => {
+            if (item == null) return null;
+            if (typeof item === 'string' || typeof item === 'number') return item;
+            if (typeof item === 'object') {
+              return item.answer ?? item.option_key ?? item.option_label ?? null;
+            }
+            return null;
+          })
+          .filter((v) => v != null);
+      };
 
       // Helper: use point from question if present, else 1 point per question (when point field removed)
       const getPoints = (q) => {
@@ -58,7 +137,11 @@ module.exports = createCoreController(
           // MULTIPLE CHOICE LOGIC
           // -----------------------------
           if (ans.question_type === "Multiple_choice") {
-            if (ans.selected_answer_for_multiChoice === q.correct_answer) {
+            const submittedChoice = buildEquivalentChoiceTokens(q, ans.selected_answer_for_multiChoice);
+            const correctChoice = buildEquivalentChoiceTokens(q, q.correct_answer);
+            const isCorrect = [...submittedChoice].some((token) => correctChoice.has(token));
+
+            if (isCorrect) {
               earnedPoints += pts;
             }
           }
@@ -67,15 +150,41 @@ module.exports = createCoreController(
           // MULTI-SELECT LOGIC
           // -----------------------------
           if (ans.question_type === "Multiple_select") {
-            const userSelected = ans.selected_answer_for_multiSelect || [];
+            const userSelected = extractSubmittedMultiSelectValues(ans.selected_answer_for_multiSelect);
             const correctOptions = q.correct_multiSelect_answers || [];
 
-            const u = userSelected.map(item => item.answer).sort();
-            const c = correctOptions.map(item => item.answer).sort();
+            const userTokens = new Set();
+            userSelected.forEach((value) => {
+              buildEquivalentChoiceTokens(q, value).forEach((t) => userTokens.add(t));
+            });
 
-            const match =
-              u.length === c.length &&
-              u.every((v, idx) => v === c[idx]);
+            const correctRaw = correctOptions
+              .map((item) => item?.answer)
+              .filter((v) => v != null);
+            const correctTokens = new Set();
+            correctRaw.forEach((value) => {
+              buildEquivalentChoiceTokens(q, value).forEach((t) => correctTokens.add(t));
+            });
+
+            // Collapse equivalent key/label representations to canonical tokens where possible.
+            const canonicalize = (tokenSet) => {
+              const canonical = new Set();
+              const options = Array.isArray(q?.options) ? q.options : [];
+
+              tokenSet.forEach((token) => {
+                let mapped = token;
+                options.forEach((opt) => {
+                  const key = normalizeToken(opt?.option_key);
+                  const label = normalizeToken(opt?.option_label);
+                  if (token === label && key) mapped = key;
+                });
+                canonical.add(mapped);
+              });
+
+              return canonical;
+            };
+
+            const match = areSetsEqual(canonicalize(userTokens), canonicalize(correctTokens));
 
             if (match) {
               earnedPoints += pts;
@@ -121,7 +230,7 @@ module.exports = createCoreController(
     // ----------------------------------------------------------
     async submit(ctx) {
       try {
-        const { userId, courseId, answers } = ctx.request.body;
+        const { userId, courseId, answers, time_taken_minutes } = ctx.request.body;
 
         console.log("[quiz submit] received body → userId:", userId, "courseId:", courseId, "type:", typeof courseId);
 
@@ -166,7 +275,8 @@ module.exports = createCoreController(
 
         if (!course) return ctx.badRequest(`Invalid course (id=${courseId})`);
 
-        const minPassingScore = course.min_passing_score;
+        const minPassingScoreRaw = Number(course.min_passing_score);
+        const minPassingScore = Number.isFinite(minPassingScoreRaw) ? minPassingScoreRaw : 0;
         // quiz is a repeatable component → array
         const maxAttempt = course.quiz?.[0]?.max_attempt ?? 1;
 
@@ -186,7 +296,8 @@ module.exports = createCoreController(
         // ------------------------------------------------------
         // 3. Calculate score securely (backend only)
         // ------------------------------------------------------
-        const score = await this.calculateScore(courseId, answers);
+        const scoreRaw = await this.calculateScore(courseId, answers);
+        const score = Number.isFinite(Number(scoreRaw)) ? Number(scoreRaw) : 0;
         const passed = score >= minPassingScore;
 
         // ------------------------------------------------------
@@ -240,6 +351,7 @@ module.exports = createCoreController(
               submitted_by: userId,
               attempt_number: nextAttempt,
               submitted_at: new Date(),
+              time_taken_minutes,
               publishedAt: new Date(), // publish immediately, not draft
             },
           }
@@ -259,7 +371,9 @@ module.exports = createCoreController(
         // 8. Notification + email: Admin and LM Admin
         // ------------------------------------------------------
         const meta = { courseId, userId, score, passed };
-        const notifUtil = strapi.utils?.notification;
+        /** @type {any} */
+        const strapiAny = strapi;
+        const notifUtil = strapiAny?.utils?.notification;
         if (notifUtil) {
           await notifUtil.sendNotification(
             'quiz_submitted',
