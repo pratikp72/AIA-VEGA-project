@@ -84,7 +84,6 @@ module.exports = (strapi) => {
    */
   async function sendEmail(to, subject, body) {
     if (!to || !subject) return;
-    console.log('[notification] Sending email → to:', to, '| subject:', subject);
     const text = body || '';
     const html = text ? text.replace(/\n/g, '<br>') : '';
     const payload = {
@@ -99,21 +98,16 @@ module.exports = (strapi) => {
       strapi.plugin?.('email')?.service?.('email') ||
       strapi.plugins?.email?.services?.email;
     if (!emailService || typeof emailService.send !== 'function') {
-      console.warn('[notification] Email plugin not available – skipping send. Set SMTP_* in .env and restart.');
       strapi.log.warn('[notification] Email plugin not available – skipping send. Enable email in config/plugins.js and set SMTP_* in .env');
       return;
     }
     try {
       await emailService.send(payload);
-      console.log('[notification] Email sent successfully to:', to);
-      strapi.log.info('[notification] Email sent to:', to);
     } catch (err) {
       const msg = err?.message || String(err);
-      console.error('[notification] Email send failed:', msg);
       strapi.log.error('[notification] Email send failed:', msg);
       if (/auth|credentials|login|ECONNREFUSED|ETIMEDOUT|Invalid login/i.test(msg)) {
-        console.warn('[notification] Check .env: SMTP_HOST, SMTP_PORT, SMTP_USERNAME, SMTP_PASSWORD (e.g. Gmail app password)');
-        strapi.log.warn('[notification] Check .env: SMTP_HOST, SMTP_PORT, SMTP_USERNAME, SMTP_PASSWORD (e.g. Gmail app password)');
+        strapi.log.warn('[notification] Check .env: SMTP_HOST, SMTP_PORT, SMTP_USERNAME, SMTP_PASSWORD');
       }
     }
   }
@@ -122,8 +116,9 @@ module.exports = (strapi) => {
    * Emit socket.io event to target user(s)
    */
   function triggerSocket(userIds, payload) {
-    if (!strapi.io) {
-      strapi.log.warn('[notification] Socket skipped: strapi.io not available');
+    const io = strapi.$io;
+    if (!io) {
+      strapi.log.warn('[notification] Socket skipped: strapi.$io not available');
       return;
     }
     if (!Array.isArray(userIds) || userIds.length === 0) {
@@ -133,8 +128,7 @@ module.exports = (strapi) => {
     const ids = userIds.filter(Boolean).map(String);
     ids.forEach((id) => {
       const room = `user_${id}`;
-      strapi.io.to(room).emit('new-notification', payload);
-      strapi.log.info('[notification] Socket emitted to room:', room, 'type:', payload?.type);
+      io.server.to(room).emit('new-notification', payload);
     });
   }
 
@@ -142,8 +136,9 @@ module.exports = (strapi) => {
    * Emit socket.io event to admin user(s)
    */
   function triggerAdminSocket(adminIds, payload) {
-    if (!strapi.io) {
-      strapi.log.warn('[notification] Admin socket skipped: strapi.io not available');
+    const io = strapi.$io;
+    if (!io) {
+      strapi.log.warn('[notification] Admin socket skipped: strapi.$io not available');
       return;
     }
     if (!Array.isArray(adminIds) || adminIds.length === 0) {
@@ -153,8 +148,7 @@ module.exports = (strapi) => {
     const ids = adminIds.filter(Boolean).map(String);
     ids.forEach((id) => {
       const room = `admin_${id}`;
-      strapi.io.to(room).emit('new-notification', payload);
-      strapi.log.info('[notification] Socket emitted to admin room:', room, 'type:', payload?.type);
+      io.server.to(room).emit('new-notification', payload);
     });
   }
 
@@ -345,7 +339,7 @@ module.exports = (strapi) => {
         if (doEmail && user?.email) {
           await sendEmail(user.email, title, message);
         }
-        if (doSocket && strapi.io) {
+        if (doSocket && strapi.$io) {
           triggerSocket([String(userId)], { ...payload, id: notification?.id });
         }
       } catch (err) {
@@ -374,7 +368,7 @@ module.exports = (strapi) => {
             const emailBody = buildAdminEmailBody(title, message, enrichedMeta);
             await sendEmail(admin.email, title, emailBody);
           }
-          if (doSocket && strapi.io) {
+          if (doSocket && strapi.$io) {
             triggerAdminSocket([String(adminId)], { ...payload, id: notification?.id });
           }
         } catch (err) {

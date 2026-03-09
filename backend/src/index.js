@@ -83,6 +83,51 @@ module.exports = {
     strapi.utils = strapi.utils || {};
     strapi.utils.notification = require('./utils/notification')(strapi);
 
+    // ── Socket.io: JWT-based auto-room join ──────────────────────────────────
+    try {
+      if (strapi.$io) {
+        // Verify JWT on every connection and store userId on the socket object
+        strapi.$io.server.use(async (socket, next) => {
+          try {
+            const token = socket.handshake.auth?.token;
+            if (!token) return next();
+            const jwtService =
+              strapi.plugins?.['users-permissions']?.services?.jwt ||
+              strapi.plugin?.('users-permissions')?.service?.('jwt');
+            if (!jwtService) return next();
+            const decoded = await jwtService.verify(token);
+            const userId = decoded?.id ?? decoded?._id;
+            if (userId) socket.userId = String(userId);
+            next();
+          } catch {
+            next(); // invalid/expired token — allow connection without a room
+          }
+        });
+
+        strapi.$io.server.on('connection', (socket) => {
+          // Auto-join the user's personal room from the JWT-decoded userId
+          if (socket.userId) {
+            socket.join(`user_${socket.userId}`);
+          }
+
+          // Fallback: client can also emit 'join-room' after connect
+          socket.on('join-room', (room) => {
+            if (
+              typeof room === 'string' &&
+              (room.startsWith('user_') || room.startsWith('admin_'))
+            ) {
+              socket.join(room);
+            }
+          });
+        });
+      } else {
+        strapi.log.warn('[socket] strapi.$io not available — ensure @strapi-community/plugin-io is enabled.');
+      }
+    } catch (e) {
+      strapi.log.error('[socket] Bootstrap failed:', e?.message || e);
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
     // User-progress automation: course-assignment → Not_started; start-course → In_progress; quiz-submission → Completed/Failed
     try {
       const { registerUserProgressLifecycles } = require('./lifecycles/user-progress-automation');

@@ -17,9 +17,8 @@ module.exports = ({ strapi }) => ({
     });
 
     // 2. SOCKET.IO real-time event
-    if (socket && toUser) {
-      const io = strapi.io; 
-      io.to(String(toUser)).emit("new-notification", {
+    if (socket && toUser && strapi.$io) {
+      strapi.$io.server.to(`user_${toUser}`).emit('new-notification', {
         id: notification.id,
         type,
         title,
@@ -87,8 +86,8 @@ module.exports = ({ strapi }) => ({
         }
       }
       // Socket
-      if (strapi.io) {
-        strapi.io.to(`user_${user.id}`).emit('notification', { type, title, message, meta });
+      if (strapi.$io) {
+        strapi.$io.server.to(`user_${user.id}`).emit('new-notification', { type, title, message, meta });
       }
     }
     // Notify admin panel users (admin, LMadmin, HRadmin)
@@ -121,8 +120,8 @@ module.exports = ({ strapi }) => ({
             strapi.log.error('Admin email send error:', err);
           }
         }
-        if (strapi.io) {
-          strapi.io.to(`admin_${admin.id}`).emit('notification', { type, title, message, meta });
+        if (strapi.$io) {
+          strapi.$io.server.to(`admin_${admin.id}`).emit('new-notification', { type, title, message, meta });
         }
       }
     }
