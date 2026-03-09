@@ -1147,6 +1147,41 @@ export interface ApiNotificationNotification
   };
 }
 
+export interface ApiOrientationConfirmationOrientationConfirmation
+  extends Struct.CollectionTypeSchema {
+  collectionName: 'orientation_confirmations';
+  info: {
+    displayName: 'Orientation Confirmation';
+    pluralName: 'orientation-confirmations';
+    singularName: 'orientation-confirmation';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    confirmed_at: Schema.Attribute.DateTime & Schema.Attribute.Required;
+    course_document_id: Schema.Attribute.String;
+    course_id: Schema.Attribute.Integer;
+    course_name: Schema.Attribute.String;
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    language: Schema.Attribute.String & Schema.Attribute.Required;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::orientation-confirmation.orientation-confirmation'
+    > &
+      Schema.Attribute.Private;
+    publishedAt: Schema.Attribute.DateTime;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    user_id: Schema.Attribute.Integer & Schema.Attribute.Required;
+    user_name: Schema.Attribute.String;
+  };
+}
+
 export interface ApiProfileEditRequestProfileEditRequest
   extends Struct.CollectionTypeSchema {
   collectionName: 'profile_edit_requests';
@@ -1995,6 +2030,7 @@ declare module '@strapi/strapi' {
       'api::news-category.news-category': ApiNewsCategoryNewsCategory;
       'api::news.news': ApiNewsNews;
       'api::notification.notification': ApiNotificationNotification;
+      'api::orientation-confirmation.orientation-confirmation': ApiOrientationConfirmationOrientationConfirmation;
       'api::profile-edit-request.profile-edit-request': ApiProfileEditRequestProfileEditRequest;
       'api::quiz-reattempt-request.quiz-reattempt-request': ApiQuizReattemptRequestQuizReattemptRequest;
       'api::quiz-submission.quiz-submission': ApiQuizSubmissionQuizSubmission;
