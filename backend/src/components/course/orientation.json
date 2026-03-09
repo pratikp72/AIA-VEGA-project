@@ -27,7 +27,7 @@
       "required": true
     },
     "topics_to_cover": {
-      "type": "blocks",
+      "type": "richtext",
       "required": true
     }
   },

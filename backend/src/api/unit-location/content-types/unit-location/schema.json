@@ -32,7 +32,8 @@
       "required": true
     },
     "note": {
-      "type": "blocks"
+      "type": "richtext",
+      "required": false
     }
   }
 }
