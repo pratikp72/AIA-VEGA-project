@@ -94,8 +94,8 @@
         "positiveOnly": true
       }
     },
-    "description": {
-      "type": "blocks",
+    "video_description": {
+      "type": "richtext",
       "conditions": {
         "visible": {
           "==": [
