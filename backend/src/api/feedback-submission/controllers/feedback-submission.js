@@ -119,6 +119,8 @@ module.exports = createCoreController("api::feedback-submission.feedback-submiss
           answer: String(value ?? ''),
         }));
 
+        console.log('answer length', answers.length);
+
     if (!answers.length) return ctx.badRequest("At least one answer required");
 
     // ADDED: fetch course title so we can store it on feedback-submission
