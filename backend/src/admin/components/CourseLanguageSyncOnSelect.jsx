@@ -175,12 +175,16 @@ function createOrientationPlaceholder(lang) {
     language: lang,
     orientation_flow: 'Before Course Completion',
     trainer_name: '',
-    topics_to_cover: [],
+    topics_to_cover: '',
   };
 }
 
 function ensureArray(val) {
   return Array.isArray(val) ? val : [];
+}
+
+function ensureRichTextString(val) {
+  return typeof val === 'string' ? val : '';
 }
 
 function buildSyncedValues(values, nextLanguages, prevLanguages) {
@@ -205,7 +209,10 @@ function buildSyncedValues(values, nextLanguages, prevLanguages) {
     ...f,
     feedback_question: ensureArray(f.feedback_question),
   }));
-  const normalizedOrientation = ensureArray(syncedOrientation);
+  const normalizedOrientation = ensureArray(syncedOrientation).map((o) => ({
+    ...(o || {}),
+    topics_to_cover: ensureRichTextString(o?.topics_to_cover),
+  }));
 
   return {
     ...values,
@@ -299,7 +306,7 @@ function expandLastOrientationSetToLanguages(orientation, languages) {
       language: cleaned.language,
       orientation_flow: cleaned.orientation_flow ?? 'Before Course Completion',
       trainer_name: cleaned.trainer_name ?? '',
-      topics_to_cover: ensureArray(cleaned.topics_to_cover),
+      topics_to_cover: ensureRichTextString(cleaned.topics_to_cover),
       __temp_key__: `orient-expand-${idx}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
     };
   });
