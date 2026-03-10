@@ -28,6 +28,7 @@ module.exports = {
     const analytics = analyticsController({ strapi });
     const learning = learningController({ strapi });
     const overall = overallController({ strapi });
+    const analyticsService = require('./services/analytics')({ strapi });
 
     strapi.server.routes([
       // ============ LEARNING ANALYTICS ============
@@ -187,6 +188,62 @@ module.exports = {
           policies: [],
         },
       },
+      {
+        method: 'POST',
+        path: '/api/analytics/events/ingest',
+        handler: analytics.eventsIngest,
+        config: {
+          auth: { scope: ['authenticated'] },
+          policies: [],
+        },
+      },
+      {
+        method: 'GET',
+        path: '/api/analytics/events/page-stats',
+        handler: analytics.eventsPageStats,
+        config: {
+          auth: false,
+          policies: [],
+        },
+      },
+      {
+        method: 'GET',
+        path: '/api/analytics/events/page-trend',
+        handler: analytics.eventsPageTrend,
+        config: {
+          auth: false,
+          policies: [],
+        },
+      },
+      {
+        method: 'GET',
+        path: '/api/analytics/events/learning-stats',
+        handler: analytics.eventsLearningStats,
+        config: {
+          auth: false,
+          policies: [],
+        },
+      },
+      {
+        method: 'GET',
+        path: '/api/analytics/events/aggregation-status',
+        handler: analytics.eventsAggregationStatus,
+        config: {
+          auth: false,
+          policies: [],
+        },
+      },
     ]);
+
+    // Keep aggregate cache warm for dashboard reads without scanning raw events each request.
+    const refreshMs = Math.max(60 * 1000, parseInt(process.env.ANALYTICS_AGGREGATION_INTERVAL_MS || '300000', 10));
+    analyticsService.refreshAggregateCaches().catch((e) => {
+      strapi.log.warn('analytics-dashboard initial aggregate refresh failed:', e?.message || e);
+    });
+    setInterval(() => {
+      analyticsService.refreshAggregateCaches().catch((e) => {
+        strapi.log.warn('analytics-dashboard scheduled aggregate refresh failed:', e?.message || e);
+      });
+    }, refreshMs);
   },
 };

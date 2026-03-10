@@ -64,6 +64,23 @@ export function useAnalytics() {
     fetchActivityTrackingKpis: (params) => fetchApi('/api/analytics/activity/kpis', params),
     fetchActivityPagesStats: (params) => fetchApi('/api/analytics/activity/pages-stats', params),
     fetchActivityNewsList: () => fetchApi('/api/analytics/activity/news-list'),
+    ingestAnalyticsEvents: async (events) => {
+      const payload = Array.isArray(events) ? { events } : events;
+      const res = await fetch(`${baseUrl}/api/analytics/events/ingest`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) throw new Error(`API error: ${res.status}`);
+      return res.json();
+    },
+    fetchEventPageStats: (params) => fetchApi('/api/analytics/events/page-stats', params),
+    fetchEventPageTrend: (params) => fetchApi('/api/analytics/events/page-trend', params),
+    fetchEventLearningStats: (params) => fetchApi('/api/analytics/events/learning-stats', params),
+    fetchEventAggregationStatus: () => fetchApi('/api/analytics/events/aggregation-status'),
   };
 }
 

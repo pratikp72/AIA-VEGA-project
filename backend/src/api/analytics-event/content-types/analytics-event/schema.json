@@ -1,0 +1,78 @@
+{
+  "kind": "collectionType",
+  "collectionName": "analytics_events",
+  "info": {
+    "singularName": "analytics-event",
+    "pluralName": "analytics-events",
+    "displayName": "Analytics Event"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "event_id": {
+      "type": "string",
+      "required": true,
+      "unique": true
+    },
+    "event_name": {
+      "type": "string",
+      "required": true
+    },
+    "occurred_at": {
+      "type": "datetime",
+      "required": true
+    },
+    "ingested_at": {
+      "type": "datetime",
+      "required": true
+    },
+    "session_id": {
+      "type": "string"
+    },
+    "route_path": {
+      "type": "string"
+    },
+    "page_type": {
+      "type": "string"
+    },
+    "entity_type": {
+      "type": "string"
+    },
+    "entity_id": {
+      "type": "string"
+    },
+    "duration_seconds": {
+      "type": "integer",
+      "default": 0
+    },
+    "click_count": {
+      "type": "integer",
+      "default": 0
+    },
+    "metadata": {
+      "type": "json"
+    },
+    "client_ts": {
+      "type": "datetime"
+    },
+    "tz_offset": {
+      "type": "integer"
+    },
+    "source": {
+      "type": "string",
+      "default": "web"
+    },
+    "user": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "plugin::users-permissions.user"
+    },
+    "company": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::company.company"
+    }
+  }
+}

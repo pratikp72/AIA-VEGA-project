@@ -2,6 +2,102 @@
 
 This document explains how activity log entries are created with **real data** (vs dummy seed data).
 
+## Telemetry V2 (Recommended)
+
+Use the new batched endpoint for route-level and learning-level analytics. This is designed for exact page paths, click counts, durations in seconds, and deduplication using `event_id`.
+
+### Endpoint: `POST /api/analytics/events/ingest`
+
+**Authentication:** Required (JWT)
+
+**Request body:**
+
+```json
+{
+  "events": [
+    {
+      "event_id": "1f7c9871-7465-4f60-a042-5d53e63d65db",
+      "event_name": "page_view_started",
+      "occurred_at": "2026-03-09T12:00:00.000Z",
+      "session_id": "sess_abc_123",
+      "route_path": "/course/42/module/3",
+      "page_type": "CourseModule",
+      "entity_type": "module",
+      "entity_id": "3",
+      "duration_seconds": 0,
+      "click_count": 0,
+      "metadata_json": {
+        "referrer": "/course/42"
+      },
+      "client_ts": "2026-03-09T12:00:00.000Z",
+      "tz_offset": -330,
+      "source": "web"
+    },
+    {
+      "event_id": "2cb67096-c2fd-4496-a810-5a15179fbaef",
+      "event_name": "learning_video_progress",
+      "occurred_at": "2026-03-09T12:05:00.000Z",
+      "session_id": "sess_abc_123",
+      "route_path": "/course/42/module/3",
+      "page_type": "CourseModule",
+      "entity_type": "video",
+      "entity_id": "vid_17",
+      "duration_seconds": 300,
+      "click_count": 1,
+      "metadata_json": {
+        "current_position_sec": 300,
+        "video_duration_sec": 840
+      },
+      "source": "web"
+    }
+  ]
+}
+```
+
+**Supported event names:**
+- `page_view_started`
+- `page_view_ended`
+- `page_click`
+- `heartbeat`
+- `learning_module_enter`
+- `learning_module_exit`
+- `learning_video_progress`
+- `learning_video_completed`
+- `learning_quiz_started`
+- `learning_quiz_submitted`
+- `learning_feedback_opened`
+- `learning_feedback_submitted`
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "ingested": 2,
+  "duplicates": 0,
+  "rejected": 0,
+  "errors": []
+}
+```
+
+### Aggregate Read Endpoints
+
+- `GET /api/analytics/events/page-stats`
+  - Returns route-level metrics: `visits`, `unique_users`, `total_time_seconds`, `total_clicks`.
+- `GET /api/analytics/events/page-trend`
+  - Returns 5-minute buckets for trend charts.
+- `GET /api/analytics/events/learning-stats`
+  - Returns learning totals: module/video/quiz/feedback time, unique users, drop-off count.
+- `GET /api/analytics/events/aggregation-status`
+  - Returns cache refresh status for scheduled aggregation warmup.
+
+### Notes
+
+- Send all durations in **seconds**.
+- Generate stable UUID `event_id` per event; retries with same ID are deduplicated.
+- The backend always resolves `user` from JWT and ignores user spoofing in payload.
+- Aggregation cache refresh runs every 5 minutes by default (`ANALYTICS_AGGREGATION_INTERVAL_MS`).
+
 ---
 
 ## Dummy Data vs Real Data

@@ -179,5 +179,72 @@ module.exports = ({ strapi }) => {
         ctx.status = 200;
       }
     },
+
+    async eventsIngest(ctx) {
+      try {
+        const user = ctx.state?.user;
+        if (!user || !user.id) {
+          return ctx.unauthorized('Authentication required. Send JWT in Authorization header.');
+        }
+        const service = getAnalyticsService();
+        const result = await service.ingestEvents({ user, body: ctx.request?.body || {} });
+        ctx.body = result;
+        ctx.status = result?.success ? 201 : 200;
+      } catch (error) {
+        strapi.log.error('Analytics eventsIngest error:', error);
+        ctx.body = { success: false, ingested: 0, duplicates: 0, rejected: 0, errors: [{ index: -1, message: error?.message || 'Event ingest failed' }] };
+        ctx.status = 200;
+      }
+    },
+
+    async eventsPageStats(ctx) {
+      try {
+        const params = getQueryParams(ctx);
+        const service = getAnalyticsService();
+        const data = await service.getRoutePageStats(params);
+        ctx.body = data || { rows: [], total: 0 };
+      } catch (error) {
+        strapi.log.error('Analytics eventsPageStats error:', error?.message || error);
+        ctx.body = { rows: [], total: 0 };
+        ctx.status = 200;
+      }
+    },
+
+    async eventsPageTrend(ctx) {
+      try {
+        const params = getQueryParams(ctx);
+        const service = getAnalyticsService();
+        const data = await service.getRouteTrend(params);
+        ctx.body = data || [];
+      } catch (error) {
+        strapi.log.error('Analytics eventsPageTrend error:', error?.message || error);
+        ctx.body = [];
+        ctx.status = 200;
+      }
+    },
+
+    async eventsLearningStats(ctx) {
+      try {
+        const params = getQueryParams(ctx);
+        const service = getAnalyticsService();
+        const data = await service.getLearningStats(params);
+        ctx.body = data || { totals: {}, by_entity: [] };
+      } catch (error) {
+        strapi.log.error('Analytics eventsLearningStats error:', error?.message || error);
+        ctx.body = { totals: {}, by_entity: [] };
+        ctx.status = 200;
+      }
+    },
+
+    async eventsAggregationStatus(ctx) {
+      try {
+        const service = getAnalyticsService();
+        ctx.body = service.getCacheStatus();
+      } catch (error) {
+        strapi.log.error('Analytics eventsAggregationStatus error:', error?.message || error);
+        ctx.body = { lastRefreshedAt: null, hasPageSummary: false, hasLearningSummary: false };
+        ctx.status = 200;
+      }
+    },
   };
 };

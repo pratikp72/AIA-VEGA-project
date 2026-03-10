@@ -29,6 +29,11 @@ function getQueryParams(ctx) {
     feedbackGiven: ctx.query.feedbackGiven || ctx.query.feedback_given,
     moduleTitle: ctx.query.moduleTitle || ctx.query.module_title,
     moduleIndex: ctx.query.moduleIndex ?? ctx.query.module_index,
+    routePath: ctx.query.routePath || ctx.query.route_path,
+    pageType: ctx.query.pageType || ctx.query.page_type,
+    entityType: ctx.query.entityType || ctx.query.entity_type,
+    entityId: ctx.query.entityId || ctx.query.entity_id,
+    eventName: ctx.query.eventName || ctx.query.event_name,
   };
 }
 

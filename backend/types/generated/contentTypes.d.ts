@@ -492,6 +492,56 @@ export interface ApiActivityLogActivityLog extends Struct.CollectionTypeSchema {
   };
 }
 
+export interface ApiAnalyticsEventAnalyticsEvent
+  extends Struct.CollectionTypeSchema {
+  collectionName: 'analytics_events';
+  info: {
+    displayName: 'Analytics Event';
+    pluralName: 'analytics-events';
+    singularName: 'analytics-event';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    click_count: Schema.Attribute.Integer & Schema.Attribute.DefaultTo<0>;
+    client_ts: Schema.Attribute.DateTime;
+    company: Schema.Attribute.Relation<'manyToOne', 'api::company.company'>;
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    duration_seconds: Schema.Attribute.Integer & Schema.Attribute.DefaultTo<0>;
+    entity_id: Schema.Attribute.String;
+    entity_type: Schema.Attribute.String;
+    event_id: Schema.Attribute.String &
+      Schema.Attribute.Required &
+      Schema.Attribute.Unique;
+    event_name: Schema.Attribute.String & Schema.Attribute.Required;
+    ingested_at: Schema.Attribute.DateTime & Schema.Attribute.Required;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::analytics-event.analytics-event'
+    > &
+      Schema.Attribute.Private;
+    metadata: Schema.Attribute.JSON;
+    occurred_at: Schema.Attribute.DateTime & Schema.Attribute.Required;
+    page_type: Schema.Attribute.String;
+    publishedAt: Schema.Attribute.DateTime;
+    route_path: Schema.Attribute.String;
+    session_id: Schema.Attribute.String;
+    source: Schema.Attribute.String & Schema.Attribute.DefaultTo<'web'>;
+    tz_offset: Schema.Attribute.Integer;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    user: Schema.Attribute.Relation<
+      'manyToOne',
+      'plugin::users-permissions.user'
+    >;
+  };
+}
+
 export interface ApiCompanyPolicyCompanyPolicy
   extends Struct.CollectionTypeSchema {
   collectionName: 'company_policies';
@@ -1979,6 +2029,7 @@ declare module '@strapi/strapi' {
       'admin::transfer-token-permission': AdminTransferTokenPermission;
       'admin::user': AdminUser;
       'api::activity-log.activity-log': ApiActivityLogActivityLog;
+      'api::analytics-event.analytics-event': ApiAnalyticsEventAnalyticsEvent;
       'api::company-policy.company-policy': ApiCompanyPolicyCompanyPolicy;
       'api::company.company': ApiCompanyCompany;
       'api::course-assignment.course-assignment': ApiCourseAssignmentCourseAssignment;

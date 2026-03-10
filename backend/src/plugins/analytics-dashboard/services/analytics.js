@@ -8,17 +8,24 @@ const getShared = (strapi) => require('./analyticsShared')({ strapi });
 const getCommon = (strapi) => require('./analyticsCommon')({ strapi });
 const getLearningQuiz = (strapi) => require('./learning/learningQuiz')({ strapi });
 const getOverall = (strapi) => require('./overall/overall')({ strapi });
+const getTelemetry = (strapi) => require('./analyticsTelemetry')({ strapi });
 
 module.exports = ({ strapi }) => {
+  if (strapi.__analyticsDashboardService) {
+    return strapi.__analyticsDashboardService;
+  }
+
   const shared = getShared(strapi);
   const common = getCommon(strapi);
   const learningQuiz = getLearningQuiz(strapi);
   const overall = getOverall(strapi);
-  return {
+  const telemetry = getTelemetry(strapi);
+  const service = {
     ...shared,
     ...common,
     ...learningQuiz,
     ...overall,
+    ...telemetry,
 
   /**
    * LEARNING ANALYTICS - Global (all employees)
@@ -710,7 +717,7 @@ module.exports = ({ strapi }) => {
           });
         } catch (e) {
           return [];
-        }
+        };
       };
 
       let raw = [];
@@ -2333,5 +2340,8 @@ module.exports = ({ strapi }) => {
     if (companyId == null) return [];
     return this._getCoursesByCompanyId(companyId);
   },
-};
+  };
+
+  strapi.__analyticsDashboardService = service;
+  return service;
 };
