@@ -2,12 +2,12 @@
 
 /**
  * event controller
- * Filters events by authenticated user's company (AIA/Vega) when applicable.
+ * Filters events by authenticated user's company (AIA/Vega) and department when applicable.
  */
 
 const { createCoreController } = require('@strapi/strapi').factories;
 
-async function getUserCompany(strapi, ctx) {
+async function getUserInfo(strapi, ctx) {
   let userId = ctx.state?.user?.id;
   if (!userId) {
     const authHeader = ctx.request?.header?.authorization || ctx.request?.headers?.authorization;
@@ -24,22 +24,25 @@ async function getUserCompany(strapi, ctx) {
       }
     }
   }
-  if (!userId) return null;
+  if (!userId) return { company: null, department: null };
   const user = await strapi.db.query('plugin::users-permissions.user').findOne({
     where: { id: userId },
-    select: ['company'],
+    select: ['company', 'department'],
   });
   const raw = (user?.company || '').trim();
-  if (!raw) return null;
-  const upper = raw.toUpperCase();
-  if (upper === 'AIA') return 'AIA';
-  if (upper === 'VEGA') return 'Vega';
-  return null;
+  let company = null;
+  if (raw) {
+    const upper = raw.toUpperCase();
+    if (upper === 'AIA') company = 'AIA';
+    else if (upper === 'VEGA') company = 'Vega';
+  }
+  const department = (user?.department || '').trim() || null;
+  return { company, department };
 }
 
 module.exports = createCoreController('api::event.event', ({ strapi }) => ({
   async find(ctx) {
-    const userCompany = await getUserCompany(strapi, ctx);
+    const { company: userCompany, department: userDepartment } = await getUserInfo(strapi, ctx);
     const where = { publishedAt: { $notNull: true } };
     if (userCompany) {
       where.company = { name: userCompany };
@@ -49,9 +52,24 @@ module.exports = createCoreController('api::event.event', ({ strapi }) => ({
       orderBy: { start_date: 'asc' },
       populate: ['event_image', 'company', 'department'],
     });
+
+    // Filter department-specific events: only show to users in that department.
+    // Events with event_created_for = 'All' (or unset) are always shown.
+    const filtered = items.filter((ev) => {
+      if (!ev.event_created_for || ev.event_created_for === 'All') return true;
+      if (ev.event_created_for === 'department') {
+        const evDept = (ev.department?.name || '').trim().toLowerCase();
+        const uDept = (userDepartment || '').toLowerCase();
+        // If we can't determine the user's department, show the event anyway
+        if (!uDept) return true;
+        return evDept === uDept;
+      }
+      return true;
+    });
+
     ctx.body = {
-      data: items,
-      meta: { pagination: { page: 1, pageSize: items.length, pageCount: 1, total: items.length } },
+      data: filtered,
+      meta: { pagination: { page: 1, pageSize: filtered.length, pageCount: 1, total: filtered.length } },
     };
   },
   async findOne(ctx) {
