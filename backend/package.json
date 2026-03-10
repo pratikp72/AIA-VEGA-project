@@ -26,6 +26,7 @@
     "@arshiash80/strapi-plugin-iconhub": "^1.1.1",
     "@strapi-community/plugin-io": "^5.3.2",
     "@strapi/plugin-cloud": "5.33.1",
+    "@strapi/plugin-color-picker": "^5.38.0",
     "@strapi/plugin-documentation": "^5.36.1",
     "@strapi/plugin-graphql": "^5.37.1",
     "@strapi/plugin-users-permissions": "5.33.1",

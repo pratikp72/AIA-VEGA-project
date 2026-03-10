@@ -88,11 +88,12 @@ function syncModuleBlocks(current, prevLanguages, nextLanguages, createPlacehold
     return nextLanguages.map((lang, i) => createPlaceholder(lang, i));
   }
 
-  // Infer block size: when reducing languages, use prevLanguages; otherwise infer from list.
+  // Infer block size using previous language count whenever possible.
+  // This preserves existing module blocks when languages are added (e.g. 4 entries at 2 langs -> 6 at 3 langs).
   const prevLangN = Array.isArray(prevLanguages) && prevLanguages.length > 0 ? prevLanguages.length : nextN;
   let prevN;
-  if (nextN < prevLangN && list.length % prevLangN === 0) {
-    prevN = prevLangN; // reducing: list has blocks of prevLangN (e.g. 6 modules = 2 blocks of 3)
+  if (prevLangN > 0 && list.length % prevLangN === 0) {
+    prevN = prevLangN; // list has blocks of previous language count (works for add/remove)
   } else if (list.length % nextN === 0 && list.length >= nextN) {
     prevN = nextN; // list is k blocks of nextN
   } else {
@@ -185,6 +186,12 @@ function ensureArray(val) {
 
 function ensureRichTextString(val) {
   return typeof val === 'string' ? val : '';
+}
+
+function shouldExpandAfterSingleAdd(currentLength, languageCount) {
+  if (languageCount <= 0 || currentLength <= 0) return false;
+  // A length of k*N + 1 means a single row was added and needs fan-out to one per language.
+  return currentLength % languageCount === 1;
 }
 
 function buildSyncedValues(values, nextLanguages, prevLanguages) {
@@ -389,7 +396,7 @@ function CourseLanguageSyncOnSelect({ slug, model }) {
     }
 
     // 3. When user clicks "Add an entry", Strapi adds 1 row. Expand it to N rows (one per language).
-    if (N >= 1 && modules.length >= 1 && modules.length === prevLengths.modules + 1 && modules.length % N === 1) {
+    if (shouldExpandAfterSingleAdd(modules.length, N)) {
       const expanded = expandLastModuleSetToLanguages(modules, languages);
       if (expanded) {
         prevLangRef.current = languages;
@@ -401,7 +408,7 @@ function CourseLanguageSyncOnSelect({ slug, model }) {
         return;
       }
     }
-    if (N >= 1 && quiz.length >= 1 && quiz.length === prevLengths.quiz + 1 && quiz.length % N === 1) {
+    if (shouldExpandAfterSingleAdd(quiz.length, N)) {
       const expanded = expandLastQuizSetToLanguages(quiz, languages);
       if (expanded) {
         prevLangRef.current = languages;
@@ -413,7 +420,7 @@ function CourseLanguageSyncOnSelect({ slug, model }) {
         return;
       }
     }
-    if (N >= 1 && feedback.length >= 1 && feedback.length === prevLengths.feedback + 1 && feedback.length % N === 1) {
+    if (shouldExpandAfterSingleAdd(feedback.length, N)) {
       const expanded = expandLastFeedbackSetToLanguages(feedback, languages);
       if (expanded) {
         prevLangRef.current = languages;
@@ -427,10 +434,7 @@ function CourseLanguageSyncOnSelect({ slug, model }) {
     }
     if (
       orientationRequired &&
-      N >= 1 &&
-      orientationDetail.length >= 1 &&
-      orientationDetail.length === prevLengths.orientation_detail + 1 &&
-      orientationDetail.length % N === 1
+      shouldExpandAfterSingleAdd(orientationDetail.length, N)
     ) {
       const expanded = expandLastOrientationSetToLanguages(orientationDetail, languages);
       if (expanded) {
