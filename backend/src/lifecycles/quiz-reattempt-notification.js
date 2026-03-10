@@ -51,14 +51,28 @@ function registerQuizReattemptNotificationLifecycles(strapi) {
         const meta = { courseId: courseId || null, requestId: refetched.id ?? refetched.documentId };
         const isApproved = status === 'Approved';
 
+        // Resolve course title for a descriptive notification
+        let courseTitle = null;
+        if (courseId) {
+          try {
+            const course = await strapi.db.query('api::course.course').findOne({
+              where: Number.isFinite(Number(courseId)) ? { id: Number(courseId) } : { documentId: String(courseId) },
+              select: ['title'],
+            });
+            courseTitle = course?.title || null;
+          } catch { /* keep null */ }
+        }
+
+        const enrichedMeta = { ...meta, courseTitle };
+
         await notifUtil.sendNotification(
           isApproved ? 'quiz_reattempt_approved' : 'quiz_reattempt_rejected',
           isApproved ? 'Quiz Reattempt Approved' : 'Quiz Reattempt Rejected',
           isApproved
-            ? 'Your quiz reattempt request has been approved.'
-            : 'Your quiz reattempt request has been rejected.',
+            ? `Your reattempt request${courseTitle ? ` for "${courseTitle}"` : ''} has been approved. You can now reattempt the quiz.`
+            : `Your reattempt request${courseTitle ? ` for "${courseTitle}"` : ''} has been rejected. Please contact your L&D team for more information.`,
           [{ id: user.id, email: user.email }],
-          meta,
+          enrichedMeta,
           [], // admin does not get this; only the user sees it in their bell + email
           { sendEmail: true, sendSocket: true }
         );

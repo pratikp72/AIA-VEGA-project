@@ -1335,7 +1335,7 @@ export interface ApiUnitLocationUnitLocation
     > &
       Schema.Attribute.Private;
     name: Schema.Attribute.String & Schema.Attribute.Required;
-    note: Schema.Attribute.Blocks;
+    note: Schema.Attribute.RichText;
     publishedAt: Schema.Attribute.DateTime;
     units: Schema.Attribute.Component<'routes.bus-route', true> &
       Schema.Attribute.Required;
