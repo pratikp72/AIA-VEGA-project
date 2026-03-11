@@ -15,10 +15,6 @@
       "type": "string",
       "required": true
     },
-    "description": {
-      "type": "richtext",
-      "required": true
-    },
     "document": {
       "type": "media",
       "multiple": false,
@@ -40,19 +36,13 @@
       "relation": "manyToMany",
       "target": "api::company.company"
     },
-    "policy_detail": {
-      "type": "customField",
-      "customField": "plugin::ckeditor5.CKEditor",
-      "options": {
-        "preset": "defaultMarkdown"
-      }
-    },
-    "policy": {
+    "description": {
       "type": "customField",
       "customField": "plugin::ckeditor5.CKEditor",
       "options": {
         "preset": "defaultHtml"
-      }
+      },
+      "required": true
     }
   }
 }
