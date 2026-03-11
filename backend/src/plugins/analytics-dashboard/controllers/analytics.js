@@ -6,29 +6,43 @@
  */
 const getQueryParams = require('./utils/getQueryParams');
 
-async function getUserCompanyFromAuth(strapi, ctx) {
-  let userId = ctx.state?.user?.id;
-  if (!userId) {
-    const authHeader = ctx.request?.header?.authorization || ctx.request?.headers?.authorization;
-    if (authHeader?.startsWith('Bearer ')) {
-      const token = authHeader.slice(7).trim();
-      try {
-        const jwtService = strapi.plugins?.['users-permissions']?.services?.jwt;
-        if (jwtService) {
-          const decoded = await jwtService.verify(token);
-          userId = decoded?.id ?? decoded?._id;
-        }
-      } catch (e) {
-        /* ignore */
-      }
-    }
+async function resolvePortalUserFromHeader(strapi, ctx) {
+  const fromState = ctx.state?.user;
+  if (fromState?.id) return fromState;
+
+  const authHeader =
+    ctx.request?.header?.authorization ||
+    ctx.request?.headers?.authorization ||
+    '';
+  if (!authHeader.startsWith('Bearer ')) return null;
+
+  const token = authHeader.slice(7).trim();
+  if (!token) return null;
+
+  try {
+    const jwtService = strapi.plugins?.['users-permissions']?.services?.jwt;
+    if (!jwtService) return null;
+
+    const decoded = await jwtService.verify(token);
+    const userId = decoded?.id ?? decoded?._id ?? decoded?.sub;
+    if (!userId) return null;
+
+    const user = await strapi.db.query('plugin::users-permissions.user').findOne({
+      where: { id: userId, blocked: { $ne: true } },
+      select: ['id', 'company', 'department', 'email', 'username'],
+    });
+
+    return user || null;
+  } catch {
+    return null;
   }
+}
+
+async function getUserCompanyFromAuth(strapi, ctx) {
+  const resolvedUser = await resolvePortalUserFromHeader(strapi, ctx);
+  const userId = resolvedUser?.id;
   if (!userId) return null;
-  const user = await strapi.db.query('plugin::users-permissions.user').findOne({
-    where: { id: userId },
-    select: ['company'],
-  });
-  const raw = (user?.company || '').trim();
+  const raw = (resolvedUser?.company || '').trim();
   if (!raw) return null;
   const upper = raw.toUpperCase();
   if (upper === 'AIA') return 'AIA';
@@ -149,15 +163,15 @@ module.exports = ({ strapi }) => {
 
     async activityTrack(ctx) {
       try {
-        const user = ctx.state?.user;
-        if (!user || !user.id) {
+        const user = await resolvePortalUserFromHeader(strapi, ctx);
+        if (!user?.id) {
           return ctx.unauthorized('Authentication required. Send JWT in Authorization header.');
         }
         const body = ctx.request?.body || {};
         const { activity_type, activity_description, duration_seconds } = body;
         const validTypes = ['News', 'Event', 'Course', 'Quiz', 'Feedback', 'Location', 'Routes', 'People', 'Gallery', 'Home', 'Company policy', 'Form & Templates', 'Calendar'];
         if (!activity_type || !validTypes.includes(activity_type)) {
-          return ctx.badRequest(`activity_type is required and must be one of: ${validTypes.join(', ')}`);
+          return ctx.badRequest('Invalid activity_type');
         }
         if (!activity_description || typeof activity_description !== 'string') {
           return ctx.badRequest('activity_description is required (string)');
@@ -182,12 +196,22 @@ module.exports = ({ strapi }) => {
 
     async eventsIngest(ctx) {
       try {
-        const user = ctx.state?.user;
-        if (!user || !user.id) {
+        const user = await resolvePortalUserFromHeader(strapi, ctx);
+        if (!user?.id) {
           return ctx.unauthorized('Authentication required. Send JWT in Authorization header.');
         }
+
+        const body = ctx.request?.body || {};
+        const events = Array.isArray(body?.events) ? body.events : [];
+        if (events.length === 0) {
+          return ctx.badRequest('events array is required');
+        }
+        if (events.length > 100) {
+          return ctx.badRequest('Maximum 100 events per request');
+        }
+
         const service = getAnalyticsService();
-        const result = await service.ingestEvents({ user, body: ctx.request?.body || {} });
+        const result = await service.ingestEvents({ user, body });
         ctx.body = result;
         ctx.status = result?.success ? 201 : 200;
       } catch (error) {

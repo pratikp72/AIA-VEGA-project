@@ -184,7 +184,7 @@ module.exports = {
         path: '/api/analytics/activity/track',
         handler: analytics.activityTrack,
         config: {
-          auth: { scope: ['authenticated'] },
+          auth: false,
           policies: [],
         },
       },
@@ -193,7 +193,7 @@ module.exports = {
         path: '/api/analytics/events/ingest',
         handler: analytics.eventsIngest,
         config: {
-          auth: { scope: ['authenticated'] },
+          auth: false,
           policies: [],
         },
       },
