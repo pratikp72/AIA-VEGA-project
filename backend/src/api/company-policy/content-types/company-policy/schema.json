@@ -39,6 +39,20 @@
       "type": "relation",
       "relation": "manyToMany",
       "target": "api::company.company"
+    },
+    "policy_detail": {
+      "type": "customField",
+      "customField": "plugin::ckeditor5.CKEditor",
+      "options": {
+        "preset": "defaultMarkdown"
+      }
+    },
+    "policy": {
+      "type": "customField",
+      "customField": "plugin::ckeditor5.CKEditor",
+      "options": {
+        "preset": "defaultHtml"
+      }
     }
   }
 }

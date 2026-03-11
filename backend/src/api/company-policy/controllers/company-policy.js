@@ -18,7 +18,7 @@ module.exports = createCoreController('api::company-policy.company-policy', ({ s
     const items = await strapi.db.query('api::company-policy.company-policy').findMany({
       where,
       orderBy: { createdAt: 'desc' },
-      populate: ['document', 'company'],
+      populate: ['document', 'company', 'policy','policy_detail'],
     });
     ctx.body = {
       data: items,
@@ -34,7 +34,7 @@ module.exports = createCoreController('api::company-policy.company-policy', ({ s
     if (userCompany) where.company = { name: userCompany };
     const item = await strapi.db.query('api::company-policy.company-policy').findOne({
       where,
-      populate: ['document', 'company'],
+      populate: ['document', 'company', 'policy','policy_detail'],
     });
     if (!item) {
       return ctx.notFound();

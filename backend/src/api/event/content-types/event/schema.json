@@ -127,10 +127,10 @@
       "target": "api::event-type.event-type",
       "inversedBy": "events"
     },
-    "locations": {
+    "work_locations": {
       "type": "relation",
       "relation": "manyToMany",
-      "target": "api::unit-location.unit-location",
+      "target": "api::work-location.work-location",
       "conditions": {
         "visible": {
           "==": [
