@@ -3,24 +3,14 @@ module.exports = [
   'global::ensure-work-location-after-user',
   'strapi::logger',
   'strapi::errors',
-  {
-    name: 'strapi::security',
-    config: {
-      contentSecurityPolicy: {
-        useDefaults: true,
-        directives: {
-          'connect-src': ["'self'", 'https:', 'http:'],
-          upgradeInsecureRequests: null,
-        },
-      },
-    },
-  },
+  'strapi::security',
   {
     name: 'strapi::cors',
     config: {
-      enabled: true,
-      headers: '*',
-      origin: '*',
+      origin: ['http://192.168.2.85:3000', 'http://localhost:3000'],
+      methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'],
+      headers: ['Content-Type', 'Authorization', 'Origin', 'Accept'],
+      keepHeaderOnError: true,
     },
   },
   'strapi::poweredBy',
