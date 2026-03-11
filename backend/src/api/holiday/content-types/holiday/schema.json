@@ -28,7 +28,41 @@
       "type": "relation",
       "relation": "manyToMany",
       "target": "api::company.company",
+      "conditions": {
+        "visible": {
+          "==": [
+            {
+              "var": "holiday_for"
+            },
+            "Company"
+          ]
+        }
+      },
       "mappedBy": "holidays"
+    },
+    "holiday_for": {
+      "type": "enumeration",
+      "required": true,
+      "enum": [
+        "Company",
+        "Location"
+      ]
+    },
+    "work_locations": {
+      "type": "relation",
+      "relation": "manyToMany",
+      "target": "api::work-location.work-location",
+      "conditions": {
+        "visible": {
+          "==": [
+            {
+              "var": "holiday_for"
+            },
+            "Location"
+          ]
+        }
+      },
+      "inversedBy": "holidays"
     }
   }
 }

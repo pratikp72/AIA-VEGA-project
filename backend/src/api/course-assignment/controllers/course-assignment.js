@@ -24,12 +24,24 @@ module.exports = createCoreController('api::course-assignment.course-assignment'
       users = await util.getUsersByWorkLocation(workLocationId);
     }
 
+    // Fetch course title for a meaningful notification message
+    let courseTitle = 'A new course';
+    if (courseId) {
+      try {
+        const course = await strapi.db.query('api::course.course').findOne({
+          where: { $or: [{ id: courseId }, { documentId: courseId }] },
+          select: ['title'],
+        });
+        if (course?.title) courseTitle = course.title;
+      } catch { /* keep default */ }
+    }
+
     // Admin → User: only the assigned user gets notification (bell) + email
     const meta = { courseId, assignedBy, level };
     await util.sendNotification(
       'course_assigned',
       'Course Assigned',
-      'A new course has been assigned to you.',
+      `"${courseTitle}" has been assigned to you.`,
       users,
       meta,
       [] // no admin roles: notification goes only to user's bell + email

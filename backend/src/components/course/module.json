@@ -68,19 +68,6 @@
         "files"
       ]
     },
-    "text_content": {
-      "type": "blocks",
-      "conditions": {
-        "visible": {
-          "==": [
-            {
-              "var": "module_content_type"
-            },
-            "Text"
-          ]
-        }
-      }
-    },
     "mark_as_read": {
       "type": "boolean",
       "required": true,
@@ -94,8 +81,26 @@
         "positiveOnly": true
       }
     },
+    "text_content": {
+      "type": "customField",
+      "conditions": {
+        "visible": {
+          "==": [
+            {
+              "var": "module_content_type"
+            },
+            "Text"
+          ]
+        }
+      },
+      "customField": "plugin::ckeditor5.CKEditor",
+      "options": {
+        "preset": "defaultHtml"
+      },
+      "required": true
+    },
     "video_description": {
-      "type": "richtext",
+      "type": "customField",
       "conditions": {
         "visible": {
           "==": [
@@ -105,6 +110,10 @@
             "Video"
           ]
         }
+      },
+      "customField": "plugin::ckeditor5.CKEditor",
+      "options": {
+        "preset": "defaultHtml"
       },
       "required": true
     }
