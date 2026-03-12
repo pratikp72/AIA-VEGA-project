@@ -15,10 +15,6 @@
       "type": "string",
       "required": true
     },
-    "description": {
-      "type": "richtext",
-      "required": true
-    },
     "cover_image": {
       "type": "media",
       "multiple": false,
@@ -66,6 +62,14 @@
       "type": "relation",
       "relation": "manyToMany",
       "target": "plugin::users-permissions.user"
+    },
+    "description": {
+      "type": "customField",
+      "customField": "plugin::ckeditor5.CKEditor",
+      "options": {
+        "preset": "defaultHtml"
+      },
+      "required": true
     }
   }
 }

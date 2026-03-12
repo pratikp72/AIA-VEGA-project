@@ -6,7 +6,6 @@ export interface CourseModule extends Struct.ComponentSchema {
     displayName: 'Module';
   };
   attributes: {
-    description: Schema.Attribute.Blocks & Schema.Attribute.Required;
     language: Schema.Attribute.Enumeration<['English', 'Hindi', 'Gujarati']> &
       Schema.Attribute.Required;
     mark_as_read: Schema.Attribute.Boolean &
@@ -30,6 +29,7 @@ export interface CourseModule extends Struct.ComponentSchema {
     pdf_file: Schema.Attribute.Media<'files', true> & Schema.Attribute.Required;
     text_content: Schema.Attribute.Blocks;
     title: Schema.Attribute.String & Schema.Attribute.Required;
+    video_description: Schema.Attribute.RichText & Schema.Attribute.Required;
     video_file: Schema.Attribute.Media<'videos', true> &
       Schema.Attribute.Required;
   };
@@ -47,7 +47,7 @@ export interface CourseOrientation extends Struct.ComponentSchema {
       ['Before Course Completion', 'After Course Completion']
     > &
       Schema.Attribute.Required;
-    topics_to_cover: Schema.Attribute.Blocks & Schema.Attribute.Required;
+    topics_to_cover: Schema.Attribute.RichText & Schema.Attribute.Required;
     trainer_name: Schema.Attribute.String & Schema.Attribute.Required;
   };
 }

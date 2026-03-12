@@ -390,15 +390,27 @@ module.exports = createCoreController(
         // ------------------------------------------------------
         // 8. Notification + email: Admin and LM Admin
         // ------------------------------------------------------
-        const meta = { courseId, userId, score, passed };
         /** @type {any} */
         const strapiAny = strapi;
         const notifUtil = strapiAny?.utils?.notification;
         if (notifUtil) {
+          // Resolve names for descriptive admin email
+          let courseTitle = null;
+          let userName = null;
+          try {
+            const [courseRow, userRow] = await Promise.all([
+              strapi.db.query('api::course.course').findOne({ where: { id: Number(courseId) }, select: ['title'] }),
+              strapi.db.query('plugin::users-permissions.user').findOne({ where: { id: Number(userId) }, select: ['username', 'email'] }),
+            ]);
+            courseTitle = courseRow?.title || null;
+            userName = userRow?.username || userRow?.email || null;
+          } catch { /* keep null */ }
+
+          const meta = { courseId, userId, score, passed, courseTitle, userName };
           await notifUtil.sendNotification(
             'quiz_submitted',
             'Quiz Submitted',
-            'A user submitted a quiz.',
+            `${userName || `User #${userId}`} has submitted the quiz${courseTitle ? ` for "${courseTitle}"` : ''}. Score: ${score}% — ${passed ? 'PASSED ✓' : 'FAILED ✗'}. Please review the result in the admin panel.`,
             [],
             meta,
             ['admin', 'LMadmin'],

@@ -56,6 +56,7 @@ const MultiSelectDropdownInput = React.forwardRef((props, ref) => {
   const pluginOpts = attribute?.pluginOptions?.customField || {};
   const opts = { ...pluginOpts, ...builderOpts };
   const isRequired = required === true || opts.required === true;
+  const placeholderText = opts.placeholder != null ? String(opts.placeholder) : 'Select...';
   const optionsListStr = opts.optionsList != null ? String(opts.optionsList) : '';
   const options = useMemo(() => parseOptionsList(optionsListStr), [optionsListStr]);
 
@@ -123,7 +124,7 @@ const MultiSelectDropdownInput = React.forwardRef((props, ref) => {
             name={name}
             value={selectedValues}
             onChange={handleChange}
-            placeholder="Select..."
+            placeholder={placeholderText}
             disabled={disabled}
             hasError={!!error}
             required={isRequired}

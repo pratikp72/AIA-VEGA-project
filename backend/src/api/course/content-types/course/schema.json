@@ -82,7 +82,8 @@
       "customField": "global::number-range",
       "options": {
         "positiveOnly": true,
-        "required": true
+        "required": true,
+        "placeholder": "Example 70%"
       }
     },
     "orientation_required": {

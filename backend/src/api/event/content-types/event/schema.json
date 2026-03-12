@@ -20,11 +20,11 @@
       "required": true
     },
     "start_date": {
-      "type": "datetime",
+      "type": "date",
       "required": true
     },
     "end_date": {
-      "type": "datetime",
+      "type": "date",
       "required": true
     },
     "event_location": {
@@ -61,7 +61,7 @@
       "required": true,
       "enum": [
         "All",
-        "department"
+        "Location"
       ]
     },
     "department": {
@@ -79,21 +79,69 @@
         }
       }
     },
-    "event_type": {
-      "type": "enumeration",
-      "required": true,
-      "enum": [
-        "Training session",
-        "Conference",
-        "Workshop"
-      ]
-    },
     "event_image": {
       "type": "media",
       "multiple": false,
       "allowedTypes": [
         "images"
       ]
+    },
+    "time_required": {
+      "type": "customField",
+      "customField": "global::yes-no-toggle",
+      "options": {
+        "required": true
+      }
+    },
+    "start_time": {
+      "type": "time",
+      "conditions": {
+        "visible": {
+          "==": [
+            {
+              "var": "time_required"
+            },
+            true
+          ]
+        }
+      },
+      "required": true
+    },
+    "end_time": {
+      "type": "time",
+      "conditions": {
+        "visible": {
+          "==": [
+            {
+              "var": "time_required"
+            },
+            true
+          ]
+        }
+      },
+      "required": true
+    },
+    "type_of_event": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::event-type.event-type",
+      "inversedBy": "events"
+    },
+    "work_locations": {
+      "type": "relation",
+      "relation": "manyToMany",
+      "target": "api::work-location.work-location",
+      "conditions": {
+        "visible": {
+          "==": [
+            {
+              "var": "event_created_for"
+            },
+            "Location"
+          ]
+        }
+      },
+      "inversedBy": "events"
     }
   }
 }

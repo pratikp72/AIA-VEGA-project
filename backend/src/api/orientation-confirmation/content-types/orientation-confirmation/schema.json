@@ -1,0 +1,39 @@
+{
+  "kind": "collectionType",
+  "collectionName": "orientation_confirmations",
+  "info": {
+    "singularName": "orientation-confirmation",
+    "pluralName": "orientation-confirmations",
+    "displayName": "Orientation Confirmation"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "user_id": {
+      "type": "integer",
+      "required": true
+    },
+    "user_name": {
+      "type": "string"
+    },
+    "course_id": {
+      "type": "integer"
+    },
+    "course_document_id": {
+      "type": "string"
+    },
+    "course_name": {
+      "type": "string"
+    },
+    "language": {
+      "type": "string",
+      "required": true
+    },
+    "confirmed_at": {
+      "type": "datetime",
+      "required": true
+    }
+  }
+}

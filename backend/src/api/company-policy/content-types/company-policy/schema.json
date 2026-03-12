@@ -15,10 +15,6 @@
       "type": "string",
       "required": true
     },
-    "description": {
-      "type": "richtext",
-      "required": true
-    },
     "document": {
       "type": "media",
       "multiple": false,
@@ -39,6 +35,14 @@
       "type": "relation",
       "relation": "manyToMany",
       "target": "api::company.company"
+    },
+    "description": {
+      "type": "customField",
+      "customField": "plugin::ckeditor5.CKEditor",
+      "options": {
+        "preset": "defaultHtml"
+      },
+      "required": true
     }
   }
 }

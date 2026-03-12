@@ -95,13 +95,25 @@ module.exports = createCoreController(
       }
 
       // Notification + email: Admin and LM Admin (run in background so response returns quickly)
-      const meta = { courseId, userId };
       const notifUtil = strapi.utils?.notification;
       if (notifUtil) {
+        // Resolve names for descriptive admin email
+        let courseTitle = null;
+        let userName = null;
+        try {
+          const [courseRow, userRow] = await Promise.all([
+            strapi.db.query('api::course.course').findOne({ where: { id: Number(courseId) }, select: ['title'] }),
+            strapi.db.query('plugin::users-permissions.user').findOne({ where: { id: Number(userId) }, select: ['username', 'email'] }),
+          ]);
+          courseTitle = courseRow?.title || null;
+          userName = userRow?.username || userRow?.email || null;
+        } catch { /* keep null */ }
+
+        const meta = { courseId, userId, courseTitle, userName };
         notifUtil.sendNotification(
           "quiz_reattempt_requested",
           "Quiz Reattempt Requested",
-          "A user requested a quiz reattempt.",
+          `${userName || `User #${userId}`} has requested a quiz reattempt${courseTitle ? ` for "${courseTitle}"` : ''}. Please review and approve or reject the request in the admin panel.`,
           [],
           meta,
           ["admin", "LMadmin"],
