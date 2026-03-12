@@ -1,0 +1,68 @@
+{
+  "kind": "collectionType",
+  "collectionName": "course_workflows",
+  "info": {
+    "singularName": "course-workflow",
+    "pluralName": "course-workflows",
+    "displayName": "Course Workflow"
+  },
+  "options": {
+    "draftAndPublish": true
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "category": {
+      "type": "enumeration",
+      "enum": [
+        "Mandatory",
+        "Orientation",
+        "other"
+      ]
+    },
+    "users_permissions_users": {
+      "type": "relation",
+      "relation": "oneToMany",
+      "target": "plugin::users-permissions.user",
+      "mappedBy": "course_workflow"
+    },
+    "module_type": {
+      "type": "enumeration",
+      "required": true,
+      "enum": [
+        "Online",
+        "Offline"
+      ]
+    },
+    "course": {
+      "type": "relation",
+      "relation": "oneToOne",
+      "target": "api::course.course",
+      "conditions": {
+        "visible": {
+          "==": [
+            {
+              "var": "module_type"
+            },
+            "Online"
+          ]
+        }
+      },
+      "inversedBy": "course_workflow"
+    },
+    "offline_module": {
+      "type": "component",
+      "conditions": {
+        "visible": {
+          "==": [
+            {
+              "var": "module_type"
+            },
+            "Offline"
+          ]
+        }
+      },
+      "component": "course.workflow-module",
+      "repeatable": true
+    }
+  }
+}

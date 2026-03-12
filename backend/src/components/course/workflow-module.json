@@ -1,0 +1,38 @@
+{
+  "collectionName": "components_course_workflow_modules",
+  "info": {
+    "displayName": "Workflow Module"
+  },
+  "options": {},
+  "attributes": {
+    "username": {
+      "type": "string",
+      "required": true
+    },
+    "description": {
+      "type": "customField",
+      "customField": "plugin::ckeditor5.CKEditor",
+      "options": {
+        "preset": "defaultHtml"
+      },
+      "required": false
+    },
+    "attachment": {
+      "type": "media",
+      "multiple": true,
+      "allowedTypes": [
+        "images",
+        "files"
+      ]
+    },
+    "attempt": {
+      "type": "integer",
+      "min": 0
+    },
+    "passing_score": {
+      "type": "integer",
+      "min": 0
+    }
+  },
+  "config": {}
+}
