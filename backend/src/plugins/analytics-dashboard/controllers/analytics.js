@@ -168,22 +168,84 @@ module.exports = ({ strapi }) => {
           return ctx.unauthorized('Authentication required. Send JWT in Authorization header.');
         }
         const body = ctx.request?.body || {};
-        const { activity_type, activity_description, duration_seconds } = body;
+
+        // Backward/forward compatibility: if frontend sends telemetry batch payload
+        // to the legacy /activity/track route, process it via events ingest path.
+        if (Array.isArray(body?.events) && body.events.length > 0) {
+          if (body.events.length > 100) {
+            return ctx.badRequest('Maximum 100 events per request');
+          }
+          const service = getAnalyticsService();
+          const result = await service.ingestEvents({ user, body });
+          ctx.body = result;
+          ctx.status = result?.success ? 201 : 200;
+          return;
+        }
+
+        const {
+          activity_type,
+          activity_description,
+          duration_seconds,
+          event_id,
+          eventId,
+          session_id,
+          sessionId,
+          route_path,
+          routePath,
+          page_type,
+          pageType,
+          entity_type,
+          entityType,
+          entity_id,
+          entityId,
+          click_count,
+          clickCount,
+          source,
+          client_ts,
+          clientTs,
+          tz_offset,
+          tzOffset,
+          occurred_at,
+          occurredAt,
+          event_name,
+          eventName,
+          metadata_json,
+          metadata,
+        } = body;
         const validTypes = ['News', 'Event', 'Course', 'Quiz', 'Feedback', 'Location', 'Routes', 'People', 'Gallery', 'Home', 'Company policy', 'Form & Templates', 'Calendar'];
-        if (!activity_type || !validTypes.includes(activity_type)) {
+        const normalizedType = activity_type || page_type || pageType || null;
+        if (normalizedType && !validTypes.includes(normalizedType)) {
           return ctx.badRequest('Invalid activity_type');
         }
-        if (!activity_description || typeof activity_description !== 'string') {
-          return ctx.badRequest('activity_description is required (string)');
+        const normalizedDescription = (typeof activity_description === 'string' && activity_description.trim())
+          ? activity_description.trim()
+          : (typeof (event_name || eventName) === 'string' && String(event_name || eventName).trim() ? String(event_name || eventName).trim() : null);
+        if (!normalizedDescription) {
+          return ctx.badRequest('activity_description or event_name is required (string)');
         }
-        const secs = Math.max(0, parseInt(duration_seconds, 10) || 0);
+        const meta = (metadata_json && typeof metadata_json === 'object') ? metadata_json : ((metadata && typeof metadata === 'object') ? metadata : null);
+        const normalizedEntityId = entity_id ?? entityId ?? meta?.courseId ?? meta?.course_id ?? null;
+        const normalizedEntityType = entity_type ?? entityType ?? (normalizedEntityId != null ? 'course' : null);
+        const secs = Math.max(0, parseInt(duration_seconds ?? body.durationSeconds, 10) || 0);
         const service = getAnalyticsService();
         const entry = await service.createActivityLog({
           user_id: user.id,
           company: user.company || null,
-          activity_type,
-          activity_description: activity_description.trim(),
+          activity_type: normalizedType,
+          activity_description: normalizedDescription,
           duration_seconds: secs,
+          timestamp: occurred_at || occurredAt,
+          event_id: event_id || eventId,
+          session_id: session_id || sessionId,
+          route_path: route_path || routePath,
+          page_type: page_type || pageType,
+          entity_type: normalizedEntityType,
+          entity_id: normalizedEntityId,
+          click_count: click_count ?? clickCount,
+          source,
+          client_ts: client_ts || clientTs,
+          tz_offset: tz_offset ?? tzOffset,
+          metadata_json: meta,
         });
         ctx.body = { success: true, id: entry?.id ?? entry?.documentId };
         ctx.status = 201;

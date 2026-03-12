@@ -16,6 +16,7 @@ export function LearningGlobalView({
   courseContentViewType,
   setCourseContentViewType,
   kpis,
+  live,
   quiz,
   filterCourse,
   filterModule,
@@ -32,6 +33,7 @@ export function LearningGlobalView({
   const hasCourse = Boolean(filterCourse);
   const hasModule = Boolean(filterModule !== '' && filterModule != null);
   const moduleIndexSelected = hasModule ? Number(filterModule) : null;
+  const liveTotals = live?.totals || {};
 
   const courseProgress = Array.isArray(data?.courseProgress) ? data.courseProgress : [];
 
@@ -151,6 +153,24 @@ export function LearningGlobalView({
         </Box>
         <Box style={{ flex: '1 1 200px', minWidth: 160 }}>
           <StatCard label="Completed Course" value={kpis.completedCourse ?? 0} colorIndex={5} />
+        </Box>
+      </Flex>
+
+      <Flex gap={4} marginBottom={6} wrap="wrap">
+        <Box style={{ flex: '1 1 200px', minWidth: 160 }}>
+          <StatCard label="Live Active Learners" value={liveTotals.unique_users ?? 0} colorIndex={0} />
+        </Box>
+        <Box style={{ flex: '1 1 200px', minWidth: 160 }}>
+          <StatCard label="Live Module Time" value={`${Math.round(((liveTotals.module_time_seconds ?? 0) / 60) * 10) / 10} min`} colorIndex={1} />
+        </Box>
+        <Box style={{ flex: '1 1 200px', minWidth: 160 }}>
+          <StatCard label="Live Video Time" value={`${Math.round(((liveTotals.video_time_seconds ?? 0) / 60) * 10) / 10} min`} colorIndex={2} />
+        </Box>
+        <Box style={{ flex: '1 1 200px', minWidth: 160 }}>
+          <StatCard label="Live Quiz Time" value={`${Math.round(((liveTotals.quiz_time_seconds ?? 0) / 60) * 10) / 10} min`} colorIndex={3} />
+        </Box>
+        <Box style={{ flex: '1 1 200px', minWidth: 160 }}>
+          <StatCard label="Live Feedback Time" value={`${Math.round(((liveTotals.feedback_time_seconds ?? 0) / 60) * 10) / 10} min`} colorIndex={4} />
         </Box>
       </Flex>
 

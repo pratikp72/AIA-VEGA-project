@@ -6,16 +6,27 @@ module.exports = createCoreController(
   "api::module-video-progress.module-video-progress",
   ({ strapi }) => ({
     async markAsRead(ctx) {
-      const { userId, courseId, moduleIndex, moduleTitle, videoDurationMin, timeWatchedMin } = ctx.request.body || {};
+      const {
+        userId,
+        courseId: courseIdParam,
+        course: courseParam,
+        moduleIndex,
+        moduleTitle,
+        videoDurationMin,
+        timeWatchedMin,
+      } = ctx.request.body || {};
 
-      if (userId == null || courseId == null || moduleIndex === undefined) {
+      // Accept either `courseId` or `course` from the request body
+      const courseId = Number(courseIdParam ?? courseParam);
+
+      if (userId == null || !courseId || moduleIndex === undefined) {
         return ctx.badRequest("Missing required fields: userId, courseId, moduleIndex");
       }
 
       const uid = "api::module-video-progress.module-video-progress";
       const filters = {
         user: { id: Number(userId) },
-        course: { id: Number(courseId) },
+        course: { id: courseId },
         module_index: Number(moduleIndex),
       };
 

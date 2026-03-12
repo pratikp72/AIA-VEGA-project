@@ -18,6 +18,7 @@ export function LearningPersonalView({
   filterModule,
   courseModules = [],
   kpis,
+  live,
   quiz,
   courseProgressPage,
   courseProgressPageSize,
@@ -30,6 +31,7 @@ export function LearningPersonalView({
   const hasCourse = Boolean(filterCourse);
   const hasModule = Boolean(filterModule !== '' && filterModule != null);
   const moduleIndexSelected = hasModule ? (Number(filterModule)) : null;
+  const liveTotals = live?.totals || {};
 
   const courseProgress = Array.isArray(data?.courseProgress) ? data.courseProgress : [];
   const moduleVideoProgress = Array.isArray(data?.moduleVideoProgress) ? data.moduleVideoProgress : [];
@@ -161,6 +163,18 @@ export function LearningPersonalView({
           </Box>
         </Flex>
       )}
+
+      <Flex gap={4} marginBottom={6} wrap="wrap">
+        <Box style={{ flex: '1 1 200px', minWidth: 160 }}>
+          <StatCard label="Live Learning Time" value={`${Math.round((((liveTotals.module_time_seconds ?? 0) + (liveTotals.video_time_seconds ?? 0)) / 60) * 10) / 10} min`} colorIndex={2} />
+        </Box>
+        <Box style={{ flex: '1 1 200px', minWidth: 160 }}>
+          <StatCard label="Live Quiz Time" value={`${Math.round(((liveTotals.quiz_time_seconds ?? 0) / 60) * 10) / 10} min`} colorIndex={4} />
+        </Box>
+        <Box style={{ flex: '1 1 200px', minWidth: 160 }}>
+          <StatCard label="Live Feedback Time" value={`${Math.round(((liveTotals.feedback_time_seconds ?? 0) / 60) * 10) / 10} min`} colorIndex={5} />
+        </Box>
+      </Flex>
 
       <Flex marginBottom={4} gap={2} alignItems="center" justifyContent="flex-end">
         <Typography variant="sigma" textColor="neutral600" fontWeight="semiBold">

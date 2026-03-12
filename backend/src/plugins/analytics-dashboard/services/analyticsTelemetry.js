@@ -89,9 +89,9 @@ module.exports = ({ strapi }) => {
 
   self._validateIncomingEvent = function _validateIncomingEvent(event, index) {
     const errors = [];
-    const eventId = typeof event?.event_id === 'string' ? event.event_id.trim() : '';
-    const eventName = typeof event?.event_name === 'string' ? event.event_name.trim() : '';
-    const occurredAt = toIso(event?.occurred_at, false);
+    const eventId = typeof (event?.event_id ?? event?.eventId) === 'string' ? String(event.event_id ?? event.eventId).trim() : '';
+    const eventName = typeof (event?.event_name ?? event?.eventName) === 'string' ? String(event.event_name ?? event.eventName).trim() : '';
+    const occurredAt = toIso(event?.occurred_at ?? event?.occurredAt, false);
 
     if (!eventId) errors.push('event_id is required');
     if (!eventName) errors.push('event_name is required');
@@ -100,18 +100,25 @@ module.exports = ({ strapi }) => {
     }
     if (!occurredAt) errors.push('occurred_at must be a valid datetime');
 
-    const durationSeconds = clampNonNegative(event?.duration_seconds);
-    const clickCount = clampNonNegative(event?.click_count);
+    const durationSeconds = clampNonNegative(event?.duration_seconds ?? event?.durationSeconds);
+    const clickCount = clampNonNegative(event?.click_count ?? event?.clickCount);
 
     // For route-level metrics, route_path should be present on portal events.
     const needsRoute = eventName.startsWith('page_') || eventName === 'heartbeat';
-    const routePath = typeof event?.route_path === 'string' ? event.route_path.trim() : '';
+    const routePath = typeof (event?.route_path ?? event?.routePath) === 'string' ? String(event.route_path ?? event.routePath).trim() : '';
     if (needsRoute && !routePath) errors.push('route_path is required for page events');
 
     const metadata = event?.metadata_json ?? event?.metadata ?? null;
     if (metadata != null && typeof metadata !== 'object') {
       errors.push('metadata_json must be an object when provided');
     }
+
+    const entityTypeRaw = event?.entity_type ?? event?.entityType ?? metadata?.entity_type ?? metadata?.entityType;
+    const entityIdRaw = event?.entity_id ?? event?.entityId ?? metadata?.courseId ?? metadata?.course_id ?? metadata?.entity_id ?? metadata?.entityId;
+    const normalizedEntityType = typeof entityTypeRaw === 'string' && entityTypeRaw.trim()
+      ? entityTypeRaw.trim()
+      : (entityIdRaw != null ? 'course' : null);
+    const normalizedEntityId = entityIdRaw != null ? String(entityIdRaw).trim() : null;
 
     return {
       index,
@@ -121,16 +128,16 @@ module.exports = ({ strapi }) => {
         event_id: eventId,
         event_name: eventName,
         occurred_at: occurredAt,
-        session_id: typeof event?.session_id === 'string' ? event.session_id.trim() : null,
+        session_id: typeof (event?.session_id ?? event?.sessionId) === 'string' ? String(event.session_id ?? event.sessionId).trim() : null,
         route_path: routePath || null,
-        page_type: typeof event?.page_type === 'string' ? event.page_type.trim() : null,
-        entity_type: typeof event?.entity_type === 'string' ? event.entity_type.trim() : null,
-        entity_id: event?.entity_id != null ? String(event.entity_id).trim() : null,
+        page_type: typeof (event?.page_type ?? event?.pageType) === 'string' ? String(event.page_type ?? event.pageType).trim() : null,
+        entity_type: normalizedEntityType,
+        entity_id: normalizedEntityId,
         duration_seconds: durationSeconds,
         click_count: clickCount,
         metadata: metadata && typeof metadata === 'object' ? metadata : null,
-        client_ts: toIso(event?.client_ts, false),
-        tz_offset: event?.tz_offset != null ? safeInt(event.tz_offset, 0) : null,
+        client_ts: toIso(event?.client_ts ?? event?.clientTs, false),
+        tz_offset: (event?.tz_offset ?? event?.tzOffset) != null ? safeInt(event.tz_offset ?? event.tzOffset, 0) : null,
         source: typeof event?.source === 'string' && event.source.trim() ? event.source.trim() : 'web',
       },
     };
@@ -229,8 +236,10 @@ module.exports = ({ strapi }) => {
   self._buildEventsWhere = async function _buildEventsWhere(params = {}) {
     const where = {};
 
-    // Only telemetry-ingested rows should be included for /events/* endpoints.
-    where.event_id = { $notNull: true };
+    // Keep strict telemetry scope for generic /events/*, but allow legacy rows for learning fallback.
+    if (!params.includeLegacyEvents) {
+      where.event_id = { $notNull: true };
+    }
 
     const from = normalizeDateBound(params.dateFrom, false);
     const to = normalizeDateBound(params.dateTo, true);
@@ -255,7 +264,7 @@ module.exports = ({ strapi }) => {
 
     const hasCompanyFilter = params.company && String(params.company).trim() && !/^all\s*companies?$/i.test(String(params.company));
     const hasDeptFilter = params.department && String(params.department).trim() && String(params.department).toLowerCase() !== 'all';
-    const hasLocationFilter = params.location && String(params.location).trim();
+    const hasLocationFilter = (params.location && String(params.location).trim()) || (params.unitLocation && String(params.unitLocation).trim());
 
     if (hasCompanyFilter || hasDeptFilter || hasLocationFilter) {
       const userWhere = { blocked: { $ne: true } };
@@ -267,7 +276,7 @@ module.exports = ({ strapi }) => {
         userWhere.department = { $containsi: String(params.department).trim() };
       }
       if (hasLocationFilter) {
-        userWhere.working_location = { $containsi: String(params.location).trim() };
+        userWhere.working_location = { $containsi: String(params.location || params.unitLocation).trim() };
       }
 
       const users = await strapi.db.query('plugin::users-permissions.user').findMany({
@@ -386,7 +395,7 @@ module.exports = ({ strapi }) => {
   };
 
   self.getLearningStats = async function getLearningStats(params = {}) {
-    const where = await self._buildEventsWhere(params);
+    const where = await self._buildEventsWhere({ ...params, includeLegacyEvents: true });
     if (where === null) {
       return {
         totals: {

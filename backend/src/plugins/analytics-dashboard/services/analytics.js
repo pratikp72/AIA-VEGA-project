@@ -27,6 +27,121 @@ module.exports = ({ strapi }) => {
     ...overall,
     ...telemetry,
 
+  async _getRealtimeLearningMinutesByCourse(params = {}, userId = null) {
+    const out = {
+      byCourseId: new Map(),
+      byCourseTitle: new Map(),
+      totalMinutes: 0,
+    };
+    try {
+      const telemetryParams = /** @type {any} */ ({
+        ...params,
+        location: params.location ?? params.unitLocation,
+      });
+      if (userId != null) telemetryParams.userId = userId;
+      const self = /** @type {any} */ (this);
+      if (typeof self.getLearningStats !== 'function') return out;
+      const raw = await self.getLearningStats(telemetryParams);
+      const entities = Array.isArray(raw?.by_entity) ? raw.by_entity : [];
+      const entityCourseIds = [];
+      entities.forEach((entity) => {
+        if (String(entity?.entity_type || '').toLowerCase() !== 'course') return;
+        const seconds = Number(entity?.total_time_seconds || 0);
+        if (!Number.isFinite(seconds) || seconds <= 0) return;
+        const minutes = Math.round((seconds / 60) * 10) / 10;
+        const idKey = entity?.entity_id != null ? String(entity.entity_id).trim() : '';
+        const titleKey = entity?.entity_label ? String(entity.entity_label).trim().toLowerCase() : '';
+        if (idKey) {
+          entityCourseIds.push(idKey);
+          out.byCourseId.set(idKey, Math.max(out.byCourseId.get(idKey) || 0, minutes));
+        }
+        if (titleKey) {
+          out.byCourseTitle.set(titleKey, Math.max(out.byCourseTitle.get(titleKey) || 0, minutes));
+        }
+      });
+
+      if (entityCourseIds.length > 0) {
+        const uniqueIds = [...new Set(entityCourseIds)];
+        const numericIds = uniqueIds.filter((id) => /^\d+$/.test(id)).map(Number);
+        const documentIds = uniqueIds.filter((id) => !/^\d+$/.test(id));
+        const [coursesByNumeric, coursesByDocument] = await Promise.all([
+          numericIds.length > 0
+            ? strapi.db.query('api::course.course').findMany({ where: { id: { $in: numericIds } }, select: ['id', 'documentId'] })
+            : [],
+          documentIds.length > 0
+            ? strapi.db.query('api::course.course').findMany({ where: { documentId: { $in: documentIds } }, select: ['id', 'documentId'] })
+            : [],
+        ]);
+        [...(coursesByNumeric || []), ...(coursesByDocument || [])].forEach((course) => {
+          const idKey = course?.id != null ? String(course.id) : '';
+          const docKey = course?.documentId ? String(course.documentId) : '';
+          const linkedMinutes = Math.max(
+            idKey ? (out.byCourseId.get(idKey) || 0) : 0,
+            docKey ? (out.byCourseId.get(docKey) || 0) : 0,
+          );
+          if (linkedMinutes > 0) {
+            if (idKey) out.byCourseId.set(idKey, linkedMinutes);
+            if (docKey) out.byCourseId.set(docKey, linkedMinutes);
+          }
+        });
+      }
+
+      const totals = raw?.totals || {};
+      const totalSeconds = Number(totals.module_time_seconds || 0)
+        + Number(totals.video_time_seconds || 0)
+        + Number(totals.quiz_time_seconds || 0)
+        + Number(totals.feedback_time_seconds || 0);
+      out.totalMinutes = Math.round(((Number(totalSeconds) || 0) / 60) * 10) / 10;
+    } catch (e) {
+      strapi.log.warn('Learning realtime by course resolve failed:', e?.message);
+    }
+    return out;
+  },
+
+  _mergeRealtimeMinutesIntoCourseRows(rows = [], realtime = null) {
+    if (!Array.isArray(rows) || !realtime) return rows;
+    return rows.map((row) => {
+      const idKey = row?.courseId != null ? String(row.courseId).trim() : '';
+      const titleKey = row?.courseTitle ? String(row.courseTitle).trim().toLowerCase() : '';
+      let realtimeMinutes = 0;
+      if (idKey && realtime.byCourseId?.has(idKey)) {
+        realtimeMinutes = realtime.byCourseId.get(idKey) || 0;
+      } else if (titleKey && realtime.byCourseTitle?.has(titleKey)) {
+        realtimeMinutes = realtime.byCourseTitle.get(titleKey) || 0;
+      }
+      if (!Number.isFinite(realtimeMinutes) || realtimeMinutes <= 0) return row;
+      const existing = Number(row.timeSpentMinutes || 0);
+      return {
+        ...row,
+        timeSpentMinutes: Math.max(existing, realtimeMinutes),
+      };
+    });
+  },
+
+  _applyRealtimeToSelectedCourseRows(rows = [], selectedCourseId = null, realtime = null) {
+    if (!Array.isArray(rows) || !selectedCourseId || !realtime || (Number(realtime.totalMinutes) || 0) <= 0) return rows;
+    const selected = String(selectedCourseId).trim();
+    if (!selected) return rows;
+
+    // When filtered by course, backend usually returns one course row; apply realtime total directly.
+    if (rows.length === 1) {
+      const only = rows[0] || {};
+      return [{ ...only, timeSpentMinutes: Math.max(Number(only.timeSpentMinutes) || 0, Number(realtime.totalMinutes) || 0) }];
+    }
+
+    const selectedNum = /^\d+$/.test(selected) ? Number(selected) : NaN;
+    return rows.map((row) => {
+      const rowId = row?.courseId != null ? String(row.courseId).trim() : '';
+      const rowNum = /^\d+$/.test(rowId) ? Number(rowId) : NaN;
+      const matches = rowId === selected || (!Number.isNaN(selectedNum) && !Number.isNaN(rowNum) && selectedNum === rowNum);
+      if (!matches) return row;
+      return {
+        ...row,
+        timeSpentMinutes: Math.max(Number(row.timeSpentMinutes) || 0, Number(realtime.totalMinutes) || 0),
+      };
+    });
+  },
+
   /**
    * LEARNING ANALYTICS - Global (all employees)
    */
@@ -541,13 +656,34 @@ module.exports = ({ strapi }) => {
       };
     });
 
+    const realtimeByCourseGlobal = await this._getRealtimeLearningMinutesByCourse(params);
+    courseProgressTable = this._mergeRealtimeMinutesIntoCourseRows(courseProgressTable, realtimeByCourseGlobal);
+    courseProgressTable = this._applyRealtimeToSelectedCourseRows(courseProgressTable, wantCourseId, realtimeByCourseGlobal);
+    const hasGlobalTimeRow = courseProgressTable.some((row) => (Number(row.timeSpentMinutes) || 0) > 0);
+    if (!hasGlobalTimeRow && realtimeByCourseGlobal.totalMinutes > 0) {
+      courseProgressTable = [{
+        courseId: 'realtime-unmapped',
+        courseTitle: 'Realtime Learning (Unmapped Course)',
+        courseCategory: 'Other',
+        status: 'In progress',
+        percentage: 0,
+        timeSpentMinutes: realtimeByCourseGlobal.totalMinutes,
+        certificateIssued: '0/0',
+        dropOffRate: 0,
+        dropOffCount: 0,
+      }];
+    }
+    const avgTimeSpentWithRealtime = courseProgressTable.length > 0
+      ? Math.round((courseProgressTable.reduce((sum, row) => sum + (Number(row.timeSpentMinutes) || 0), 0) / courseProgressTable.length) * 10) / 10
+      : avgTimeSpent;
+
     const result = {
       kpis: {
         totalCourses: courseIdsSet.size,
         totalEnrollments: total,
         totalAssignments: total,
         completionRate,
-        avgTimeSpentMinutes: avgTimeSpent,
+        avgTimeSpentMinutes: Math.max(avgTimeSpent, avgTimeSpentWithRealtime, realtimeByCourseGlobal.totalMinutes || 0),
         avgQuizScore,
         completedCourse: completed,
         dropOffCount,
@@ -1403,6 +1539,29 @@ module.exports = ({ strapi }) => {
       }
     });
 
+    const realtimeByCoursePersonal = await this._getRealtimeLearningMinutesByCourse(params, userId);
+    let courseProgressWithRealtime = this._mergeRealtimeMinutesIntoCourseRows(courseProgress, realtimeByCoursePersonal);
+    courseProgressWithRealtime = this._applyRealtimeToSelectedCourseRows(courseProgressWithRealtime, params.courseId, realtimeByCoursePersonal);
+    const hasPersonalTimeRow = courseProgressWithRealtime.some((row) => (Number(row.timeSpentMinutes) || 0) > 0);
+    if (!hasPersonalTimeRow && realtimeByCoursePersonal.totalMinutes > 0) {
+      courseProgressWithRealtime = [{
+        courseId: 'realtime-unmapped',
+        courseTitle: 'Realtime Learning (Unmapped Course)',
+        courseCategory: 'Other',
+        status: 'In_progress',
+        percentage: 0,
+        timeSpentMinutes: realtimeByCoursePersonal.totalMinutes,
+        completedAt: null,
+        certificateIssued: false,
+        quizPassed: false,
+        feedbackGiven: false,
+        feedbackPending: false,
+        inactiveDays: 0,
+      }];
+    }
+    const totalTimeFromRows = courseProgressWithRealtime.reduce((sum, row) => sum + (Number(row.timeSpentMinutes) || 0), 0);
+    totalTimeSpent = Math.max(totalTimeSpent, Math.round(totalTimeFromRows * 10) / 10);
+
     if (progressesDedup.length > 0) {
       const userWhere = isDocumentId ? { documentId: userId } : { id: userId };
       let u = null;
@@ -1481,7 +1640,7 @@ module.exports = ({ strapi }) => {
       statusDistribution: Object.entries(statusCounts).map(([name, value]) => ({ name, value })),
       categoryDistribution: Object.entries(categoryCounts).map(([name, value]) => ({ name, value })),
       departmentDistribution: Object.entries(departmentCounts).map(([name, value]) => ({ name, value })),
-      courseProgress,
+      courseProgress: courseProgressWithRealtime,
       monthlyCompletions: Object.entries(monthlyCompletions)
         .sort(([a], [b]) => a.localeCompare(b))
         .map(([month, value]) => ({ month, value })),

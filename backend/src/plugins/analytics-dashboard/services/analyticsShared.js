@@ -678,9 +678,27 @@ module.exports = ({ strapi }) => {
   };
 
   self.createActivityLog = async function (data) {
-    const { user_id, company, activity_type, activity_description, duration_seconds } = data;
-    if (!user_id || !activity_type || !activity_description) {
-      throw new Error('user_id, activity_type, and activity_description are required');
+    const {
+      user_id,
+      company,
+      activity_type,
+      activity_description,
+      duration_seconds,
+      timestamp,
+      event_id,
+      session_id,
+      route_path,
+      page_type,
+      entity_type,
+      entity_id,
+      click_count,
+      source,
+      client_ts,
+      tz_offset,
+      metadata_json,
+    } = data;
+    if (!user_id || !activity_description) {
+      throw new Error('user_id and activity_description are required');
     }
     let companyId = null;
     if (company) {
@@ -694,14 +712,29 @@ module.exports = ({ strapi }) => {
         if (c) companyId = c.id;
       }
     }
+    const metadata = metadata_json && typeof metadata_json === 'object' ? metadata_json : null;
+    const normalizedEntityId = entity_id ?? metadata?.courseId ?? metadata?.course_id ?? null;
+    const normalizedEntityType = entity_type || (normalizedEntityId != null ? 'course' : null);
+
     const entry = await strapi.documents('api::activity-log.activity-log').create({
       data: {
         user: user_id,
         company: companyId || undefined,
-        activity_type,
+        activity_type: activity_type || page_type || null,
         activity_description,
         activity_duration: Math.max(0, Math.round(duration_seconds || 0)), // store as seconds
-        timestamp: new Date().toISOString(),
+        timestamp: timestamp || new Date().toISOString(),
+        event_id: event_id || null,
+        session_id: session_id || null,
+        route_path: route_path || null,
+        page_type: page_type || null,
+        entity_type: normalizedEntityType || null,
+        entity_id: normalizedEntityId != null ? String(normalizedEntityId) : null,
+        click_count: Math.max(0, Number(click_count) || 0),
+        source: source || null,
+        ingested_at: new Date().toISOString(),
+        client_ts: client_ts || null,
+        tz_offset: tz_offset != null ? Number(tz_offset) : null,
       },
     });
     return entry;

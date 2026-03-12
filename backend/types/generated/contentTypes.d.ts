@@ -441,47 +441,32 @@ export interface ApiActivityLogActivityLog extends Struct.CollectionTypeSchema {
     draftAndPublish: false;
   };
   attributes: {
-    activity_description: Schema.Attribute.String & Schema.Attribute.Required;
-    activity_duration: Schema.Attribute.Integer &
-      Schema.Attribute.CustomField<
-        'global::number-range',
-        {
-          max: '';
-          min: '1';
-          positiveOnly: true;
-          required: true;
-        }
-      >;
-    activity_type: Schema.Attribute.Enumeration<
-      [
-        'News',
-        'Event',
-        'Course',
-        'Quiz',
-        'Feedback',
-        'Location',
-        'Routes',
-        'People',
-        'Gallery',
-        'Home',
-        'Company policy',
-        'Form & Templates',
-        'Calendar',
-      ]
-    > &
-      Schema.Attribute.Required;
-    company: Schema.Attribute.Relation<'manyToMany', 'api::company.company'>;
+    activity_description: Schema.Attribute.String;
+    activity_duration: Schema.Attribute.Integer & Schema.Attribute.DefaultTo<0>;
+    activity_type: Schema.Attribute.String;
+    click_count: Schema.Attribute.Integer & Schema.Attribute.DefaultTo<0>;
+    client_ts: Schema.Attribute.DateTime;
+    company: Schema.Attribute.Relation<'manyToOne', 'api::company.company'>;
     createdAt: Schema.Attribute.DateTime;
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
+    entity_id: Schema.Attribute.String;
+    entity_type: Schema.Attribute.String;
+    event_id: Schema.Attribute.String & Schema.Attribute.Unique;
+    ingested_at: Schema.Attribute.DateTime;
     locale: Schema.Attribute.String & Schema.Attribute.Private;
     localizations: Schema.Attribute.Relation<
       'oneToMany',
       'api::activity-log.activity-log'
     > &
       Schema.Attribute.Private;
+    page_type: Schema.Attribute.String;
     publishedAt: Schema.Attribute.DateTime;
+    route_path: Schema.Attribute.String;
+    session_id: Schema.Attribute.String;
+    source: Schema.Attribute.String & Schema.Attribute.DefaultTo<'web'>;
     timestamp: Schema.Attribute.DateTime & Schema.Attribute.Required;
+    tz_offset: Schema.Attribute.Integer;
     updatedAt: Schema.Attribute.DateTime;
     updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;

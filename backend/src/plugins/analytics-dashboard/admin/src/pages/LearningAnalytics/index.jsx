@@ -448,6 +448,7 @@ export default function LearningAnalyticsPage() {
                   courseContentViewType={courseContentViewType}
                   setCourseContentViewType={setCourseContentViewType}
                   kpis={kpis}
+                  live={data?.live}
                   quiz={quiz}
                   filterCourse={filterCourse}
                   filterModule={filterModule}
@@ -466,6 +467,7 @@ export default function LearningAnalyticsPage() {
                   filterModule={filterModule}
                   courseModules={courseModules}
                   kpis={kpis}
+                  live={data?.live}
                   quiz={quiz}
                   courseProgressPage={courseProgressPage}
                   courseProgressPageSize={courseProgressPageSize}
