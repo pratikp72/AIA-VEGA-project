@@ -115,7 +115,8 @@
       "options": {
         "preset": "defaultHtml"
       },
-      "required": true
+      "required": true,
+      "default": ""
     }
   },
   "config": {}
