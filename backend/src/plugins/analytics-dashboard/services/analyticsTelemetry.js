@@ -72,11 +72,15 @@ module.exports = ({ strapi }) => {
     const normalizedName = rawCompany.toUpperCase() === 'VEGA' ? 'Vega' : (rawCompany.toUpperCase() === 'AIA' ? 'AIA' : rawCompany);
     let companyId = null;
     try {
-      const row = await strapi.db.query('api::company.company').findOne({
+      const rows = await strapi.db.query('api::company.company').findMany({
         where: { name: { $eqi: normalizedName } },
-        select: ['id', 'name'],
+        select: ['id', 'name', 'publishedAt'],
+        limit: 10,
       });
-      if (row?.id != null) companyId = row.id;
+      const published = (rows || []).find((r) => r?.publishedAt != null);
+      const fallback = (rows || [])[0] || null;
+      if (published?.id != null) companyId = published.id;
+      else if (fallback?.id != null) companyId = fallback.id;
     } catch (e) {
       strapi.log.warn('analyticsTelemetry.resolveUserCompany: failed to resolve company id', e?.message || e);
     }
@@ -167,7 +171,8 @@ module.exports = ({ strapi }) => {
 
       const e = result.normalized;
       try {
-        const existing = await strapi.db.query('api::analytics-event.analytics-event').findOne({
+        // Deduplicate via event_id stored in activity_logs
+        const existing = await strapi.db.query('api::activity-log.activity-log').findOne({
           where: { event_id: e.event_id },
           select: ['id'],
         });
@@ -176,23 +181,29 @@ module.exports = ({ strapi }) => {
           continue;
         }
 
-        await strapi.documents('api::analytics-event.analytics-event').create({
+        // Map telemetry event fields onto activity_log fields:
+        //  activity_type        ← page_type (e.g. "News", "Home")
+        //  activity_description ← event_name (e.g. "page_view_ended")
+        //  activity_duration    ← duration_seconds stored as-is (seconds)
+        //  timestamp            ← occurred_at
+        //  All remaining telemetry fields stored in new dedicated columns.
+        await strapi.documents('api::activity-log.activity-log').create({
           data: {
+            activity_type: e.page_type || null,
+            activity_description: e.event_name,
+            timestamp: e.occurred_at,
+            activity_duration: e.duration_seconds,
             event_id: e.event_id,
-            event_name: e.event_name,
-            occurred_at: e.occurred_at,
-            ingested_at: new Date().toISOString(),
             session_id: e.session_id,
             route_path: e.route_path,
             page_type: e.page_type,
             entity_type: e.entity_type,
             entity_id: e.entity_id,
-            duration_seconds: e.duration_seconds,
             click_count: e.click_count,
-            metadata: e.metadata,
+            source: e.source,
+            ingested_at: new Date().toISOString(),
             client_ts: e.client_ts,
             tz_offset: e.tz_offset,
-            source: e.source,
             user: user.id,
             company: companyId || undefined,
           },
@@ -218,19 +229,22 @@ module.exports = ({ strapi }) => {
   self._buildEventsWhere = async function _buildEventsWhere(params = {}) {
     const where = {};
 
+    // Only telemetry-ingested rows should be included for /events/* endpoints.
+    where.event_id = { $notNull: true };
+
     const from = normalizeDateBound(params.dateFrom, false);
     const to = normalizeDateBound(params.dateTo, true);
     if (from || to) {
-      where.occurred_at = {};
-      if (from) where.occurred_at.$gte = from;
-      if (to) where.occurred_at.$lte = to;
+      where.timestamp = {};
+      if (from) where.timestamp.$gte = from;
+      if (to) where.timestamp.$lte = to;
     }
 
     if (params.routePath) where.route_path = { $eq: String(params.routePath).trim() };
     if (params.pageType) where.page_type = { $eq: String(params.pageType).trim() };
     if (params.entityType) where.entity_type = { $eq: String(params.entityType).trim() };
     if (params.entityId != null && params.entityId !== '') where.entity_id = { $eq: String(params.entityId).trim() };
-    if (params.eventName) where.event_name = { $eq: String(params.eventName).trim() };
+    if (params.eventName) where.activity_description = { $eq: String(params.eventName).trim() };
 
     if (params.userId != null && params.userId !== '') {
       const n = safeInt(params.userId, NaN);
@@ -272,10 +286,10 @@ module.exports = ({ strapi }) => {
     const where = await self._buildEventsWhere(params);
     if (where === null) return { rows: [], total: 0 };
 
-    const events = await strapi.db.query('api::analytics-event.analytics-event').findMany({
+    const events = await strapi.db.query('api::activity-log.activity-log').findMany({
       where,
       limit: 100000,
-      select: ['event_name', 'route_path', 'page_type', 'duration_seconds', 'click_count', 'occurred_at'],
+      select: ['activity_description', 'route_path', 'page_type', 'activity_duration', 'click_count', 'timestamp'],
       populate: { user: { select: ['id'] } },
     });
 
@@ -297,10 +311,10 @@ module.exports = ({ strapi }) => {
       const item = byRoute.get(key);
       const uid = getUserIdFromRecord(row);
       if (uid != null) item.unique_users.add(uid);
-      if (row.event_name === 'page_view_started') item.visits += 1;
-      if (row.event_name === 'page_click') item.total_clicks += 1;
+      if (row.activity_description === 'page_view_started') item.visits += 1;
+      if (row.activity_description === 'page_click') item.total_clicks += 1;
       item.total_clicks += clampNonNegative(row.click_count);
-      item.total_time_seconds += clampNonNegative(row.duration_seconds);
+      item.total_time_seconds += clampNonNegative(row.activity_duration); // stored as seconds
     }
 
     const rows = Array.from(byRoute.values())
@@ -322,10 +336,10 @@ module.exports = ({ strapi }) => {
     const where = await self._buildEventsWhere(params);
     if (where === null) return [];
 
-    const events = await strapi.db.query('api::analytics-event.analytics-event').findMany({
+    const events = await strapi.db.query('api::activity-log.activity-log').findMany({
       where,
       limit: 100000,
-      select: ['event_name', 'duration_seconds', 'click_count', 'occurred_at'],
+      select: ['activity_description', 'activity_duration', 'click_count', 'timestamp'],
       populate: { user: { select: ['id'] } },
     });
 
@@ -343,15 +357,15 @@ module.exports = ({ strapi }) => {
       const b = buckets.get(bucketKey);
       const uid = getUserIdFromRecord(row);
       if (uid != null) b.unique_users.add(uid);
-      if (row.event_name === 'page_view_started') b.visits += 1;
-      if (row.event_name === 'page_click') b.total_clicks += 1;
+      if (row.activity_description === 'page_view_started') b.visits += 1;
+      if (row.activity_description === 'page_click') b.total_clicks += 1;
       b.total_clicks += clampNonNegative(row.click_count);
-      b.total_time_seconds += clampNonNegative(row.duration_seconds);
+      b.total_time_seconds += clampNonNegative(row.activity_duration); // stored as seconds
     };
 
     for (const row of events || []) {
-      if (!row.occurred_at) continue;
-      const d = new Date(row.occurred_at);
+      if (!row.timestamp) continue;
+      const d = new Date(row.timestamp);
       if (Number.isNaN(d.getTime())) continue;
       d.setUTCSeconds(0, 0);
       const minute = d.getUTCMinutes();
@@ -387,12 +401,12 @@ module.exports = ({ strapi }) => {
       };
     }
 
-    where.event_name = { $in: Array.from(VALID_EVENT_NAMES).filter((n) => n.startsWith('learning_')) };
+    where.activity_description = { $in: Array.from(VALID_EVENT_NAMES).filter((n) => n.startsWith('learning_')) };
 
-    const events = await strapi.db.query('api::analytics-event.analytics-event').findMany({
+    const events = await strapi.db.query('api::activity-log.activity-log').findMany({
       where,
       limit: 100000,
-      select: ['event_name', 'entity_type', 'entity_id', 'duration_seconds'],
+      select: ['activity_description', 'entity_type', 'entity_id', 'activity_duration'],
       populate: { user: { select: ['id'] } },
     });
 
@@ -411,8 +425,8 @@ module.exports = ({ strapi }) => {
       const et = row.entity_type || 'unknown';
       const eid = row.entity_id || 'unknown';
       const key = `${et}::${eid}`;
-      const duration = clampNonNegative(row.duration_seconds);
-      const eventName = row.event_name || '';
+      const duration = clampNonNegative(row.activity_duration); // stored as seconds
+      const eventName = row.activity_description || '';
 
       if (!byEntity.has(key)) {
         byEntity.set(key, {

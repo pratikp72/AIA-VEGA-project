@@ -13,20 +13,25 @@ module.exports = ({ strapi }) => {
     const numeric = typeof company === 'number' ? company : parseInt(str, 10);
     if (!Number.isNaN(numeric)) return numeric;
     try {
-      const found = await strapi.db.query('api::company.company').findOne({
-        where: { name: str },
-        select: ['id'],
+      const exactRows = await strapi.db.query('api::company.company').findMany({
+        where: { name: { $eqi: str } },
+        select: ['id', 'name', 'publishedAt'],
+        limit: 10,
       });
-      if (found?.id != null) return found.id;
+      const exactPublished = (exactRows || []).find((c) => c?.publishedAt != null);
+      if (exactPublished?.id != null) return exactPublished.id;
+      if (exactRows?.[0]?.id != null) return exactRows[0].id;
+
       const all = await strapi.db.query('api::company.company').findMany({
-        select: ['id', 'name'],
+        select: ['id', 'name', 'publishedAt'],
         limit: 50,
       });
       const lower = str.toLowerCase();
-      const match = (all || []).find(
+      const matched = (all || []).filter(
         (c) => c.name && (String(c.name).toLowerCase() === lower || String(c.name).toLowerCase().includes(lower))
       );
-      return match?.id ?? null;
+      const matchPublished = matched.find((c) => c?.publishedAt != null);
+      return matchPublished?.id ?? matched[0]?.id ?? null;
     } catch (e) {
       return null;
     }
@@ -282,7 +287,7 @@ module.exports = ({ strapi }) => {
         byDate[dateKey] = initial;
       }
       const type = log.activity_type || 'News';
-      const mins = log.activity_duration || 0;
+      const mins = (log.activity_duration || 0) / 60; // activity_duration stored in seconds
       if (byDate[dateKey][type] !== undefined) {
         byDate[dateKey][type] += mins;
       } else {
@@ -307,10 +312,13 @@ module.exports = ({ strapi }) => {
   /** Activity types to exclude from Overall Analytics (Course, Quiz, Feedback). */
   const EXCLUDED_ACTIVITY_TYPES = ['Course', 'Quiz', 'Feedback'];
 
-  /** Build shared where for activity log queries (date, company, department, unitLocation, activityType, userId). Uses relation "user" and activity_log.company so filters work with Strapi 5. Excludes Course, Quiz, Feedback from all activity data. */
+  /** Build shared where for activity log queries (date, company, department, unitLocation, activityType, userId). Uses relation "user" and activity_log.company so filters work with Strapi 5. Excludes Course, Quiz, Feedback from all activity data. Excludes page_view_started (zero-duration) from KPI/chart/log queries so visit counts are not doubled. */
   self._buildActivityWhere = async function (params = {}) {
     const where = {};
     where.activity_type = { $notIn: EXCLUDED_ACTIVITY_TYPES };
+    // Exclude page_view_started: both events are stored in the DB (visible in Content Manager)
+    // but dashboard KPIs and tables should only count page_view_ended which carries duration.
+    where.activity_description = { $ne: 'page_view_started' };
 
     if (params.dateFrom || params.dateTo) {
       const from = normalizeDateBound(params.dateFrom, false);
@@ -427,7 +435,9 @@ module.exports = ({ strapi }) => {
     const getUserId = (l) => l.user_id ?? l.users_permissions_user_id ?? (typeof l.user === 'object' && l.user != null ? l.user.id : l.user);
     const uniqueUserIds = new Set(list.map(getUserId).filter(Boolean));
     const uniqueUser = uniqueUserIds.size;
-    const timeSpentMin = list.reduce((sum, l) => sum + (Number(l.activity_duration) || 0), 0);
+    // activity_duration is stored in seconds; divide by 60 for display in minutes
+    const timeSpentSec = list.reduce((sum, l) => sum + (Number(l.activity_duration) || 0), 0);
+    const timeSpentMin = Math.round((timeSpentSec / 60) * 10) / 10;
     const avgTimeSpentMin = uniqueUser > 0 ? Math.round((timeSpentMin / uniqueUser) * 10) / 10 : 0;
     return { totalUser, uniqueUser, timeSpentMin, avgTimeSpentMin };
   };
@@ -455,7 +465,7 @@ module.exports = ({ strapi }) => {
       const t = log.activity_type || 'News';
       if (!byType[t]) byType[t] = { count: 0, timeMin: 0 };
       byType[t].count += 1;
-      byType[t].timeMin += Number(log.activity_duration) || 0;
+      byType[t].timeMin += (Number(log.activity_duration) || 0) / 60; // stored as seconds → convert to minutes
     });
     const withTimeAndCount = ACTIVITY_PAGES.map((type) => ({
       name: type,
@@ -536,12 +546,13 @@ module.exports = ({ strapi }) => {
     });
     const list = Array.isArray(logs) ? logs : [];
     let rows = list.map((log) => {
-      const mins = log.activity_duration || 0;
-      const secs = mins * 60;
+      // activity_duration is stored in seconds
+      const secs = Math.round(log.activity_duration || 0);
       const m = Math.floor(secs / 60);
       const s = secs % 60;
       let duration;
-      if (mins === 0) duration = 0;
+      if (secs === 0) duration = 0;
+      else if (m === 0) duration = `${s}s`;
       else if (s === 0) duration = `${m}m`;
       else duration = `${m}m ${s}s`;
       const userId = log.user?.id ?? log.user_id ?? (typeof log.user === 'number' ? log.user : null);
@@ -689,7 +700,7 @@ module.exports = ({ strapi }) => {
         company: companyId || undefined,
         activity_type,
         activity_description,
-        activity_duration: Math.round(Math.max(0, duration_seconds || 0) / 60),
+        activity_duration: Math.max(0, Math.round(duration_seconds || 0)), // store as seconds
         timestamp: new Date().toISOString(),
       },
     });
