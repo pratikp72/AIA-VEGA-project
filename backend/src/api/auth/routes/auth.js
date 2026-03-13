@@ -32,5 +32,15 @@ module.exports = {
         middlewares: [],
       },
     },
+    {
+      method: 'GET',
+      path: '/auth/admin-html-redirect',
+      handler: 'auth.adminHtmlRedirect',
+      config: {
+        auth: false, // token is validated by its own presence and structure
+        policies: [],
+        middlewares: [],
+      },
+    },
   ],
 };

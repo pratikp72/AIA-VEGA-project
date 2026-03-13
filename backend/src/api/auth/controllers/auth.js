@@ -174,4 +174,42 @@ module.exports = {
       return ctx.internalServerError('Failed to generate admin token');
     }
   },
+  /**
+   * Serves a tiny HTML page FROM port 1337 that:
+   *   1. Sets localStorage["jwtToken"] on the 1337 origin  (same origin as Strapi admin)
+   *   2. Immediately redirects the browser to /admin
+   *
+   * This fixes the cross-origin localStorage problem:
+   *   - The Next.js /admin-redirect page (port 3000) can't set localStorage for port 1337
+   *   - This endpoint IS on port 1337, so localStorage is shared with the admin panel
+   */
+  async adminHtmlRedirect(ctx) {
+    const token = ctx.query?.token;
+
+    if (!token || typeof token !== 'string') {
+      ctx.status = 400;
+      ctx.body = '<h1>Bad Request: missing token</h1>';
+      return;
+    }
+
+    // Sanitize — only allow base64url characters (JWT format)
+    const safe = token.replace(/[^A-Za-z0-9\-_\.]/g, '');
+
+    ctx.set('Content-Type', 'text/html; charset=utf-8');
+    ctx.set('Cache-Control', 'no-store, no-cache');
+    ctx.status = 200;
+    ctx.body = `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>Redirecting…</title></head>
+<body>
+<p>Redirecting to Admin Panel…</p>
+<script>
+  try {
+    localStorage.setItem('jwtToken', '${safe}');
+  } catch(e) {}
+  window.location.replace('/admin');
+</script>
+</body>
+</html>`;
+  },
 };
