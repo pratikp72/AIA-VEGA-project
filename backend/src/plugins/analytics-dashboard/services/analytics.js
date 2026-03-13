@@ -2365,6 +2365,38 @@ module.exports = ({ strapi }) => {
     try {
       const companyId = company != null && company !== '' ? await this.resolveCompanyId(company) : null;
 
+      // No company and no department selected: return all courses for filter dropdown.
+      if ((departmentId == null || departmentId === '') && companyId == null) {
+        let list = [];
+        try {
+          const docList = await strapi.documents('api::course.course').findMany({
+            status: 'published',
+            fields: ['title'],
+            pagination: { limit: 1000 },
+          });
+          list = Array.isArray(docList) ? docList : [];
+        } catch (_) {}
+
+        if (list.length === 0) {
+          try {
+            const rows = await strapi.db.query('api::course.course').findMany({
+              select: ['id', 'documentId', 'title'],
+              orderBy: { title: 'asc' },
+              limit: 1000,
+            });
+            list = Array.isArray(rows) ? rows : [];
+          } catch (_) {}
+        }
+
+        return (list || [])
+          .map((c) => ({
+            id: c.id ?? c.documentId,
+            title: c.title ?? c.attributes?.title ?? `Course ${c.id ?? c.documentId}`,
+          }))
+          .filter((c, i, arr) => c.id != null && arr.findIndex((x) => String(x.id) === String(c.id)) === i)
+          .sort((a, b) => String(a.title).localeCompare(String(b.title)));
+      }
+
       // Company selected, no department: get courses directly from course table where course.company contains this company
       if ((departmentId == null || departmentId === '') && companyId != null) {
         const list = await this._getCoursesByCompanyId(companyId);

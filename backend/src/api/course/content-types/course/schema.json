@@ -96,12 +96,6 @@
       "relation": "manyToMany",
       "target": "api::course-assignment.course-assignment",
       "inversedBy": "courses"
-    },
-    "course_workflow": {
-      "type": "relation",
-      "relation": "oneToOne",
-      "target": "api::course-workflow.course-workflow",
-      "mappedBy": "course"
     }
   }
 }
