@@ -63,6 +63,20 @@
       },
       "component": "course.workflow-module",
       "repeatable": true
+    },
+    "due_date": {
+      "type": "date",
+      "conditions": {
+        "visible": {
+          "==": [
+            {
+              "var": "module_type"
+            },
+            "Online"
+          ]
+        }
+      },
+      "required": true
     }
   }
 }

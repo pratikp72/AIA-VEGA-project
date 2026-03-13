@@ -2,9 +2,14 @@
 
 const COURSE_WORKFLOW_UID = 'api::course-workflow.course-workflow';
 const USER_UID = 'plugin::users-permissions.user';
+const COURSE_ASSIGNMENT_UID = 'api::course-assignment.course-assignment';
 
 function isOfflineModuleType(value) {
   return String(value || '').trim().toLowerCase() === 'offline';
+}
+
+function isOnlineModuleType(value) {
+  return String(value || '').trim().toLowerCase() === 'online';
 }
 
 function sleep(ms) {
@@ -57,11 +62,100 @@ async function loadWorkflow(strapi, workflowLike) {
 
   return strapi.db.query(COURSE_WORKFLOW_UID).findOne({
     where,
-    select: ['id', 'documentId', 'module_type'],
+    select: ['id', 'documentId', 'module_type', 'due_date'],
     populate: {
+      course: { select: ['id', 'documentId'] },
       offline_module: true,
     },
   });
+}
+
+async function getExistingIndividualAssignedUserIdsForCourse(strapi, courseId) {
+  const out = new Set();
+  if (!courseId) return out;
+
+  try {
+    const existing = await strapi.db.query(COURSE_ASSIGNMENT_UID).findMany({
+      where: {
+        assignment_target_type: 'Individual',
+        courses: { id: Number(courseId) },
+      },
+      populate: { individual_user: { select: ['id'] } },
+      limit: 10000,
+    });
+
+    for (const row of existing || []) {
+      const users = Array.isArray(row?.individual_user) ? row.individual_user : (row?.individual_user ? [row.individual_user] : []);
+      for (const user of users) {
+        if (user?.id != null) out.add(Number(user.id));
+      }
+    }
+  } catch (e) {
+    strapi.log.warn('[course-workflow] failed loading existing individual assignments:', e?.message || e);
+  }
+
+  return out;
+}
+
+async function syncOnlineAssignmentsForWorkflow(strapi, workflowLike) {
+  let workflow = await loadWorkflow(strapi, workflowLike);
+  if (!workflow) return;
+  if (!isOnlineModuleType(workflow.module_type)) return;
+
+  const courseId = workflow?.course?.id;
+  if (!courseId) return;
+
+  let users = await getSelectedUsersForWorkflow(strapi, workflow);
+  if (users.length === 0) {
+    // In some flows relation updates are applied right after workflow save.
+    await sleep(200);
+    workflow = await loadWorkflow(strapi, workflow);
+    if (!workflow || !isOnlineModuleType(workflow.module_type) || !workflow?.course?.id) return;
+    users = await getSelectedUsersForWorkflow(strapi, workflow);
+  }
+
+  if (users.length === 0) return;
+
+  const dueDate = workflow?.due_date;
+  if (!dueDate) {
+    strapi.log.warn('[course-workflow] due_date is required for Online workflow assignment creation (workflow=%s)', workflow.id);
+    return;
+  }
+  const existingUserIds = await getExistingIndividualAssignedUserIdsForCourse(strapi, courseId);
+  const docService = strapi.documents(COURSE_ASSIGNMENT_UID);
+
+  let created = 0;
+  for (const user of users) {
+    const userId = user?.id;
+    if (userId == null) continue;
+    if (existingUserIds.has(Number(userId))) continue;
+
+    try {
+      await docService.create({
+        data: {
+          assignment_target_type: 'Individual',
+          courses: { connect: [{ id: Number(courseId) }] },
+          due_date: dueDate,
+          active: true,
+          individual_user: [Number(userId)],
+        },
+        status: 'published',
+      });
+      existingUserIds.add(Number(userId));
+      created++;
+    } catch (e) {
+      strapi.log.warn('[course-workflow] failed creating online assignment (workflow=%s, user=%s): %s', workflow.id, userId, e?.message || String(e));
+    }
+  }
+
+  if (created > 0) {
+    strapi.log.info('[course-workflow] created %d Individual course-assignment entries for Online workflow %s', created, workflow.id);
+  }
+}
+
+async function syncWorkflowAutomationForWorkflow(strapi, workflowLike) {
+  await syncOfflineModuleForWorkflow(strapi, workflowLike);
+  await syncOnlineAssignmentsForWorkflow(strapi, workflowLike);
 }
 
 async function loadUserByWhere(strapi, where) {
@@ -163,7 +257,7 @@ async function syncWorkflowFromUserEvent(strapi, event) {
   }
 
   for (const ref of targets) {
-    await syncOfflineModuleForWorkflow(strapi, ref);
+    await syncWorkflowAutomationForWorkflow(strapi, ref);
   }
 }
 
@@ -172,14 +266,14 @@ function registerCourseWorkflowOfflineModuleSync(strapi) {
     models: [COURSE_WORKFLOW_UID],
     async afterCreate(event) {
       try {
-        await syncOfflineModuleForWorkflow(strapi, event?.result);
+        await syncWorkflowAutomationForWorkflow(strapi, event?.result);
       } catch (e) {
         strapi.log.error('[course-workflow] offline module sync afterCreate failed:', e?.message || e);
       }
     },
     async afterUpdate(event) {
       try {
-        await syncOfflineModuleForWorkflow(strapi, event?.result);
+        await syncWorkflowAutomationForWorkflow(strapi, event?.result);
       } catch (e) {
         strapi.log.error('[course-workflow] offline module sync afterUpdate failed:', e?.message || e);
       }
@@ -211,7 +305,7 @@ function registerCourseWorkflowOfflineModuleSync(strapi) {
     },
   });
 
-  strapi.log.info('Course-workflow offline-module sync is enabled');
+  strapi.log.info('Course-workflow sync is enabled (Offline module + Online Individual assignments)');
 }
 
 module.exports = { registerCourseWorkflowOfflineModuleSync };
