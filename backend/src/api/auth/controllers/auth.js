@@ -197,6 +197,9 @@ module.exports = {
 
     ctx.set('Content-Type', 'text/html; charset=utf-8');
     ctx.set('Cache-Control', 'no-store, no-cache');
+    // Override Strapi's helmet CSP — this response intentionally runs inline JS
+    // to set localStorage on the 1337 origin before redirecting to /admin.
+    ctx.set('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'");
     ctx.status = 200;
     ctx.body = `<!DOCTYPE html>
 <html>
