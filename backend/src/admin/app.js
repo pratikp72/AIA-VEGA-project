@@ -23,6 +23,7 @@
 import CourseLanguageSyncOnSelect from './components/CourseLanguageSyncOnSelect.jsx';
 import AutoFillComponentIds from './components/AutoFillComponentIds.jsx';
 import HideAddButtonsForQuizFeedback from './components/HideAddButtonsForQuizFeedback.jsx';
+import CourseWorkflowOfflineModuleSyncOnSelect from './components/CourseWorkflowOfflineModuleSyncOnSelect.jsx';
 
 export default {
   /**
@@ -212,6 +213,11 @@ export default {
       contentManager.injectComponent('editView', 'right-links', {
         name: 'HideAddButtonsForQuizFeedback',
         Component: HideAddButtonsForQuizFeedback,
+      });
+      // For Course Workflow: create offline_module entries instantly when users are selected in Offline mode
+      contentManager.injectComponent('editView', 'right-links', {
+        name: 'CourseWorkflowOfflineModuleSyncOnSelect',
+        Component: CourseWorkflowOfflineModuleSyncOnSelect,
       });
     }
 

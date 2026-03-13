@@ -152,6 +152,14 @@ module.exports = {
       strapi.log.error('Quiz reattempt notification bootstrap failed:', e?.message || e);
     }
 
+    // Course-workflow: when module_type is Offline, create one offline_module row per selected user.
+    try {
+      const { registerCourseWorkflowOfflineModuleSync } = require('./lifecycles/course-workflow-offline-module-sync');
+      registerCourseWorkflowOfflineModuleSync(strapi);
+    } catch (e) {
+      strapi.log.error('Course-workflow offline-module sync bootstrap failed:', e?.message || e);
+    }
+
     // Fallback: ensure department when user is created/updated via Content Manager
     const plugin = strapi.plugin('content-manager');
     if (!plugin) return;
