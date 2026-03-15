@@ -27,28 +27,56 @@ export interface CourseModule extends Struct.ComponentSchema {
       Schema.Attribute.Required &
       Schema.Attribute.Unique;
     pdf_file: Schema.Attribute.Media<'files', true> & Schema.Attribute.Required;
-    text_content: Schema.Attribute.Blocks;
+    text_content: Schema.Attribute.RichText &
+      Schema.Attribute.Required &
+      Schema.Attribute.CustomField<
+        'plugin::ckeditor5.CKEditor',
+        {
+          preset: 'defaultHtml';
+        }
+      >;
     title: Schema.Attribute.String & Schema.Attribute.Required;
-    video_description: Schema.Attribute.RichText & Schema.Attribute.Required;
+    video_description: Schema.Attribute.RichText &
+      Schema.Attribute.CustomField<
+        'plugin::ckeditor5.CKEditor',
+        {
+          preset: 'defaultHtml';
+        }
+      >;
     video_file: Schema.Attribute.Media<'videos', true> &
       Schema.Attribute.Required;
   };
 }
 
-export interface CourseOrientation extends Struct.ComponentSchema {
-  collectionName: 'components_course_orientations';
+export interface CourseWorkflowModule extends Struct.ComponentSchema {
+  collectionName: 'components_course_workflow_modules';
   info: {
-    displayName: 'Orientation';
+    displayName: 'Workflow Module';
   };
   attributes: {
-    language: Schema.Attribute.Enumeration<['English', 'Hindi', 'Gujarati']> &
-      Schema.Attribute.Required;
-    orientation_flow: Schema.Attribute.Enumeration<
-      ['Before Course Completion', 'After Course Completion']
-    > &
-      Schema.Attribute.Required;
-    topics_to_cover: Schema.Attribute.RichText & Schema.Attribute.Required;
-    trainer_name: Schema.Attribute.String & Schema.Attribute.Required;
+    attachment: Schema.Attribute.Media<'images' | 'files', true>;
+    attempt: Schema.Attribute.Integer &
+      Schema.Attribute.SetMinMax<
+        {
+          min: 0;
+        },
+        number
+      >;
+    description: Schema.Attribute.RichText &
+      Schema.Attribute.CustomField<
+        'plugin::ckeditor5.CKEditor',
+        {
+          preset: 'defaultHtml';
+        }
+      >;
+    passing_score: Schema.Attribute.Integer &
+      Schema.Attribute.SetMinMax<
+        {
+          min: 0;
+        },
+        number
+      >;
+    username: Schema.Attribute.String & Schema.Attribute.Required;
   };
 }
 
@@ -303,7 +331,7 @@ declare module '@strapi/strapi' {
   export module Public {
     export interface ComponentSchemas {
       'course.module': CourseModule;
-      'course.orientation': CourseOrientation;
+      'course.workflow-module': CourseWorkflowModule;
       'feedback-form.answer': FeedbackFormAnswer;
       'feedback-form.feedback-form': FeedbackFormFeedbackForm;
       'feedback-form.question': FeedbackFormQuestion;

@@ -551,9 +551,10 @@ function registerUserProgressLifecycles(strapi) {
         await strapi.db.query(USER_PROGRESS_UID).update({
           where: { id: progress.id },
           data: {
-            progress_status: passed ? 'Completed' : 'Failed',
+            progress_status: passed ? 'In_progress' : 'Failed',
             progress_percentage: passed ? 100 : (progress.progress_percentage ?? 0),
-            completed_at: now,
+            completed_at: null,
+            last_accessed_at: now,
           },
         });
       } catch (e) {
@@ -562,7 +563,7 @@ function registerUserProgressLifecycles(strapi) {
     },
   });
 
-  strapi.log.info('User-progress automation: course-assignment → Not_started; quiz-submission → Completed/Failed');
+  strapi.log.info('User-progress automation: course-assignment → Not_started; quiz-submission → In_progress/Failed');
 }
 
 /**

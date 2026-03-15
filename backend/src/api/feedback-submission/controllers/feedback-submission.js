@@ -182,7 +182,7 @@ module.exports = createCoreController("api::feedback-submission.feedback-submiss
     try {
       await strapi
         .controller("api::user-progress.user-progress")
-        .finalizeCourse(courseId, userId);
+        .finalizeCourse(courseId, userId, entry?.id);
     } catch (err) {
       strapi.log.error('Finalize course error:', err);
     }

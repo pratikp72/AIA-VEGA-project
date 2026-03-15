@@ -192,7 +192,8 @@ module.exports = createCoreController("api::user-progress.user-progress", ({ str
       const totalModules = Array.isArray(course?.modules) ? course.modules.length : 0;
       const completedArr = [String(moduleId)];
       const pct = totalModules > 0 ? Math.round((completedArr.length / totalModules) * 100) : 0;
-      const newStatus = pct >= 100 ? 'Completed' : 'In_progress';
+      // Completing all modules only unlocks assessment; course is completed after feedback submission.
+      const newStatus = completedArr.length > 0 ? 'In_progress' : 'Not_started';
       try {
         progress = await strapi.documents(uid).create(/** @type {any} */ ({
           data: {
@@ -202,7 +203,7 @@ module.exports = createCoreController("api::user-progress.user-progress", ({ str
             progress_percentage: pct,
             completed_modules: completedArr,
             started_at: startedAtFromReq || lastAccessedAt,
-            completed_at: newStatus === 'Completed' ? lastAccessedAt : null,
+            completed_at: null,
             last_accessed_at: lastAccessedAt,
             time_spent_minutes: deltaMinutes,
             certificate_issued: false,
@@ -220,7 +221,7 @@ module.exports = createCoreController("api::user-progress.user-progress", ({ str
             progress_percentage: pct,
             completed_modules: completedArr,
             started_at: startedAtFromReq || lastAccessedAt,
-            completed_at: newStatus === 'Completed' ? lastAccessedAt : null,
+            completed_at: null,
             last_accessed_at: lastAccessedAt,
             time_spent_minutes: deltaMinutes,
             certificate_issued: false,
@@ -257,9 +258,10 @@ module.exports = createCoreController("api::user-progress.user-progress", ({ str
     completedSet.add(String(moduleId));
     const completedArr2 = [...completedSet];
     const pct2 = totalModules > 0 ? Math.round((completedArr2.length / totalModules) * 100) : progress.progress_percentage || 0;
-    const newStatus2 = pct2 >= 100 ? 'Completed' : (completedArr2.length > 0 ? 'In_progress' : 'Not_started');
+    // Completing modules should not auto-complete the course.
+    const newStatus2 = completedArr2.length > 0 ? 'In_progress' : 'Not_started';
     const newTime = Math.max(0, Number(progress.time_spent_minutes || 0)) + deltaMinutes;
-    const completedAt = newStatus2 === 'Completed' ? (progress.completed_at || lastAccessedAt) : null;
+    const completedAt = null;
 
     const updateData = /** @type {any} */ ({
       completed_modules: completedArr2,
@@ -307,25 +309,53 @@ module.exports = createCoreController("api::user-progress.user-progress", ({ str
    */
   async updateAfterQuiz(courseId, userId, passed) {
     const uid = "api::user-progress.user-progress";
+    const numUserId = Number(userId);
+    const numCourseId = await resolveCourseId(strapi, courseId);
+    if (numCourseId == null || Number.isNaN(numUserId)) return;
 
-    const progress = await strapi.db.query(uid).findOne({
-      where: { user: userId, course: courseId },
-    });
-
-
+    let progress = null;
+    try {
+      let list = await strapi.documents(uid).findMany({
+        filters: { user: { id: numUserId }, course: { id: numCourseId } },
+        status: 'published',
+        limit: 1,
+      });
+      progress = Array.isArray(list) && list.length > 0 ? list[0] : null;
+      if (!progress) {
+        list = await strapi.documents(uid).findMany({
+          filters: { user: { id: numUserId }, course: { id: numCourseId } },
+          status: 'draft',
+          limit: 1,
+        });
+        progress = Array.isArray(list) && list.length > 0 ? list[0] : null;
+      }
+    } catch (e) {
+      strapi.log.warn('updateAfterQuiz documents lookup failed, trying db.query:', e?.message);
+      progress = await strapi.db.query(uid).findOne({
+        where: { user: numUserId, course: numCourseId },
+      });
+    }
 
     if (!progress) return;
 
-    if (passed === false) {
-      await strapi.db.query(uid).update({
-        where: { id: progress.id },
-        data: { progress_status: "Failed" },
-      });
-    } else {
-      await strapi.db.query(uid).update({
-        where: { id: progress.id },
-        data: { progress_status: "In_progress" },
-      });
+    const now = new Date();
+    const updateData = passed === true
+      ? { progress_status: "In_progress", completed_at: null, last_accessed_at: now }
+      : { progress_status: "Failed", completed_at: null, last_accessed_at: now };
+
+    try {
+      if (progress.documentId) {
+        await strapi.documents(uid).update({
+          documentId: progress.documentId,
+          data: updateData,
+          status: 'published',
+        });
+      } else {
+        await strapi.db.query(uid).update({ where: { id: progress.id }, data: updateData });
+      }
+    } catch (e) {
+      strapi.log.warn('updateAfterQuiz documents update failed, trying db.query:', e?.message);
+      await strapi.db.query(uid).update({ where: { id: progress.id }, data: updateData });
     }
   },
 
@@ -430,10 +460,25 @@ module.exports = createCoreController("api::user-progress.user-progress", ({ str
     } catch (e) {
       full = progress;
     }
+    // Check feedback existence via a direct query (the oneToOne relation may not be linked)
+    let hasFeedback = !!full.feedback_submission;
+    if (!hasFeedback) {
+      try {
+        const fbCount = await strapi.db.query('api::feedback-submission.feedback-submission').count({
+          where: { course: numCourseId, users_permissions_user: numUserId },
+        });
+        hasFeedback = fbCount > 0;
+      } catch { /* ignore */ }
+    }
+    const effectiveStatus =
+      full.progress_status === 'Completed' && !hasFeedback
+        ? 'In_progress'
+        : full.progress_status;
+
     return ctx.send({
       id: full.id,
       documentId: full.documentId ?? null,
-      progress_status: full.progress_status,
+      progress_status: effectiveStatus,
       progress_percentage: full.progress_percentage ?? 0,
       completed_modules: Array.isArray(full.completed_modules) ? full.completed_modules : [],
       started_at: full.started_at ?? null,
@@ -456,7 +501,7 @@ module.exports = createCoreController("api::user-progress.user-progress", ({ str
    * Uses strapi.documents (same as getProgress) so the update is visible when user returns.
    * courseId can be numeric or documentId.
    */
-  async finalizeCourse(courseId, userId) {
+  async finalizeCourse(courseId, userId, feedbackSubmissionId) {
     const uid = "api::user-progress.user-progress";
     const now = new Date();
     const numUserId = Number(userId);
@@ -489,38 +534,59 @@ module.exports = createCoreController("api::user-progress.user-progress", ({ str
       });
     }
 
+    // Resolve feedbackSubmissionId to numeric id for relation linking
+    let fbNumericId = null;
+    if (feedbackSubmissionId) {
+      const fbNum = Number(feedbackSubmissionId);
+      if (Number.isFinite(fbNum)) {
+        fbNumericId = fbNum;
+      } else {
+        try {
+          const fbRow = await strapi.db.query('api::feedback-submission.feedback-submission').findOne({
+            where: { documentId: String(feedbackSubmissionId) },
+            select: ['id'],
+          });
+          fbNumericId = fbRow?.id ?? null;
+        } catch { /* ignore */ }
+      }
+    }
+
     if (existing) {
+      const updateData = {
+        progress_status: "Completed",
+        completed_at: now,
+        certificate_issued: true,
+      };
       try {
         if (existing.documentId) {
           await strapi.documents(uid).update({
             documentId: existing.documentId,
-            data: {
-              progress_status: "Completed",
-              completed_at: now,
-              certificate_issued: true,
-            },
+            data: updateData,
             status: 'published',
           });
         } else {
           await strapi.db.query(uid).update({
             where: { id: existing.id },
-            data: {
-              progress_status: "Completed",
-              completed_at: now,
-              certificate_issued: true,
-            },
+            data: updateData,
           });
         }
       } catch (err) {
         strapi.log.error('finalizeCourse update failed:', err?.message);
         await strapi.db.query(uid).update({
           where: { id: existing.id },
-          data: {
-            progress_status: "Completed",
-            completed_at: now,
-            certificate_issued: true,
-          },
+          data: updateData,
         });
+      }
+      // Link the feedback_submission relation if available
+      if (fbNumericId) {
+        try {
+          await strapi.db.query('api::feedback-submission.feedback-submission').update({
+            where: { id: fbNumericId },
+            data: { user_progress: existing.id },
+          });
+        } catch (linkErr) {
+          strapi.log.warn('finalizeCourse: could not link feedback_submission:', linkErr?.message);
+        }
       }
     } else {
       try {
