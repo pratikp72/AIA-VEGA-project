@@ -62,12 +62,31 @@ async function loadWorkflow(strapi, workflowLike) {
 
   return strapi.db.query(COURSE_WORKFLOW_UID).findOne({
     where,
-    select: ['id', 'documentId', 'module_type', 'due_date'],
+    select: ['id', 'documentId'],
     populate: {
-      course: { select: ['id', 'documentId'] },
-      offline_module: true,
+      users_permissions_users: { select: ['id', 'documentId', 'username', 'email'] },
+      workflow: {
+        populate: {
+          course: { select: ['id', 'documentId'] },
+          offline_module: true,
+        },
+      },
     },
   });
+}
+
+function getWorkflowModules(workflow) {
+  return Array.isArray(workflow?.workflow) ? workflow.workflow : [];
+}
+
+function getWorkflowModuleKey(module, index) {
+  if (module?.id != null) return `id:${module.id}`;
+  if (module?.documentId) return `doc:${module.documentId}`;
+  return `idx:${index}`;
+}
+
+function getCourseIdFromModule(module) {
+  return module?.course?.id ?? null;
 }
 
 async function getExistingIndividualAssignedUserIdsForCourse(strapi, courseId) {
@@ -100,56 +119,60 @@ async function getExistingIndividualAssignedUserIdsForCourse(strapi, courseId) {
 async function syncOnlineAssignmentsForWorkflow(strapi, workflowLike) {
   let workflow = await loadWorkflow(strapi, workflowLike);
   if (!workflow) return;
-  if (!isOnlineModuleType(workflow.module_type)) return;
-
-  const courseId = workflow?.course?.id;
-  if (!courseId) return;
 
   let users = await getSelectedUsersForWorkflow(strapi, workflow);
   if (users.length === 0) {
     // In some flows relation updates are applied right after workflow save.
     await sleep(200);
     workflow = await loadWorkflow(strapi, workflow);
-    if (!workflow || !isOnlineModuleType(workflow.module_type) || !workflow?.course?.id) return;
+    if (!workflow) return;
     users = await getSelectedUsersForWorkflow(strapi, workflow);
   }
 
   if (users.length === 0) return;
-
-  const dueDate = workflow?.due_date;
-  if (!dueDate) {
-    strapi.log.warn('[course-workflow] due_date is required for Online workflow assignment creation (workflow=%s)', workflow.id);
-    return;
-  }
-  const existingUserIds = await getExistingIndividualAssignedUserIdsForCourse(strapi, courseId);
   const docService = strapi.documents(COURSE_ASSIGNMENT_UID);
 
   let created = 0;
-  for (const user of users) {
-    const userId = user?.id;
-    if (userId == null) continue;
-    if (existingUserIds.has(Number(userId))) continue;
+  const workflowModules = getWorkflowModules(workflow);
 
-    try {
-      await docService.create({
-        data: {
-          assignment_target_type: 'Individual',
-          courses: { connect: [{ id: Number(courseId) }] },
-          due_date: dueDate,
-          active: true,
-          individual_user: [Number(userId)],
-        },
-        status: 'published',
-      });
-      existingUserIds.add(Number(userId));
-      created++;
-    } catch (e) {
-      strapi.log.warn('[course-workflow] failed creating online assignment (workflow=%s, user=%s): %s', workflow.id, userId, e?.message || String(e));
+  for (const module of workflowModules) {
+    const courseId = getCourseIdFromModule(module);
+    if (!courseId) continue;
+
+    const dueDate = module?.due_date;
+    if (!dueDate) {
+      strapi.log.warn('[course-workflow] due_date is required for assignment creation (workflow=%s, module=%s)', workflow.id, module?.id ?? 'new');
+      continue;
+    }
+
+    const existingUserIds = await getExistingIndividualAssignedUserIdsForCourse(strapi, courseId);
+
+    for (const user of users) {
+      const userId = user?.id;
+      if (userId == null) continue;
+      if (existingUserIds.has(Number(userId))) continue;
+
+      try {
+        await docService.create({
+          data: {
+            assignment_target_type: 'Individual',
+            courses: { connect: [{ id: Number(courseId) }] },
+            due_date: dueDate,
+            active: true,
+            individual_user: [Number(userId)],
+          },
+          status: 'published',
+        });
+        existingUserIds.add(Number(userId));
+        created++;
+      } catch (e) {
+        strapi.log.warn('[course-workflow] failed creating workflow assignment (workflow=%s, module=%s, user=%s): %s', workflow.id, module?.id ?? 'new', userId, e?.message || String(e));
+      }
     }
   }
 
   if (created > 0) {
-    strapi.log.info('[course-workflow] created %d Individual course-assignment entries for Online workflow %s', created, workflow.id);
+    strapi.log.info('[course-workflow] created %d Individual course-assignment entries for workflow %s', created, workflow.id);
   }
 }
 
@@ -186,7 +209,6 @@ function toWorkflowRef(value) {
 async function getSelectedUsersForWorkflow(strapi, workflow) {
   if (!workflow?.id) return [];
 
-  // Relation owner is users-permissions user (manyToOne), so fetch users by FK.
   const users = await strapi.db.query(USER_UID).findMany({
     where: { course_workflow: workflow.id },
     select: ['id', 'documentId', 'username', 'email'],
@@ -196,29 +218,51 @@ async function getSelectedUsersForWorkflow(strapi, workflow) {
   return Array.isArray(users) ? users : [];
 }
 
+function buildSyncedWorkflowModules(workflowModules, users) {
+  let changed = false;
+
+  const nextModules = workflowModules.map((module) => {
+    if (!isOfflineModuleType(module?.module_type)) return module;
+
+    const currentOfflineModules = Array.isArray(module?.offline_module) ? module.offline_module : [];
+    const desiredOfflineModules = buildOfflineModuleEntries(users, currentOfflineModules);
+
+    if (sameUsernameOrder(currentOfflineModules, desiredOfflineModules)) {
+      return module;
+    }
+
+    changed = true;
+    return {
+      ...module,
+      offline_module: desiredOfflineModules,
+    };
+  });
+
+  return { changed, nextModules };
+}
+
 async function syncOfflineModuleForWorkflow(strapi, workflowLike) {
   let workflow = await loadWorkflow(strapi, workflowLike);
   if (!workflow) return;
-
-  if (!isOfflineModuleType(workflow.module_type)) return;
 
   let users = await getSelectedUsersForWorkflow(strapi, workflow);
   if (users.length === 0) {
     // In some flows relation updates are applied right after workflow save.
     await sleep(200);
     workflow = await loadWorkflow(strapi, workflow);
-    if (!workflow || !isOfflineModuleType(workflow.module_type)) return;
+    if (!workflow) return;
     users = await getSelectedUsersForWorkflow(strapi, workflow);
   }
 
-  const current = Array.isArray(workflow.offline_module) ? workflow.offline_module : [];
-  const desired = buildOfflineModuleEntries(users, current);
+  const workflowModules = getWorkflowModules(workflow);
+  if (workflowModules.length === 0) return;
 
-  if (sameUsernameOrder(current, desired)) return;
+  const { changed, nextModules } = buildSyncedWorkflowModules(workflowModules, users);
+  if (!changed) return;
 
   await strapi.db.query(COURSE_WORKFLOW_UID).update({
     where: { id: workflow.id },
-    data: { offline_module: desired },
+    data: { workflow: nextModules },
   });
 }
 

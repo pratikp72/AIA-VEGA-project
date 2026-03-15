@@ -5,33 +5,57 @@
   },
   "options": {},
   "attributes": {
-    "username": {
-      "type": "string",
-      "required": true
-    },
-    "description": {
-      "type": "customField",
-      "customField": "plugin::ckeditor5.CKEditor",
-      "options": {
-        "preset": "defaultHtml"
-      },
-      "required": false
-    },
-    "attachment": {
-      "type": "media",
-      "multiple": true,
-      "allowedTypes": [
-        "images",
-        "files"
+    "module_type": {
+      "type": "enumeration",
+      "required": true,
+      "enum": [
+        "Online",
+        "Offline"
       ]
     },
-    "attempt": {
-      "type": "integer",
-      "min": 0
+    "due_date": {
+      "type": "date",
+      "conditions": {
+        "visible": {
+          "==": [
+            {
+              "var": "module_type"
+            },
+            "Online"
+          ]
+        }
+      },
+      "required": true
     },
-    "passing_score": {
-      "type": "integer",
-      "min": 0
+    "offline_module": {
+      "type": "component",
+      "conditions": {
+        "visible": {
+          "==": [
+            {
+              "var": "module_type"
+            },
+            "Offline"
+          ]
+        }
+      },
+      "component": "course.offline-module",
+      "repeatable": true
+    },
+    "course": {
+      "type": "relation",
+      "relation": "oneToOne",
+      "target": "api::course.course",
+      "conditions": {
+        "visible": {
+          "==": [
+            {
+              "var": "module_type"
+            },
+            "Online"
+          ]
+        }
+      }
     }
   },
   "config": {}

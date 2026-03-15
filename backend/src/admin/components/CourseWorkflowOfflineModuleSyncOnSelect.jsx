@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect } from 'react';
 import { useForm } from '@strapi/admin/strapi-admin';
 
 const COURSE_WORKFLOW_MODEL = 'api::course-workflow.course-workflow';
@@ -132,59 +132,56 @@ function sameUsernames(a, b) {
   return true;
 }
 
+function getWorkflowItems(raw) {
+  return Array.isArray(raw) ? raw : [];
+}
+
+function syncWorkflowOfflineModules(workflowItems, selectedUsers) {
+  let changed = false;
+
+  const nextWorkflowItems = workflowItems.map((item) => {
+    if (!isOffline(item?.module_type)) return item;
+
+    const currentRows = Array.isArray(item?.offline_module) ? item.offline_module : [];
+    const nextRows = buildOfflineModuleFromUsers(selectedUsers, currentRows);
+
+    if (sameUsernames(currentRows, nextRows)) return item;
+
+    changed = true;
+    return {
+      ...item,
+      offline_module: nextRows,
+    };
+  });
+
+  return { changed, nextWorkflowItems };
+}
+
 /**
  * For Course Workflow edit view:
- * - If module_type is Offline and users relation changes, create offline_module rows instantly.
- * - One row per selected user.
+ * - If any workflow item has module_type = Offline and users relation changes, create offline_module rows instantly.
+ * - Each offline workflow item gets one row per selected user.
  * - username is auto-filled from selected relation label.
  */
 function CourseWorkflowOfflineModuleSyncOnSelect({ slug, model }) {
   const uid = slug || model;
   const values = useForm('useContentManagerContext', (state) => state?.values, false);
   const setValues = useForm('useContentManagerContext', (state) => state?.setValues, false);
-  const prevSelectionSignatureRef = useRef('');
-  const prevIsOfflineRef = useRef(false);
 
   useEffect(() => {
     if (uid !== COURSE_WORKFLOW_MODEL || !values || typeof setValues !== 'function') return;
 
-    const nowOffline = isOffline(values.module_type);
-    if (!nowOffline) {
-      prevIsOfflineRef.current = false;
-      prevSelectionSignatureRef.current = '';
-      return;
-    }
-
     const selectedUsersRaw = getRelationArray(values.users_permissions_users);
     const selectedUsers = getUniqueSelectedUsers(selectedUsersRaw);
-    const selectionSignature = selectedUsers
-      .map((user, i) => getUserKey(user, i))
-      .join('|');
+    const workflowItems = getWorkflowItems(values.workflow);
+    if (workflowItems.length === 0) return;
 
-    const becameOffline = !prevIsOfflineRef.current && nowOffline;
-    const selectionChanged = selectionSignature !== prevSelectionSignatureRef.current;
-    prevIsOfflineRef.current = nowOffline;
-    prevSelectionSignatureRef.current = selectionSignature;
-
-    const nextRows = buildOfflineModuleFromUsers(selectedUsers, values.offline_module);
-    const currentRows = Array.isArray(values.offline_module) ? values.offline_module : [];
-
-    // Hard cap: do not allow creating more rows than selected users.
-    if (currentRows.length > selectedUsers.length) {
-      setValues({
-        ...values,
-        offline_module: nextRows,
-      });
-      return;
-    }
-
-    if (!becameOffline && !selectionChanged) return;
-
-    if (sameUsernames(currentRows, nextRows)) return;
+    const { changed, nextWorkflowItems } = syncWorkflowOfflineModules(workflowItems, selectedUsers);
+    if (!changed) return;
 
     setValues({
       ...values,
-      offline_module: nextRows,
+      workflow: nextWorkflowItems,
     });
   }, [uid, values, setValues]);
 

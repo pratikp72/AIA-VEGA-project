@@ -25,58 +25,10 @@
       "target": "plugin::users-permissions.user",
       "mappedBy": "course_workflow"
     },
-    "module_type": {
-      "type": "enumeration",
-      "required": true,
-      "enum": [
-        "Online",
-        "Offline"
-      ]
-    },
-    "course": {
-      "type": "relation",
-      "relation": "oneToOne",
-      "target": "api::course.course",
-      "conditions": {
-        "visible": {
-          "==": [
-            {
-              "var": "module_type"
-            },
-            "Online"
-          ]
-        }
-      },
-      "inversedBy": "course_workflow"
-    },
-    "offline_module": {
+    "workflow": {
       "type": "component",
-      "conditions": {
-        "visible": {
-          "==": [
-            {
-              "var": "module_type"
-            },
-            "Offline"
-          ]
-        }
-      },
       "component": "course.workflow-module",
       "repeatable": true
-    },
-    "due_date": {
-      "type": "date",
-      "conditions": {
-        "visible": {
-          "==": [
-            {
-              "var": "module_type"
-            },
-            "Online"
-          ]
-        }
-      },
-      "required": true
     }
   }
 }
