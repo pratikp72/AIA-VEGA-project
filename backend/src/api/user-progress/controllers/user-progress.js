@@ -443,15 +443,34 @@ module.exports = createCoreController("api::user-progress.user-progress", ({ str
       status: 'published',
       limit: 500,
     });
+
+    const numUserId = Number(userId);
+    const feedbackCourseIds = new Set();
+    try {
+      const fbRecords = await strapi.db.query('api::feedback-submission.feedback-submission').findMany({
+        where: { users_permissions_user: numUserId },
+        populate: ['course'],
+        limit: 1000,
+      });
+      (Array.isArray(fbRecords) ? fbRecords : []).forEach((fb) => {
+        const cId = fb.course?.id;
+        if (cId != null) feedbackCourseIds.add(Number(cId));
+      });
+    } catch (e) {
+      strapi.log.warn('getAllProgress: feedback batch query failed:', e?.message);
+    }
+
     const byCourse = {};
     (Array.isArray(records) ? records : []).forEach((r) => {
       const courseId = r.course?.id ?? r.course;
       if (courseId != null) {
-        byCourse[Number(courseId)] = {
+        const numCourseId = Number(courseId);
+        byCourse[numCourseId] = {
           progress_status: r.progress_status,
           completed: r.progress_status === 'Completed',
           completed_at: r.completed_at,
           certificate_issued: r.certificate_issued,
+          feedback_submitted: feedbackCourseIds.has(numCourseId),
         };
       }
     });
