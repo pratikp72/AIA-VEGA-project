@@ -1,7 +1,7 @@
 // @ts-nocheck
 import React, { useMemo } from 'react';
 import { useIntl } from 'react-intl';
-import { Flex, Typography, SingleSelect, SingleSelectOption } from '@strapi/design-system';
+import { Box, Flex, Typography, SingleSelect, SingleSelectOption } from '@strapi/design-system';
 import { useForm } from '@strapi/admin/strapi-admin';
 
 /**
@@ -112,6 +112,10 @@ const WorkflowPrerequisitePickerInput = React.forwardRef((props, ref) => {
     onChange({ target: { name, type: 'json', value: arr } });
   };
 
+  const handleClear = () => {
+    onChange({ target: { name, type: 'json', value: [] } });
+  };
+
   const labelText = (() => {
     if (!intlLabel) return 'Prerequisite Modules';
     if (typeof intlLabel === 'string') return intlLabel;
@@ -132,19 +136,52 @@ const WorkflowPrerequisitePickerInput = React.forwardRef((props, ref) => {
             : 'No other modules available as prerequisites.'}
         </Typography>
       ) : (
-        <SingleSelect
-          id={name}
-          value={selectedIndex != null ? String(selectedIndex) : undefined}
-          onChange={handleChange}
-          placeholder="Select prerequisite module..."
-          disabled={disabled}
-        >
-          {options.map(({ item, idx }) => (
-            <SingleSelectOption key={idx} value={String(idx)}>
-              {getModuleLabel(item, idx)}
-            </SingleSelectOption>
-          ))}
-        </SingleSelect>
+        <Box position="relative" width="100%">
+          <Box paddingRight={selectedIndex != null ? 24 : 0}>
+            <SingleSelect
+              id={name}
+              value={selectedIndex != null ? String(selectedIndex) : undefined}
+              onChange={handleChange}
+              placeholder="Select prerequisite module..."
+              disabled={disabled}
+            >
+              {options.map(({ item, idx }) => (
+                <SingleSelectOption key={idx} value={String(idx)}>
+                  {getModuleLabel(item, idx)}
+                </SingleSelectOption>
+              ))}
+            </SingleSelect>
+          </Box>
+          {selectedIndex != null && !disabled ? (
+            <button
+              type="button"
+              onClick={handleClear}
+              aria-label="Clear prerequisite module"
+              title="Clear prerequisite module"
+              style={{
+                position: 'absolute',
+                top: '50%',
+                right: '42px',
+                transform: 'translateY(-50%)',
+                zIndex: 2,
+                width: '18px',
+                height: '18px',
+                border: 'none',
+                background: 'transparent',
+                color: '#666687',
+                cursor: 'pointer',
+                padding: 0,
+                lineHeight: 1,
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: '14px',
+              }}
+            >
+              x
+            </button>
+          ) : null}
+        </Box>
       )}
 
       {error && (
