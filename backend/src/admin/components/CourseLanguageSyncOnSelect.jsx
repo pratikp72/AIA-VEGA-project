@@ -65,6 +65,10 @@ function normalizeLang(v) {
   return typeof v === 'string' ? v.trim().toLowerCase() : '';
 }
 
+function generateId(prefix) {
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+}
+
 function cloneWithoutKeys(obj, keys) {
   const out = { ...(obj || {}) };
   (keys || []).forEach((k) => {
@@ -91,18 +95,13 @@ function syncModuleBlocks(current, prevLanguages, nextLanguages, createPlacehold
   // Infer block size using previous language count whenever possible.
   // This preserves existing module blocks when languages are added (e.g. 4 entries at 2 langs -> 6 at 3 langs).
   const prevLangN = Array.isArray(prevLanguages) && prevLanguages.length > 0 ? prevLanguages.length : nextN;
-  let prevN;
-  if (prevLangN > 0 && list.length % prevLangN === 0) {
-    prevN = prevLangN; // list has blocks of previous language count (works for add/remove)
-  } else if (list.length % nextN === 0 && list.length >= nextN) {
-    prevN = nextN; // list is k blocks of nextN
-  } else {
-    prevN = list.length; // one block (e.g. adding languages)
-  }
+  // Always chunk by previous language count when possible, even if list is not perfectly divisible.
+  // This preserves logical blocks after a manual single-row delete (e.g. 4 -> 3 with 2 languages => 2 blocks).
+  const prevN = prevLangN > 0 ? prevLangN : (nextN > 0 ? nextN : list.length);
 
-  // Chunk into blocks of prevN.
+  // Chunk into blocks of prevN (ragged last block allowed).
   const blocks = [];
-  if (prevN > 0 && list.length % prevN === 0) {
+  if (prevN > 0) {
     for (let i = 0; i < list.length; i += prevN) {
       blocks.push(list.slice(i, i + prevN));
     }
@@ -139,11 +138,62 @@ function syncModuleBlocks(current, prevLanguages, nextLanguages, createPlacehold
   return out;
 }
 
+// Generic block sync for repeatables that should maintain one entry per selected language in each block.
+// Example with 2 languages and 2 blocks: [b1-en, b1-hi, b2-en, b2-hi]
+function syncRepeatableBlocks(current, prevLanguages, nextLanguages, createPlaceholder, keyPrefix = 'item') {
+  const nextN = nextLanguages.length;
+  const list = Array.isArray(current) ? [...current] : [];
+
+  if (nextN === 0) return [];
+
+  if (list.length === 0) {
+    return nextLanguages.map((lang, i) => createPlaceholder(lang, i));
+  }
+
+  const prevLangN = Array.isArray(prevLanguages) && prevLanguages.length > 0 ? prevLanguages.length : nextN;
+  const prevN = prevLangN > 0 ? prevLangN : (nextN > 0 ? nextN : list.length);
+
+  const blocks = [];
+  if (prevN > 0) {
+    for (let i = 0; i < list.length; i += prevN) {
+      blocks.push(list.slice(i, i + prevN));
+    }
+  } else {
+    blocks.push(list);
+  }
+
+  const out = [];
+
+  blocks.forEach((block, blockIdx) => {
+    const byLang = new Map();
+    block.forEach((item) => {
+      const key = normalizeLang(item?.language);
+      if (key) byLang.set(key, item);
+    });
+
+    nextLanguages.forEach((lang, langIdx) => {
+      const found = byLang.get(normalizeLang(lang));
+      if (found) {
+        out.push({ ...found, language: lang });
+      } else {
+        out.push(createPlaceholder(lang, langIdx));
+      }
+
+      const last = out[out.length - 1];
+      if (last && !last.__temp_key__) {
+        last.__temp_key__ = `${keyPrefix}-${blockIdx}-${langIdx}-lang-${lang}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+      }
+    });
+  });
+
+  return out;
+}
+
 function createModulePlaceholder(lang) {
   return {
     __temp_key__: `lang-${lang}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
     language: lang,
-    module_id: '',
+    module_id: generateId('mod'),
     title: '',
     module_content_type: 'Text',
     mark_as_read: false,
@@ -155,6 +205,7 @@ function createQuizPlaceholder(lang) {
   return {
     __temp_key__: `lang-${lang}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
     language: lang,
+    quiz_id: generateId('quiz'),
     title: '',
     quiz_questions: [],
     quiz_instruction: [],
@@ -188,17 +239,18 @@ function ensureRichTextString(val) {
   return typeof val === 'string' ? val : '';
 }
 
-function shouldExpandAfterSingleAdd(currentLength, languageCount) {
+function shouldExpandAfterSingleAdd(currentLength, previousLength, languageCount) {
   if (languageCount <= 0 || currentLength <= 0) return false;
-  // A length of k*N + 1 means a single row was added and needs fan-out to one per language.
-  return currentLength % languageCount === 1;
+  if (typeof previousLength !== 'number') return false;
+  // Only treat as an add when list length increased by exactly one.
+  return currentLength === previousLength + 1;
 }
 
 function buildSyncedValues(values, nextLanguages, prevLanguages) {
   // For modules: blocks (supports add-entry); for quiz/feedback: one entry per language
   const syncedModules = syncModuleBlocks(values.modules, prevLanguages, nextLanguages, (lang) => createModulePlaceholder(lang));
-  const syncedQuiz = syncComponentArray(values.quiz, nextLanguages, (lang) => createQuizPlaceholder(lang));
-  const syncedFeedback = syncComponentArray(values.feedback, nextLanguages, (lang) => createFeedbackPlaceholder(lang));
+  const syncedQuiz = syncRepeatableBlocks(values.quiz, prevLanguages, nextLanguages, (lang) => createQuizPlaceholder(lang), 'quiz');
+  const syncedFeedback = syncRepeatableBlocks(values.feedback, prevLanguages, nextLanguages, (lang) => createFeedbackPlaceholder(lang), 'fb');
   const orientationRequired = values.orientation_required === true;
   const syncedOrientation = orientationRequired
     ? syncComponentArray(values.orientation_detail, nextLanguages, (lang) => createOrientationPlaceholder(lang))
@@ -234,14 +286,8 @@ function buildSyncedValues(values, nextLanguages, prevLanguages) {
 function expandLastSetToLanguages(current, languages, createPlaceholder) {
   const N = languages.length;
   if (N <= 0 || !Array.isArray(current)) return null;
-  // First add: 0 -> 1 entry => create N entries (one per language)
-  if (current.length === 1 && N >= 1) {
-    // Clone the first entry for each language
-    return languages.map((lang, i) => ({ ...current[0], language: lang, __temp_key__: `lang-${lang}-${i}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}` }));
-  }
-  if (current.length < N) return null;
-  const remainder = current.length % N;
-  if (remainder !== 1) return null; // length = k*N + 1 means they added one
+  // Fan out the last added row to one row per selected language.
+  if (current.length < 1) return null;
   const kept = current.slice(0, current.length - 1);
   const last = current[current.length - 1];
   // Clone the last added entry for each language
@@ -259,7 +305,7 @@ function expandLastModuleSetToLanguages(modules, languages) {
     return {
       ...cleaned,
       language: cleaned.language,
-      module_id: '',
+      module_id: generateId('mod'),
       module_duration_min: cleaned.module_duration_min ?? 1,
       __temp_key__: `mod-expand-${idx}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
     };
@@ -276,7 +322,7 @@ function expandLastQuizSetToLanguages(quiz, languages) {
     return {
       ...cleaned,
       language: cleaned.language,
-      quiz_id: '',
+      quiz_id: generateId('quiz'),
       quiz_questions: ensureArray(cleaned.quiz_questions),
       quiz_instruction: ensureArray(cleaned.quiz_instruction),
       quiz_instruction_checklist: ensureArray(cleaned.quiz_instruction_checklist),
@@ -396,7 +442,7 @@ function CourseLanguageSyncOnSelect({ slug, model }) {
     }
 
     // 3. When user clicks "Add an entry", Strapi adds 1 row. Expand it to N rows (one per language).
-    if (shouldExpandAfterSingleAdd(modules.length, N)) {
+    if (shouldExpandAfterSingleAdd(modules.length, prevLengths.modules, N)) {
       const expanded = expandLastModuleSetToLanguages(modules, languages);
       if (expanded) {
         prevLangRef.current = languages;
@@ -408,7 +454,7 @@ function CourseLanguageSyncOnSelect({ slug, model }) {
         return;
       }
     }
-    if (shouldExpandAfterSingleAdd(quiz.length, N)) {
+    if (shouldExpandAfterSingleAdd(quiz.length, prevLengths.quiz, N)) {
       const expanded = expandLastQuizSetToLanguages(quiz, languages);
       if (expanded) {
         prevLangRef.current = languages;
@@ -420,7 +466,7 @@ function CourseLanguageSyncOnSelect({ slug, model }) {
         return;
       }
     }
-    if (shouldExpandAfterSingleAdd(feedback.length, N)) {
+    if (shouldExpandAfterSingleAdd(feedback.length, prevLengths.feedback, N)) {
       const expanded = expandLastFeedbackSetToLanguages(feedback, languages);
       if (expanded) {
         prevLangRef.current = languages;
@@ -434,7 +480,7 @@ function CourseLanguageSyncOnSelect({ slug, model }) {
     }
     if (
       orientationRequired &&
-      shouldExpandAfterSingleAdd(orientationDetail.length, N)
+      shouldExpandAfterSingleAdd(orientationDetail.length, prevLengths.orientation_detail, N)
     ) {
       const expanded = expandLastOrientationSetToLanguages(orientationDetail, languages);
       if (expanded) {
