@@ -683,20 +683,15 @@ export interface ApiCourseWorkflowCourseWorkflow
     category: Schema.Attribute.Enumeration<
       ['Mandatory', 'Orientation', 'other']
     >;
-    course: Schema.Attribute.Relation<'oneToOne', 'api::course.course'>;
     createdAt: Schema.Attribute.DateTime;
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
-    due_date: Schema.Attribute.Date & Schema.Attribute.Required;
     locale: Schema.Attribute.String & Schema.Attribute.Private;
     localizations: Schema.Attribute.Relation<
       'oneToMany',
       'api::course-workflow.course-workflow'
     > &
       Schema.Attribute.Private;
-    module_type: Schema.Attribute.Enumeration<['Online', 'Offline']> &
-      Schema.Attribute.Required;
-    offline_module: Schema.Attribute.Component<'course.workflow-module', true>;
     publishedAt: Schema.Attribute.DateTime;
     updatedAt: Schema.Attribute.DateTime;
     updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
@@ -705,6 +700,7 @@ export interface ApiCourseWorkflowCourseWorkflow
       'oneToMany',
       'plugin::users-permissions.user'
     >;
+    workflow: Schema.Attribute.Component<'course.workflow-module', true>;
   };
 }
 
@@ -747,10 +743,6 @@ export interface ApiCourseCourse extends Struct.CollectionTypeSchema {
           required: true;
         }
       >;
-    course_workflow: Schema.Attribute.Relation<
-      'oneToOne',
-      'api::course-workflow.course-workflow'
-    >;
     createdAt: Schema.Attribute.DateTime;
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;

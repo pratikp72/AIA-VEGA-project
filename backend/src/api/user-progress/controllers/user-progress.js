@@ -10,6 +10,31 @@ function _computeNextStep(completedCount, totalModules, course) {
   return 'course_complete_allowed';
 }
 
+/**
+ * Weighted progress: Modules = 80%, Quiz = 10 or 20%, Feedback = 10% (if compulsory).
+ * If feedback is NOT compulsory → quiz weight = 20%, no feedback portion.
+ */
+function _calcModulePct(completedCount, totalModules) {
+  if (totalModules <= 0) return 0;
+  return Math.round((completedCount / totalModules) * 80);
+}
+
+/**
+ * Filter modules by selected language.
+ * Each module component has a `language` enum field (English/Hindi/Gujarati).
+ * Returns only modules matching the user's selected language.
+ */
+function _filterModulesByLanguage(modules, language) {
+  if (!Array.isArray(modules)) return [];
+  if (!language) return modules;
+  const langNorm = language.trim().toLowerCase();
+  const filtered = modules.filter(
+    (m) => (m.language || '').trim().toLowerCase() === langNorm
+  );
+  // Fallback to all modules if no match (safety for courses without per-language modules)
+  return filtered.length > 0 ? filtered : modules;
+}
+
 async function resolveCourseId(strapi, courseId) {
   const num = Number(courseId);
   if (!Number.isNaN(num)) return num;
@@ -189,9 +214,10 @@ module.exports = createCoreController("api::user-progress.user-progress", ({ str
         where: { id: numCourseId },
         populate: { modules: true, quiz: true, feedback: true },
       });
-      const totalModules = Array.isArray(course?.modules) ? course.modules.length : 0;
+      const langModules = _filterModulesByLanguage(course?.modules, selectedLanguage);
+      const totalModules = langModules.length;
       const completedArr = [String(moduleId)];
-      const pct = totalModules > 0 ? Math.round((completedArr.length / totalModules) * 100) : 0;
+      const pct = _calcModulePct(completedArr.length, totalModules);
       // Completing all modules only unlocks assessment; course is completed after feedback submission.
       const newStatus = completedArr.length > 0 ? 'In_progress' : 'Not_started';
       try {
@@ -251,13 +277,15 @@ module.exports = createCoreController("api::user-progress.user-progress", ({ str
       });
     }
 
-    const totalModules = Array.isArray(course.modules) ? course.modules.length : 0;
+    const effectiveLang = selectedLanguage ?? progress.selected_language ?? null;
+    const langModules = _filterModulesByLanguage(course.modules, effectiveLang);
+    const totalModules = langModules.length;
 
     // Dedupe and compute new state
     const completedSet = new Set((progress.completed_modules || []).map(String));
     completedSet.add(String(moduleId));
     const completedArr2 = [...completedSet];
-    const pct2 = totalModules > 0 ? Math.round((completedArr2.length / totalModules) * 100) : progress.progress_percentage || 0;
+    const pct2 = _calcModulePct(completedArr2.length, totalModules);
     // Completing modules should not auto-complete the course.
     const newStatus2 = completedArr2.length > 0 ? 'In_progress' : 'Not_started';
     const newTime = Math.max(0, Number(progress.time_spent_minutes || 0)) + deltaMinutes;
@@ -339,9 +367,49 @@ module.exports = createCoreController("api::user-progress.user-progress", ({ str
     if (!progress) return;
 
     const now = new Date();
-    const updateData = passed === true
-      ? { progress_status: "In_progress", completed_at: null, last_accessed_at: now }
-      : { progress_status: "Failed", completed_at: null, last_accessed_at: now };
+
+    // Fetch course to determine feedback compulsory flag
+    const course = await strapi.db.query('api::course.course').findOne({
+      where: { id: numCourseId },
+      populate: { modules: true, feedback: true },
+    });
+    const feedbackCompulsory = course?.feedback?.[0]?.compulsory === true;
+    const effectiveLang = progress.selected_language ?? null;
+    const langModules = _filterModulesByLanguage(course?.modules, effectiveLang);
+    const totalModules = langModules.length;
+    const completedModules = Array.isArray(progress.completed_modules) ? progress.completed_modules : [];
+    const modulePct = _calcModulePct(completedModules.length, totalModules);
+    const quizPct = feedbackCompulsory ? 10 : 20;
+
+    let updateData;
+    if (passed === true) {
+      if (feedbackCompulsory) {
+        // Quiz = 10%, waiting for feedback (another 10%)
+        updateData = {
+          progress_status: 'In_progress',
+          progress_percentage: modulePct + quizPct,
+          completed_at: null,
+          last_accessed_at: now,
+        };
+      } else {
+        // Quiz = 20%, no feedback needed → course complete
+        updateData = {
+          progress_status: 'Completed',
+          progress_percentage: modulePct + quizPct,
+          completed_at: now,
+          last_accessed_at: now,
+          certificate_issued: true,
+        };
+      }
+    } else {
+      // Failed: keep module percentage only
+      updateData = {
+        progress_status: 'Failed',
+        progress_percentage: modulePct,
+        completed_at: null,
+        last_accessed_at: now,
+      };
+    }
 
     try {
       if (progress.documentId) {
@@ -470,8 +538,17 @@ module.exports = createCoreController("api::user-progress.user-progress", ({ str
         hasFeedback = fbCount > 0;
       } catch { /* ignore */ }
     }
+    // Only downgrade Completed → In_progress when feedback IS compulsory but missing
+    let feedbackCompulsory = false;
+    try {
+      const courseForFb = await strapi.db.query('api::course.course').findOne({
+        where: { id: numCourseId },
+        populate: { feedback: true },
+      });
+      feedbackCompulsory = courseForFb?.feedback?.[0]?.compulsory === true;
+    } catch { /* ignore */ }
     const effectiveStatus =
-      full.progress_status === 'Completed' && !hasFeedback
+      full.progress_status === 'Completed' && feedbackCompulsory && !hasFeedback
         ? 'In_progress'
         : full.progress_status;
 
@@ -554,6 +631,7 @@ module.exports = createCoreController("api::user-progress.user-progress", ({ str
     if (existing) {
       const updateData = {
         progress_status: "Completed",
+        progress_percentage: 100,
         completed_at: now,
         certificate_issued: true,
       };

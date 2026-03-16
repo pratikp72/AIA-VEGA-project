@@ -48,10 +48,10 @@ export interface CourseModule extends Struct.ComponentSchema {
   };
 }
 
-export interface CourseWorkflowModule extends Struct.ComponentSchema {
-  collectionName: 'components_course_workflow_modules';
+export interface CourseOfflineModule extends Struct.ComponentSchema {
+  collectionName: 'components_course_offline_modules';
   info: {
-    displayName: 'Workflow Module';
+    displayName: 'Offline Module';
   };
   attributes: {
     attachment: Schema.Attribute.Media<'images' | 'files', true>;
@@ -69,7 +69,7 @@ export interface CourseWorkflowModule extends Struct.ComponentSchema {
           preset: 'defaultHtml';
         }
       >;
-    passing_score: Schema.Attribute.Integer &
+    score: Schema.Attribute.Integer &
       Schema.Attribute.SetMinMax<
         {
           min: 0;
@@ -77,6 +77,20 @@ export interface CourseWorkflowModule extends Struct.ComponentSchema {
         number
       >;
     username: Schema.Attribute.String & Schema.Attribute.Required;
+  };
+}
+
+export interface CourseWorkflowModule extends Struct.ComponentSchema {
+  collectionName: 'components_course_workflow_modules';
+  info: {
+    displayName: 'Workflow Module';
+  };
+  attributes: {
+    course: Schema.Attribute.Relation<'oneToOne', 'api::course.course'>;
+    due_date: Schema.Attribute.Date & Schema.Attribute.Required;
+    module_type: Schema.Attribute.Enumeration<['Online', 'Offline']> &
+      Schema.Attribute.Required;
+    offline_module: Schema.Attribute.Component<'course.offline-module', true>;
   };
 }
 
@@ -331,6 +345,7 @@ declare module '@strapi/strapi' {
   export module Public {
     export interface ComponentSchemas {
       'course.module': CourseModule;
+      'course.offline-module': CourseOfflineModule;
       'course.workflow-module': CourseWorkflowModule;
       'feedback-form.answer': FeedbackFormAnswer;
       'feedback-form.feedback-form': FeedbackFormFeedbackForm;

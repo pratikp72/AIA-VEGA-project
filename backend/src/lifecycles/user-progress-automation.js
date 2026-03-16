@@ -543,19 +543,66 @@ function registerUserProgressLifecycles(strapi) {
         const courseId = getCourseId(result.course) ?? result.course_id;
         const passed = result.passed === true;
         if (!userId || !courseId) return;
+
+        const numCourseId = await resolveCourseIdForDb(strapi, courseId);
+        if (!numCourseId) return;
+
         const progress = await strapi.db.query(USER_PROGRESS_UID).findOne({
-          where: { user: userId, course: courseId },
+          where: { user: userId, course: numCourseId },
         });
         if (!progress) return;
+
+        // Fetch course for module count + feedback compulsory flag
+        const course = await strapi.db.query(COURSE_UID).findOne({
+          where: { id: numCourseId },
+          populate: { modules: true, feedback: true },
+        });
+        const feedbackCompulsory = course?.feedback?.[0]?.compulsory === true;
+        // Filter modules by the user's selected language
+        const effectiveLang = progress.selected_language ?? null;
+        const allModules = Array.isArray(course?.modules) ? course.modules : [];
+        const langNorm = effectiveLang ? effectiveLang.trim().toLowerCase() : null;
+        const langModules = langNorm
+          ? allModules.filter((m) => (m.language || '').trim().toLowerCase() === langNorm)
+          : allModules;
+        const totalModules = (langModules.length > 0 ? langModules : allModules).length;
+        const completedModules = Array.isArray(progress.completed_modules) ? progress.completed_modules : [];
+        const modulePct = totalModules > 0 ? Math.round((completedModules.length / totalModules) * 80) : 0;
+        const quizPct = feedbackCompulsory ? 10 : 20;
         const now = new Date();
-        await strapi.db.query(USER_PROGRESS_UID).update({
-          where: { id: progress.id },
-          data: {
-            progress_status: passed ? 'In_progress' : 'Failed',
-            progress_percentage: passed ? 100 : (progress.progress_percentage ?? 0),
+
+        let updateData;
+        if (passed) {
+          if (feedbackCompulsory) {
+            updateData = {
+              progress_status: 'In_progress',
+              progress_percentage: modulePct + quizPct,
+              completed_at: null,
+              last_accessed_at: now,
+            };
+          } else {
+            // No feedback required → course complete
+            updateData = {
+              progress_status: 'Completed',
+              progress_percentage: modulePct + quizPct,
+              completed_at: now,
+              last_accessed_at: now,
+              certificate_issued: true,
+            };
+          }
+        } else {
+          // Failed: keep module-only percentage
+          updateData = {
+            progress_status: 'Failed',
+            progress_percentage: modulePct,
             completed_at: null,
             last_accessed_at: now,
-          },
+          };
+        }
+
+        await strapi.db.query(USER_PROGRESS_UID).update({
+          where: { id: progress.id },
+          data: updateData,
         });
       } catch (e) {
         strapi.log.error('user-progress-automation (quiz-submission afterCreate):', e?.message || e);
