@@ -50,22 +50,39 @@ export function LearningPersonalView({
 
   const moduleColumnsForCourse = useMemo(() => {
     if (!hasCourse || !courseModules.length) return [];
+    // Collect titles that actually have video progress data
+    const progressTitles = new Set(
+      moduleVideoProgress.map((mv) => (mv.moduleTitle || '').trim().toLowerCase()).filter(Boolean)
+    );
     if (hasModule && moduleIndexSelected !== null && !Number.isNaN(moduleIndexSelected)) {
       const m = courseModules.find((mod) => (mod.index ?? mod.moduleIndex) === moduleIndexSelected);
       if (!m) return [];
       const label = m.title ?? `Module ${(moduleIndexSelected ?? 0) + 1}`;
-      const key = `mod_${moduleIndexSelected}`;
-      return [{ key, label, moduleIndex: moduleIndexSelected }];
+      return [{ key: `mod_title_${label}`, label, moduleIndex: moduleIndexSelected }];
     }
-    return courseModules.map((m) => {
-      const idx = m.index ?? m.moduleIndex ?? 0;
-      return { key: `mod_${idx}`, label: m.title ?? `Module ${idx + 1}`, moduleIndex: idx };
-    });
-  }, [hasCourse, hasModule, moduleIndexSelected, courseModules]);
+    // Only include modules that have matching video progress entries (by title)
+    return courseModules
+      .filter((m) => {
+        const t = (m.title || '').trim().toLowerCase();
+        return t && progressTitles.has(t);
+      })
+      .map((m) => {
+        const idx = m.index ?? m.moduleIndex ?? 0;
+        const label = m.title ?? `Module ${idx + 1}`;
+        return { key: `mod_title_${label}`, label, moduleIndex: idx };
+      });
+  }, [hasCourse, hasModule, moduleIndexSelected, courseModules, moduleVideoProgress]);
 
   const tableDataWithModuleCells = useMemo(() => {
     const modCols = moduleColumnsForCourse;
     if (modCols.length === 0) return tableRows;
+
+    // Build title-to-column-key lookup (match by title only, never by index)
+    const titleToKey = {};
+    modCols.forEach((c) => {
+      const t = (c.label || '').trim().toLowerCase();
+      if (t) titleToKey[t] = c.key;
+    });
 
     const matchCourseId = (rowCid, mvCid) => {
       if (rowCid == null || mvCid == null) return false;
@@ -81,12 +98,13 @@ export function LearningPersonalView({
       moduleVideoProgress.forEach((mv) => {
         const mvCourseId = mv.courseId ?? mv.course?.id ?? '';
         if (!matchCourseId(rowCourseId, mvCourseId)) return;
-        const idx = mv.moduleIndex ?? mv.module_index;
-        if (idx === undefined || idx === null) return;
         const watched = mv.timeWatchedMinutes ?? 0;
         const dur = mv.videoDurationMinutes ?? null;
         const val = dur != null && Number(dur) > 0 ? `${watched}/${dur}` : (watched ? String(watched) : '—');
-        modMap[`mod_${idx}`] = val;
+        // Match by module title only (index is unreliable with language-variant modules)
+        const mvTitle = (mv.moduleTitle || '').trim().toLowerCase();
+        const key = mvTitle ? titleToKey[mvTitle] : null;
+        if (key) modMap[key] = val;
       });
       const base = { ...row };
       modCols.forEach((c) => {
@@ -204,12 +222,11 @@ export function LearningPersonalView({
                     : [];
                 }
                 // If course selected, show time spent per module for that user
-                if (hasCourse && courseModules.length > 0) {
-                  const cp = tableRows[0];
+                if (hasCourse && moduleColumnsForCourse.length > 0) {
+                  const cp = tableDataWithModuleCells[0];
                   if (!cp) return [];
-                  return courseModules.map((mod) => {
-                    // Try to extract watched and duration from cp[`mod_${mod.index}`]
-                    const modVal = cp[`mod_${mod.index}`];
+                  return moduleColumnsForCourse.map((mod) => {
+                    const modVal = cp[mod.key];
                     let watched = 0, duration = null;
                     if (typeof modVal === 'string' && modVal.includes('/')) {
                       const [w, d] = modVal.split('/').map(s => s.trim());
@@ -219,7 +236,7 @@ export function LearningPersonalView({
                       watched = Number(modVal);
                     }
                     return {
-                      name: mod.title ?? `Module ${mod.index + 1}`,
+                      name: mod.label ?? `Module ${(mod.moduleIndex ?? 0) + 1}`,
                       value: watched,
                       watched,
                       duration,
@@ -277,8 +294,8 @@ export function LearningPersonalView({
       {dataView === 'table' && (
         <Box marginBottom={6}>
           <DataTable
-            data={downloadStyle === 'all' ? tableRows : paginatedTableData}
-            fullData={tableRows}
+            data={downloadStyle === 'all' ? tableDataWithModuleCells : paginatedTableData}
+            fullData={tableDataWithModuleCells}
             paginatedData={paginatedTableData}
             downloadStyle={downloadStyle}
             title="My Course Progress"
