@@ -25,7 +25,7 @@
       "target": "plugin::users-permissions.user",
       "mappedBy": "course_workflow"
     },
-    "workflow": {
+    "modules": {
       "type": "component",
       "component": "course.workflow-module",
       "repeatable": true

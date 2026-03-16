@@ -12,6 +12,8 @@ function getRelationArray(raw) {
   if (raw && typeof raw === 'object') {
     if (Array.isArray(raw.set)) return raw.set;
     if (Array.isArray(raw.connect)) return raw.connect;
+    if (Array.isArray(raw.data)) return raw.data;
+    if (Array.isArray(raw.results)) return raw.results;
   }
   return [];
 }
@@ -136,6 +138,26 @@ function getWorkflowItems(raw) {
   return Array.isArray(raw) ? raw : [];
 }
 
+function getWorkflowItemsFromValues(values) {
+  if (Array.isArray(values?.modules)) return values.modules;
+  if (Array.isArray(values?.workflow)) return values.workflow;
+  return [];
+}
+
+function withUpdatedWorkflowItems(values, nextWorkflowItems) {
+  if (Array.isArray(values?.modules)) {
+    return {
+      ...values,
+      modules: nextWorkflowItems,
+    };
+  }
+
+  return {
+    ...values,
+    workflow: nextWorkflowItems,
+  };
+}
+
 function syncWorkflowOfflineModules(workflowItems, selectedUsers) {
   let changed = false;
 
@@ -173,16 +195,18 @@ function CourseWorkflowOfflineModuleSyncOnSelect({ slug, model }) {
 
     const selectedUsersRaw = getRelationArray(values.users_permissions_users);
     const selectedUsers = getUniqueSelectedUsers(selectedUsersRaw);
-    const workflowItems = getWorkflowItems(values.workflow);
+
+    // On publish/view reload, relation values can be temporarily empty before full form hydration.
+    // Guarding here avoids accidentally clearing existing offline_module rows in the UI.
+    if (selectedUsers.length === 0) return;
+
+    const workflowItems = getWorkflowItemsFromValues(values);
     if (workflowItems.length === 0) return;
 
     const { changed, nextWorkflowItems } = syncWorkflowOfflineModules(workflowItems, selectedUsers);
     if (!changed) return;
 
-    setValues({
-      ...values,
-      workflow: nextWorkflowItems,
-    });
+    setValues(withUpdatedWorkflowItems(values, nextWorkflowItems));
   }, [uid, values, setValues]);
 
   return null;
