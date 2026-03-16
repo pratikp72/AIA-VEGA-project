@@ -91,6 +91,8 @@ export interface CourseWorkflowModule extends Struct.ComponentSchema {
     module_type: Schema.Attribute.Enumeration<['Online', 'Offline']> &
       Schema.Attribute.Required;
     offline_module: Schema.Attribute.Component<'course.offline-module', true>;
+    prerequisite_modules: Schema.Attribute.JSON &
+      Schema.Attribute.CustomField<'global::workflow-prerequisite-picker'>;
   };
 }
 

@@ -113,7 +113,9 @@ module.exports = ({ strapi }) => {
       const existing = Number(row.timeSpentMinutes || 0);
       return {
         ...row,
-        timeSpentMinutes: Math.max(existing, realtimeMinutes),
+        // Divide realtime total by enrollmentCount so we compare per-enrollment averages.
+        // realtimeMinutes is the SUM across all users for that course, not per-enrollment.
+        timeSpentMinutes: Math.max(existing, Math.round((realtimeMinutes / (row.enrollmentCount || 1)) * 10) / 10),
       };
     });
   },
@@ -123,10 +125,13 @@ module.exports = ({ strapi }) => {
     const selected = String(selectedCourseId).trim();
     if (!selected) return rows;
 
-    // When filtered by course, backend usually returns one course row; apply realtime total directly.
+    // When filtered by course, backend usually returns one course row.
+    // Divide realtime.totalMinutes by enrollmentCount so it's a per-enrollment figure.
     if (rows.length === 1) {
       const only = rows[0] || {};
-      return [{ ...only, timeSpentMinutes: Math.max(Number(only.timeSpentMinutes) || 0, Number(realtime.totalMinutes) || 0) }];
+      const n = only.enrollmentCount || 1;
+      const realtimePerEnrollment = Math.round((Number(realtime.totalMinutes) / n) * 10) / 10;
+      return [{ ...only, timeSpentMinutes: Math.max(Number(only.timeSpentMinutes) || 0, realtimePerEnrollment) }];
     }
 
     const selectedNum = /^\d+$/.test(selected) ? Number(selected) : NaN;
@@ -135,9 +140,11 @@ module.exports = ({ strapi }) => {
       const rowNum = /^\d+$/.test(rowId) ? Number(rowId) : NaN;
       const matches = rowId === selected || (!Number.isNaN(selectedNum) && !Number.isNaN(rowNum) && selectedNum === rowNum);
       if (!matches) return row;
+      const n = row.enrollmentCount || 1;
+      const realtimePerEnrollment = Math.round((Number(realtime.totalMinutes) / n) * 10) / 10;
       return {
         ...row,
-        timeSpentMinutes: Math.max(Number(row.timeSpentMinutes) || 0, Number(realtime.totalMinutes) || 0),
+        timeSpentMinutes: Math.max(Number(row.timeSpentMinutes) || 0, realtimePerEnrollment),
       };
     });
   },
@@ -227,7 +234,7 @@ module.exports = ({ strapi }) => {
         (courses || []).forEach((c) => { courseById[c.id] = c; });
         const userById = {};
         (users || []).forEach((u) => { userById[u.id] = u; });
-        progresses = raw.map((r) => {
+        const mapped = raw.map((r) => {
           const uid = r.user_id ?? r.userId ?? r.user?.id;
           const cid = r.course_id ?? r.courseId ?? r.course?.id ?? r.course?.documentId;
           const course = (cid != null && courseById[cid]) ? courseById[cid] : (r.course && typeof r.course === 'object' && (r.course.title != null || r.course.id != null) ? r.course : null);
@@ -240,6 +247,24 @@ module.exports = ({ strapi }) => {
             course: course ? { ...course, course_category: cat } : null,
           };
         });
+
+        // Deduplicate by (userId, courseId): strapi.db.query returns both draft and
+        // published versions of a Strapi v5 document, which would double-count enrollments.
+        // Keep published record (published_at != null) over draft; if tied keep higher id.
+        const dedupMap = new Map();
+        mapped.forEach((r) => {
+          const uid = r.user_id ?? r.user?.id;
+          const cid = r.course?.id ?? r.course_id;
+          const key = `${uid}::${cid}`;
+          const existing = dedupMap.get(key);
+          if (!existing) { dedupMap.set(key, r); return; }
+          const rPublished = r.published_at ?? r.publishedAt;
+          const exPublished = existing.published_at ?? existing.publishedAt;
+          if (rPublished && !exPublished) { dedupMap.set(key, r); return; }
+          if (!rPublished && exPublished) return;
+          if ((r.id ?? 0) > (existing.id ?? 0)) dedupMap.set(key, r);
+        });
+        progresses = Array.from(dedupMap.values());
       }
     } catch (e) {
       strapi.log.warn('Learning global: db.query failed:', e?.message);
@@ -650,32 +675,12 @@ module.exports = ({ strapi }) => {
         status,
         percentage: avgPct,
         timeSpentMinutes: avgTime,
+        enrollmentCount: agg.total,
         certificateIssued: certStr,
         dropOffRate,
         dropOffCount,
       };
     });
-
-    const realtimeByCourseGlobal = await this._getRealtimeLearningMinutesByCourse(params);
-    courseProgressTable = this._mergeRealtimeMinutesIntoCourseRows(courseProgressTable, realtimeByCourseGlobal);
-    courseProgressTable = this._applyRealtimeToSelectedCourseRows(courseProgressTable, wantCourseId, realtimeByCourseGlobal);
-    const hasGlobalTimeRow = courseProgressTable.some((row) => (Number(row.timeSpentMinutes) || 0) > 0);
-    if (!hasGlobalTimeRow && realtimeByCourseGlobal.totalMinutes > 0) {
-      courseProgressTable = [{
-        courseId: 'realtime-unmapped',
-        courseTitle: 'Realtime Learning (Unmapped Course)',
-        courseCategory: 'Other',
-        status: 'In progress',
-        percentage: 0,
-        timeSpentMinutes: realtimeByCourseGlobal.totalMinutes,
-        certificateIssued: '0/0',
-        dropOffRate: 0,
-        dropOffCount: 0,
-      }];
-    }
-    const avgTimeSpentWithRealtime = courseProgressTable.length > 0
-      ? Math.round((courseProgressTable.reduce((sum, row) => sum + (Number(row.timeSpentMinutes) || 0), 0) / courseProgressTable.length) * 10) / 10
-      : avgTimeSpent;
 
     const result = {
       kpis: {
@@ -683,7 +688,10 @@ module.exports = ({ strapi }) => {
         totalEnrollments: total,
         totalAssignments: total,
         completionRate,
-        avgTimeSpentMinutes: Math.max(avgTimeSpent, avgTimeSpentWithRealtime, realtimeByCourseGlobal.totalMinutes || 0),
+        // avgTimeSpent = average of time_spent_minutes across all user-progress records.
+        // Realtime telemetry totals are cumulative across all sessions and not a per-enrollment
+        // average, so we use the DB value only.
+        avgTimeSpentMinutes: avgTimeSpent,
         avgQuizScore,
         completedCourse: completed,
         dropOffCount,
@@ -709,10 +717,26 @@ module.exports = ({ strapi }) => {
         const modIndexes = (params.moduleIndex !== undefined && params.moduleIndex !== null && params.moduleIndex !== '')
           ? [Number(params.moduleIndex)]
           : (courseModules || []).map((m) => m.index ?? m.moduleIndex ?? 0);
+        // Build title→correct index map from courseModules to fix records saved with
+        // the old language-filtered index (e.g. module_index=1 for "test module 2 in english"
+        // when the correct global index is 3).
+        const titleToCorrectIndex = new Map();
+        (courseModules || []).forEach((m) => {
+          const t = (m.title ?? '').trim().toLowerCase();
+          const idx = m.index ?? m.moduleIndex ?? 0;
+          if (t) titleToCorrectIndex.set(t, idx);
+        });
+
         const byCourseMod = new Map();
         moduleVideoRaw.forEach((mv) => {
           const cid = mv.courseId ?? '';
-          const midx = mv.moduleIndex ?? mv.module_index;
+          let midx = mv.moduleIndex ?? mv.module_index;
+          // Self-heal: if record has a title that maps to a different (correct) index,
+          // use the correct index so data lands in the right column.
+          const recTitle = (mv.moduleTitle ?? '').trim().toLowerCase();
+          if (recTitle && titleToCorrectIndex.has(recTitle)) {
+            midx = titleToCorrectIndex.get(recTitle);
+          }
           if (midx === undefined || midx === null) return;
           const key = `${cid}::${midx}`;
           if (!byCourseMod.has(key)) byCourseMod.set(key, { watched: [], duration: [] });
@@ -822,11 +846,13 @@ module.exports = ({ strapi }) => {
         const timeWat = r.time_watched_min ?? 0;
         const duration = r.video_duration_min;
         const mIdx = r.module_index ?? r.moduleIndex;
+        const mTitle = r.module_title ?? r.moduleTitle ?? null;
         out.push({
           userId: uid,
           userName,
           courseId: cid != null ? String(cid) : null,
           moduleIndex: mIdx != null ? Number(mIdx) : null,
+          moduleTitle: mTitle,
           timeWatchedMinutes: timeWat,
           videoDurationMinutes: duration != null ? duration : null,
         });

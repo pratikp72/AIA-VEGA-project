@@ -14,7 +14,7 @@
       "name": "Apache 2.0",
       "url": "https://www.apache.org/licenses/LICENSE-2.0.html"
     },
-    "x-generation-date": "2026-03-16T07:35:32.077Z"
+    "x-generation-date": "2026-03-16T11:34:42.258Z"
   },
   "x-strapi-config": {
     "plugins": [
@@ -15563,7 +15563,7 @@
                       }
                     }
                   },
-                  "workflow": {
+                  "modules": {
                     "type": "array",
                     "items": {
                       "$ref": "#/components/schemas/CourseWorkflowModuleComponent"
@@ -16912,7 +16912,8 @@
                 "type": "string"
               }
             }
-          }
+          },
+          "prerequisite_modules": {}
         }
       },
       "AnalyticsEventRequest": {
@@ -18317,7 +18318,7 @@
                       }
                     }
                   },
-                  "workflow": {
+                  "modules": {
                     "type": "array",
                     "items": {
                       "$ref": "#/components/schemas/CourseWorkflowModuleComponent"
@@ -21062,7 +21063,7 @@
                                           }
                                         }
                                       },
-                                      "workflow": {
+                                      "modules": {
                                         "type": "array",
                                         "items": {
                                           "$ref": "#/components/schemas/CourseWorkflowModuleComponent"
@@ -24604,7 +24605,7 @@
                                                 }
                                               }
                                             },
-                                            "workflow": {
+                                            "modules": {
                                               "type": "array",
                                               "items": {
                                                 "$ref": "#/components/schemas/CourseWorkflowModuleComponent"
@@ -28262,7 +28263,7 @@
                                                       }
                                                     }
                                                   },
-                                                  "workflow": {
+                                                  "modules": {
                                                     "type": "array",
                                                     "items": {
                                                       "$ref": "#/components/schemas/CourseWorkflowModuleComponent"
@@ -31676,7 +31677,7 @@
                                                       }
                                                     }
                                                   },
-                                                  "workflow": {
+                                                  "modules": {
                                                     "type": "array",
                                                     "items": {
                                                       "$ref": "#/components/schemas/CourseWorkflowModuleComponent"
@@ -33049,7 +33050,7 @@
                   "example": "string or id"
                 }
               },
-              "workflow": {
+              "modules": {
                 "type": "array",
                 "items": {
                   "$ref": "#/components/schemas/CourseWorkflowModuleComponent"
@@ -34332,7 +34333,7 @@
                         }
                       }
                     },
-                    "workflow": {
+                    "modules": {
                       "type": "array",
                       "items": {
                         "$ref": "#/components/schemas/CourseWorkflowModuleComponent"
@@ -34487,7 +34488,7 @@
               }
             }
           },
-          "workflow": {
+          "modules": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/CourseWorkflowModuleComponent"
@@ -36699,7 +36700,7 @@
                                               }
                                             }
                                           },
-                                          "workflow": {
+                                          "modules": {
                                             "type": "array",
                                             "items": {
                                               "$ref": "#/components/schemas/CourseWorkflowModuleComponent"
@@ -40076,7 +40077,7 @@
                                                 }
                                               }
                                             },
-                                            "workflow": {
+                                            "modules": {
                                               "type": "array",
                                               "items": {
                                                 "$ref": "#/components/schemas/CourseWorkflowModuleComponent"
@@ -43623,7 +43624,7 @@
                                                       }
                                                     }
                                                   },
-                                                  "workflow": {
+                                                  "modules": {
                                                     "type": "array",
                                                     "items": {
                                                       "$ref": "#/components/schemas/CourseWorkflowModuleComponent"
@@ -46726,7 +46727,7 @@
                                                     }
                                                   }
                                                 },
-                                                "workflow": {
+                                                "modules": {
                                                   "type": "array",
                                                   "items": {
                                                     "$ref": "#/components/schemas/CourseWorkflowModuleComponent"
@@ -51274,7 +51275,7 @@
                                                 }
                                               }
                                             },
-                                            "workflow": {
+                                            "modules": {
                                               "type": "array",
                                               "items": {
                                                 "$ref": "#/components/schemas/CourseWorkflowModuleComponent"
@@ -55394,7 +55395,7 @@
                                                 }
                                               }
                                             },
-                                            "workflow": {
+                                            "modules": {
                                               "type": "array",
                                               "items": {
                                                 "$ref": "#/components/schemas/CourseWorkflowModuleComponent"
@@ -59327,7 +59328,7 @@
                                                 }
                                               }
                                             },
-                                            "workflow": {
+                                            "modules": {
                                               "type": "array",
                                               "items": {
                                                 "$ref": "#/components/schemas/CourseWorkflowModuleComponent"
@@ -62637,7 +62638,7 @@
                                                 }
                                               }
                                             },
-                                            "workflow": {
+                                            "modules": {
                                               "type": "array",
                                               "items": {
                                                 "$ref": "#/components/schemas/CourseWorkflowModuleComponent"
@@ -65510,7 +65511,7 @@
                       }
                     }
                   },
-                  "workflow": {
+                  "modules": {
                     "type": "array",
                     "items": {
                       "$ref": "#/components/schemas/CourseWorkflowModuleComponent"
@@ -68305,7 +68306,7 @@
                                                     }
                                                   }
                                                 },
-                                                "workflow": {
+                                                "modules": {
                                                   "type": "array",
                                                   "items": {
                                                     "$ref": "#/components/schemas/CourseWorkflowModuleComponent"
@@ -72008,7 +72009,7 @@
                                                 }
                                               }
                                             },
-                                            "workflow": {
+                                            "modules": {
                                               "type": "array",
                                               "items": {
                                                 "$ref": "#/components/schemas/CourseWorkflowModuleComponent"
@@ -74598,7 +74599,7 @@
                       }
                     }
                   },
-                  "workflow": {
+                  "modules": {
                     "type": "array",
                     "items": {
                       "$ref": "#/components/schemas/CourseWorkflowModuleComponent"
@@ -76994,7 +76995,7 @@
                       }
                     }
                   },
-                  "workflow": {
+                  "modules": {
                     "type": "array",
                     "items": {
                       "$ref": "#/components/schemas/CourseWorkflowModuleComponent"
@@ -79419,7 +79420,7 @@
                                                     }
                                                   }
                                                 },
-                                                "workflow": {
+                                                "modules": {
                                                   "type": "array",
                                                   "items": {
                                                     "$ref": "#/components/schemas/CourseWorkflowModuleComponent"
@@ -82187,7 +82188,7 @@
                       }
                     }
                   },
-                  "workflow": {
+                  "modules": {
                     "type": "array",
                     "items": {
                       "$ref": "#/components/schemas/CourseWorkflowModuleComponent"
@@ -85070,7 +85071,7 @@
                                                 }
                                               }
                                             },
-                                            "workflow": {
+                                            "modules": {
                                               "type": "array",
                                               "items": {
                                                 "$ref": "#/components/schemas/CourseWorkflowModuleComponent"
@@ -88677,7 +88678,7 @@
                                                     }
                                                   }
                                                 },
-                                                "workflow": {
+                                                "modules": {
                                                   "type": "array",
                                                   "items": {
                                                     "$ref": "#/components/schemas/CourseWorkflowModuleComponent"
@@ -92613,7 +92614,7 @@
                                               }
                                             }
                                           },
-                                          "workflow": {
+                                          "modules": {
                                             "type": "array",
                                             "items": {
                                               "$ref": "#/components/schemas/CourseWorkflowModuleComponent"

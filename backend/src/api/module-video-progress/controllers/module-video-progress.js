@@ -30,10 +30,27 @@ module.exports = createCoreController(
         module_index: Number(moduleIndex),
       };
 
-      const existing = await strapi.entityService.findMany(uid, {
+      // Primary lookup: exact user + course + module_index
+      let existing = await strapi.entityService.findMany(uid, {
         filters,
         limit: 1,
       }).then((list) => list[0] || null);
+
+      // Self-heal fallback: if no record found by index (can happen when old records
+      // were saved with the language-filtered index instead of the global index),
+      // find by module_title so we UPDATE the old wrong record instead of creating
+      // a duplicate alongside it.
+      if (!existing && moduleTitle && String(moduleTitle).trim()) {
+        const byTitle = await strapi.entityService.findMany(uid, {
+          filters: {
+            user: { id: Number(userId) },
+            course: { id: courseId },
+            module_title: String(moduleTitle).trim(),
+          },
+          limit: 1,
+        }).then((list) => list[0] || null);
+        if (byTitle) existing = byTitle;
+      }
 
       const data = {
         user: Number(userId),

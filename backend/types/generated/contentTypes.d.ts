@@ -692,6 +692,7 @@ export interface ApiCourseWorkflowCourseWorkflow
       'api::course-workflow.course-workflow'
     > &
       Schema.Attribute.Private;
+    modules: Schema.Attribute.Component<'course.workflow-module', true>;
     publishedAt: Schema.Attribute.DateTime;
     updatedAt: Schema.Attribute.DateTime;
     updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
@@ -700,7 +701,6 @@ export interface ApiCourseWorkflowCourseWorkflow
       'oneToMany',
       'plugin::users-permissions.user'
     >;
-    workflow: Schema.Attribute.Component<'course.workflow-module', true>;
   };
 }
 
