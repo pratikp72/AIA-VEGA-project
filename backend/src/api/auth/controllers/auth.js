@@ -208,7 +208,8 @@ module.exports = {
 <p>Redirecting to Admin Panel…</p>
 <script>
   try {
-    localStorage.setItem('jwtToken', '${safe}');
+    localStorage.setItem('jwtToken', '"${safe}"');
+    sessionStorage.setItem('jwtToken', '"${safe}"');
   } catch(e) {}
   window.location.replace('/admin');
 </script>

@@ -359,12 +359,19 @@ module.exports = createCoreController(
         // strapi.entityService handles repeatable components (answers)
         // correctly; strapi.db.query().create() cannot build component
         // records from raw data and throws "Invalid id" on [object Object].
+        // Sanitize answers: ensure required 'question' field is never null.
         // ------------------------------------------------------
+        const sanitizedAnswers = (Array.isArray(answers) ? answers : []).map((a) => ({
+          ...a,
+          question: a.question || a.question_id || 'Unknown',
+          question_id: a.question_id || a.question || 'unknown',
+          selected_answer_for_multiChoice: a.selected_answer_for_multiChoice ?? '',
+        }));
         const entry = await strapi.entityService.create(
           "api::quiz-submission.quiz-submission",
           {
             data: /** @type {any} */ ({
-              answers,
+              answers: sanitizedAnswers,
               score,
               passed,
               course: Number(courseId),

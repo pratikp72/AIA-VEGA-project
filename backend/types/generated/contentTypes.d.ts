@@ -546,7 +546,14 @@ export interface ApiCompanyPolicyCompanyPolicy
     createdAt: Schema.Attribute.DateTime;
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
-    description: Schema.Attribute.RichText & Schema.Attribute.Required;
+    description: Schema.Attribute.RichText &
+      Schema.Attribute.Required &
+      Schema.Attribute.CustomField<
+        'plugin::ckeditor5.CKEditor',
+        {
+          preset: 'defaultHtml';
+        }
+      >;
     document: Schema.Attribute.Media<'files'>;
     locale: Schema.Attribute.String & Schema.Attribute.Private;
     localizations: Schema.Attribute.Relation<
@@ -661,6 +668,42 @@ export interface ApiCourseAssignmentCourseAssignment
   };
 }
 
+export interface ApiCourseWorkflowCourseWorkflow
+  extends Struct.CollectionTypeSchema {
+  collectionName: 'course_workflows';
+  info: {
+    displayName: 'Course Workflow';
+    pluralName: 'course-workflows';
+    singularName: 'course-workflow';
+  };
+  options: {
+    draftAndPublish: true;
+  };
+  attributes: {
+    category: Schema.Attribute.Enumeration<
+      ['Mandatory', 'Orientation', 'other']
+    >;
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::course-workflow.course-workflow'
+    > &
+      Schema.Attribute.Private;
+    publishedAt: Schema.Attribute.DateTime;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    users_permissions_users: Schema.Attribute.Relation<
+      'oneToMany',
+      'plugin::users-permissions.user'
+    >;
+    workflow: Schema.Attribute.Component<'course.workflow-module', true>;
+  };
+}
+
 export interface ApiCourseCourse extends Struct.CollectionTypeSchema {
   collectionName: 'courses';
   info: {
@@ -721,14 +764,6 @@ export interface ApiCourseCourse extends Struct.CollectionTypeSchema {
       >;
     modules: Schema.Attribute.Component<'course.module', true> &
       Schema.Attribute.Required;
-    orientation_detail: Schema.Attribute.Component<'course.orientation', true>;
-    orientation_required: Schema.Attribute.Boolean &
-      Schema.Attribute.CustomField<
-        'global::yes-no-toggle',
-        {
-          required: true;
-        }
-      >;
     prerequisite_courses: Schema.Attribute.Relation<
       'manyToMany',
       'api::course.course'
@@ -773,6 +808,38 @@ export interface ApiDepartmentDepartment extends Struct.CollectionTypeSchema {
   };
 }
 
+export interface ApiEventTypeEventType extends Struct.CollectionTypeSchema {
+  collectionName: 'event_types';
+  info: {
+    displayName: 'Event Type';
+    pluralName: 'event-types';
+    singularName: 'event-type';
+  };
+  options: {
+    draftAndPublish: true;
+  };
+  attributes: {
+    color_for_event: Schema.Attribute.String &
+      Schema.Attribute.Required &
+      Schema.Attribute.CustomField<'plugin::color-picker.color'>;
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    events: Schema.Attribute.Relation<'oneToMany', 'api::event.event'>;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::event-type.event-type'
+    > &
+      Schema.Attribute.Private;
+    name: Schema.Attribute.String & Schema.Attribute.Required;
+    publishedAt: Schema.Attribute.DateTime;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+  };
+}
+
 export interface ApiEventEvent extends Struct.CollectionTypeSchema {
   collectionName: 'events';
   info: {
@@ -796,27 +863,40 @@ export interface ApiEventEvent extends Struct.CollectionTypeSchema {
       'api::department.department'
     >;
     description: Schema.Attribute.RichText & Schema.Attribute.Required;
-    end_date: Schema.Attribute.DateTime & Schema.Attribute.Required;
-    event_created_for: Schema.Attribute.Enumeration<['All', 'department']> &
+    end_date: Schema.Attribute.Date & Schema.Attribute.Required;
+    end_time: Schema.Attribute.Time & Schema.Attribute.Required;
+    event_created_for: Schema.Attribute.Enumeration<['All', 'Location']> &
       Schema.Attribute.Required;
     event_image: Schema.Attribute.Media<'images'>;
     event_location: Schema.Attribute.Text & Schema.Attribute.Required;
-    event_type: Schema.Attribute.Enumeration<
-      ['Training session', 'Conference', 'Workshop']
-    > &
-      Schema.Attribute.Required;
     locale: Schema.Attribute.String & Schema.Attribute.Private;
     localizations: Schema.Attribute.Relation<'oneToMany', 'api::event.event'> &
       Schema.Attribute.Private;
     publishedAt: Schema.Attribute.DateTime;
-    start_date: Schema.Attribute.DateTime & Schema.Attribute.Required;
+    start_date: Schema.Attribute.Date & Schema.Attribute.Required;
+    start_time: Schema.Attribute.Time & Schema.Attribute.Required;
+    time_required: Schema.Attribute.Boolean &
+      Schema.Attribute.CustomField<
+        'global::yes-no-toggle',
+        {
+          required: true;
+        }
+      >;
     title: Schema.Attribute.String & Schema.Attribute.Required;
+    type_of_event: Schema.Attribute.Relation<
+      'manyToOne',
+      'api::event-type.event-type'
+    >;
     updatedAt: Schema.Attribute.DateTime;
     updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
     visible_on_homepage: Schema.Attribute.Boolean &
       Schema.Attribute.Required &
       Schema.Attribute.DefaultTo<false>;
+    work_locations: Schema.Attribute.Relation<
+      'manyToMany',
+      'api::work-location.work-location'
+    >;
   };
 }
 
@@ -958,6 +1038,8 @@ export interface ApiHolidayHoliday extends Struct.CollectionTypeSchema {
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
     date: Schema.Attribute.Date & Schema.Attribute.Required;
+    holiday_for: Schema.Attribute.Enumeration<['Company', 'Location']> &
+      Schema.Attribute.Required;
     locale: Schema.Attribute.String & Schema.Attribute.Private;
     localizations: Schema.Attribute.Relation<
       'oneToMany',
@@ -969,6 +1051,10 @@ export interface ApiHolidayHoliday extends Struct.CollectionTypeSchema {
     updatedAt: Schema.Attribute.DateTime;
     updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
+    work_locations: Schema.Attribute.Relation<
+      'manyToMany',
+      'api::work-location.work-location'
+    >;
   };
 }
 
@@ -1104,7 +1190,14 @@ export interface ApiNewsNews extends Struct.CollectionTypeSchema {
     createdAt: Schema.Attribute.DateTime;
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
-    description: Schema.Attribute.RichText & Schema.Attribute.Required;
+    description: Schema.Attribute.RichText &
+      Schema.Attribute.Required &
+      Schema.Attribute.CustomField<
+        'plugin::ckeditor5.CKEditor',
+        {
+          preset: 'defaultHtml';
+        }
+      >;
     likes: Schema.Attribute.Relation<
       'manyToMany',
       'plugin::users-permissions.user'
@@ -1460,6 +1553,8 @@ export interface ApiWorkLocationWorkLocation
     createdAt: Schema.Attribute.DateTime;
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
+    events: Schema.Attribute.Relation<'manyToMany', 'api::event.event'>;
+    holidays: Schema.Attribute.Relation<'manyToMany', 'api::holiday.holiday'>;
     locale: Schema.Attribute.String & Schema.Attribute.Private;
     localizations: Schema.Attribute.Relation<
       'oneToMany',
@@ -1981,6 +2076,10 @@ export interface PluginUsersPermissionsUser
     confirmed: Schema.Attribute.Boolean & Schema.Attribute.DefaultTo<false>;
     contact_no: Schema.Attribute.String & Schema.Attribute.Required;
     contract_validity: Schema.Attribute.String & Schema.Attribute.Required;
+    course_workflow: Schema.Attribute.Relation<
+      'manyToOne',
+      'api::course-workflow.course-workflow'
+    >;
     createdAt: Schema.Attribute.DateTime;
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
@@ -2054,8 +2153,10 @@ declare module '@strapi/strapi' {
       'api::company-policy.company-policy': ApiCompanyPolicyCompanyPolicy;
       'api::company.company': ApiCompanyCompany;
       'api::course-assignment.course-assignment': ApiCourseAssignmentCourseAssignment;
+      'api::course-workflow.course-workflow': ApiCourseWorkflowCourseWorkflow;
       'api::course.course': ApiCourseCourse;
       'api::department.department': ApiDepartmentDepartment;
+      'api::event-type.event-type': ApiEventTypeEventType;
       'api::event.event': ApiEventEvent;
       'api::feedback-submission.feedback-submission': ApiFeedbackSubmissionFeedbackSubmission;
       'api::form-template.form-template': ApiFormTemplateFormTemplate;
