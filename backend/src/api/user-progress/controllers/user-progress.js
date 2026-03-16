@@ -286,8 +286,10 @@ module.exports = createCoreController("api::user-progress.user-progress", ({ str
     completedSet.add(String(moduleId));
     const completedArr2 = [...completedSet];
     const pct2 = _calcModulePct(completedArr2.length, totalModules);
-    // Completing modules should not auto-complete the course.
-    const newStatus2 = completedArr2.length > 0 ? 'In_progress' : 'Not_started';
+
+    const newStatus2 = progress.progress_status === 'Completed'
+      ? 'Completed'
+      : (completedArr2.length > 0 ? 'In_progress' : 'Not_started');
     const newTime = Math.max(0, Number(progress.time_spent_minutes || 0)) + deltaMinutes;
     const completedAt = null;
 
