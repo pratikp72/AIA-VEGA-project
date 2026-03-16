@@ -24,6 +24,7 @@ import CourseLanguageSyncOnSelect from './components/CourseLanguageSyncOnSelect.
 import AutoFillComponentIds from './components/AutoFillComponentIds.jsx';
 import HideAddButtonsForQuizFeedback from './components/HideAddButtonsForQuizFeedback.jsx';
 import CourseWorkflowOfflineModuleSyncOnSelect from './components/CourseWorkflowOfflineModuleSyncOnSelect.jsx';
+import WorkflowPrerequisitePickerInput from './components/WorkflowPrerequisitePickerInput.jsx';
 
 export default {
   /**
@@ -194,6 +195,24 @@ export default {
             ],
           },
         ],
+      },
+    });
+
+    // Custom field: prerequisite module picker for Course Workflow — shows other modules in the same form
+    app.customFields.register({
+      name: 'workflow-prerequisite-picker',
+      type: 'json',
+      intlLabel: {
+        id: 'app.custom-fields.workflow-prerequisite-picker.label',
+        defaultMessage: 'Prerequisite Modules',
+      },
+      intlDescription: {
+        id: 'app.custom-fields.workflow-prerequisite-picker.description',
+        defaultMessage: 'Select other workflow modules that must be completed before this one.',
+      },
+      components: {
+        Input: async () =>
+          import('./components/WorkflowPrerequisitePickerInput.jsx').then((m) => ({ default: m.default })),
       },
     });
 

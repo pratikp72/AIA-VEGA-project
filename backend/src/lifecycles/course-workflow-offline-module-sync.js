@@ -56,16 +56,25 @@ function toWorkflowWhere(input) {
   return null;
 }
 
+function getWorkflowFieldKey(strapi) {
+  const attributes = strapi?.contentTypes?.[COURSE_WORKFLOW_UID]?.attributes || {};
+  if (attributes.modules) return 'modules';
+  if (attributes.workflow) return 'workflow';
+  return 'modules';
+}
+
 async function loadWorkflow(strapi, workflowLike) {
   const where = toWorkflowWhere(workflowLike);
   if (!where) return null;
+
+  const workflowFieldKey = getWorkflowFieldKey(strapi);
 
   return strapi.db.query(COURSE_WORKFLOW_UID).findOne({
     where,
     select: ['id', 'documentId'],
     populate: {
       users_permissions_users: { select: ['id', 'documentId', 'username', 'email'] },
-      workflow: {
+      [workflowFieldKey]: {
         populate: {
           course: { select: ['id', 'documentId'] },
           offline_module: true,
@@ -76,6 +85,7 @@ async function loadWorkflow(strapi, workflowLike) {
 }
 
 function getWorkflowModules(workflow) {
+  if (Array.isArray(workflow?.modules)) return workflow.modules;
   return Array.isArray(workflow?.workflow) ? workflow.workflow : [];
 }
 
@@ -159,7 +169,7 @@ async function syncOnlineAssignmentsForWorkflow(strapi, workflowLike) {
             courses: { connect: [{ id: Number(courseId) }] },
             due_date: dueDate,
             active: true,
-            individual_user: [Number(userId)],
+            individual_user: { connect: [{ id: Number(userId) }] },
           },
           status: 'published',
         });
@@ -209,6 +219,13 @@ function toWorkflowRef(value) {
 async function getSelectedUsersForWorkflow(strapi, workflow) {
   if (!workflow?.id) return [];
 
+  const populatedUsers = Array.isArray(workflow?.users_permissions_users)
+    ? workflow.users_permissions_users
+    : [];
+  if (populatedUsers.length > 0) {
+    return populatedUsers;
+  }
+
   const users = await strapi.db.query(USER_UID).findMany({
     where: { course_workflow: workflow.id },
     select: ['id', 'documentId', 'username', 'email'],
@@ -244,6 +261,7 @@ function buildSyncedWorkflowModules(workflowModules, users) {
 async function syncOfflineModuleForWorkflow(strapi, workflowLike) {
   let workflow = await loadWorkflow(strapi, workflowLike);
   if (!workflow) return;
+  const workflowFieldKey = getWorkflowFieldKey(strapi);
 
   let users = await getSelectedUsersForWorkflow(strapi, workflow);
   if (users.length === 0) {
@@ -254,6 +272,10 @@ async function syncOfflineModuleForWorkflow(strapi, workflowLike) {
     users = await getSelectedUsersForWorkflow(strapi, workflow);
   }
 
+
+  // If still no users after retry, do NOT overwrite existing offline_module entries with empty arrays.
+  if (users.length === 0) return;
+
   const workflowModules = getWorkflowModules(workflow);
   if (workflowModules.length === 0) return;
 
@@ -262,7 +284,7 @@ async function syncOfflineModuleForWorkflow(strapi, workflowLike) {
 
   await strapi.db.query(COURSE_WORKFLOW_UID).update({
     where: { id: workflow.id },
-    data: { workflow: nextModules },
+    data: { [workflowFieldKey]: nextModules },
   });
 }
 

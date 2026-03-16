@@ -56,6 +56,10 @@
           ]
         }
       }
+    },
+    "prerequisite_modules": {
+      "type": "customField",
+      "customField": "global::workflow-prerequisite-picker"
     }
   },
   "config": {}
