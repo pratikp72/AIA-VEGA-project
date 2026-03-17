@@ -428,6 +428,7 @@ module.exports = ({ strapi }) => {
     let videoTime = 0;
     let quizTime = 0;
     let feedbackTime = 0;
+    const quizTimeByEntity = new Map();
 
     for (const row of events || []) {
       const uid = getUserIdFromRecord(row);
@@ -462,7 +463,15 @@ module.exports = ({ strapi }) => {
       if (!LEARNING_TIME_EVENTS.has(eventName)) continue;
       if (eventName.includes('module')) moduleTime += duration;
       else if (eventName.includes('video')) videoTime += duration;
-      else if (eventName.includes('quiz')) quizTime += duration;
+      else if (eventName.includes('quiz')) {
+        quizTime += duration;
+        // Track quiz time per course entity
+        if (et === 'course' && eid) {
+          const qKey = String(eid);
+          if (!quizTimeByEntity.has(qKey)) quizTimeByEntity.set(qKey, 0);
+          quizTimeByEntity.set(qKey, quizTimeByEntity.get(qKey) + duration);
+        }
+      }
       else if (eventName.includes('feedback')) feedbackTime += duration;
     }
 
@@ -490,6 +499,9 @@ module.exports = ({ strapi }) => {
           events: v.events,
         }))
         .sort((a, b) => b.total_time_seconds - a.total_time_seconds),
+      quiz_time_by_course: Object.fromEntries(
+        Array.from(quizTimeByEntity.entries()).map(([k, v]) => [k, round1(v / 60)])
+      ),
     };
   };
 
