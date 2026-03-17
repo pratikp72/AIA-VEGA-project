@@ -67,9 +67,9 @@
       },
       "description": "Select employees to assign"
     },
-    "companies": {
+    "company": {
       "type": "relation",
-      "relation": "manyToMany",
+      "relation": "oneToOne",
       "target": "api::company.company",
       "conditions": {
         "visible": {
@@ -80,8 +80,7 @@
             "Company"
           ]
         }
-      },
-      "mappedBy": "course_assignments"
+      }
     },
     "work_locations": {
       "type": "relation",

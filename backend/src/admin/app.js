@@ -26,6 +26,7 @@ import HideAddButtonsForQuizFeedback from './components/HideAddButtonsForQuizFee
 import CourseWorkflowOfflineModuleSyncOnSelect from './components/CourseWorkflowOfflineModuleSyncOnSelect.jsx';
 import WorkflowPrerequisitePickerInput from './components/WorkflowPrerequisitePickerInput.jsx';
 import CourseWorkflowModuleIndexLabel from './components/CourseWorkflowModuleIndexLabel';
+import CourseAssignmentCompanyFilter from './components/CourseAssignmentCompanyFilter.jsx';
 
 export default {
   /**
@@ -243,6 +244,11 @@ export default {
       contentManager.injectComponent('editView', 'right-links', {
         name: 'CourseWorkflowModuleIndexLabel',
         Component: CourseWorkflowModuleIndexLabel,
+      });
+      // For Course Assignment: filter courses picker to only show courses of the selected company
+      contentManager.injectComponent('editView', 'right-links', {
+        name: 'CourseAssignmentCompanyFilter',
+        Component: CourseAssignmentCompanyFilter,
       });
     }
 
