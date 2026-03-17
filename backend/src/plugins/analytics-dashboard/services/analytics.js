@@ -1491,28 +1491,46 @@ module.exports = ({ strapi }) => {
     let quizPassedByCourse = new Set();
     let feedbackGivenByCourse = new Set();
     let feedbackPendingByCourse = new Set();
-    let quizTimeByCourse = new Map(); // numeric courseId (string) → total quiz time_taken_minutes
     try {
       const userIdNum = progressesDedup[0]?.user?.id ?? progressesDedup[0]?.user_id ?? progressesDedup[0]?.userId ?? null;
       const courseIds = progressesDedup.map(p => p.course?.id ?? p.course_id ?? p.courseId).filter(Boolean);
       if (userIdNum && courseIds.length > 0) {
-        // Quiz submissions
-        const quizSubs = await strapi.db.query('api::quiz-submission.quiz-submission').findMany({
-          where: {
-            submitted_by: { id: userIdNum },
-            course: { id: { $in: courseIds } },
-          },
-          select: ['course', 'passed', 'time_taken_minutes'],
-        });
-        (quizSubs || []).forEach(q => {
-          const cid = q.course?.id ?? q.course;
-          if (cid != null && q.passed === true) quizPassedByCourse.add(String(cid));
-          // Accumulate quiz time per course
-          if (cid != null && q.time_taken_minutes) {
-            const key = String(cid);
-            quizTimeByCourse.set(key, (quizTimeByCourse.get(key) ?? 0) + Number(q.time_taken_minutes));
-          }
-        });
+        // Quiz passed — check quiz_submissions for pass status
+        try {
+          const quizSubs = await strapi.db.query('api::quiz-submission.quiz-submission').findMany({
+            where: {
+              submitted_by: { id: userIdNum },
+              course: { id: { $in: courseIds } },
+            },
+            select: ['passed'],
+            populate: { course: { select: ['id'] } },
+          });
+          (quizSubs || []).forEach(q => {
+            const cid = q.course?.id ?? q.course;
+            if (cid != null && q.passed === true) quizPassedByCourse.add(String(cid));
+          });
+        } catch (passErr) {
+          // Fallback: raw SQL for passed status
+          try {
+            const knexConn = strapi.db.connection;
+            if (knexConn && typeof knexConn.raw === 'function') {
+              const result = await knexConn.raw(
+                `SELECT DISTINCT clnk.course_id
+                 FROM quiz_submissions qs
+                 JOIN quiz_submissions_submitted_by_lnk ulnk ON ulnk.quiz_submission_id = qs.id
+                 JOIN quiz_submissions_course_lnk clnk ON clnk.quiz_submission_id = qs.id
+                 WHERE ulnk.user_id = ?
+                   AND clnk.course_id IN (${courseIds.map(() => '?').join(', ')})
+                   AND qs.published_at IS NOT NULL
+                   AND qs.passed = true`,
+                [userIdNum, ...courseIds]
+              );
+              (result?.rows || []).forEach(r => {
+                if (r.course_id != null) quizPassedByCourse.add(String(r.course_id));
+              });
+            }
+          } catch (_) {}
+        }
         // Feedback submissions
         const feedbackSubs = await strapi.db.query('api::feedback-submission.feedback-submission').findMany({
           where: {
@@ -1546,10 +1564,9 @@ module.exports = ({ strapi }) => {
 
       const courseId = p.course?.documentId ?? p.course?.document_id ?? p.course?.id ?? p.course_id ?? p.courseId;
       const numericCourseId = p.course?.id ?? p.course_id ?? p.courseId;
-      const quizTimeMinutes = numericCourseId ? (quizTimeByCourse.get(String(numericCourseId)) ?? 0) : 0;
       const moduleTimeMinutes = p.time_spent_minutes ?? 0;
 
-      totalTimeSpent += moduleTimeMinutes + quizTimeMinutes;
+      totalTimeSpent += moduleTimeMinutes;
 
       // Calculate inactive days
       let inactiveDays = null;
@@ -1562,13 +1579,14 @@ module.exports = ({ strapi }) => {
 
       courseProgress.push({
         courseId: courseId != null ? String(courseId) : null,
+        numericCourseId: numericCourseId != null ? Number(numericCourseId) : null,
         courseTitle: p.course?.title ?? 'Unknown',
         courseCategory: catNamePersonal,
         status: p.progress_status,
         percentage: p.progress_percentage ?? 0,
-        timeSpentMinutes: moduleTimeMinutes + quizTimeMinutes,
+        timeSpentMinutes: moduleTimeMinutes,
         moduleTimeMinutes,
-        quizTimeMinutes,
+        quizTimeMinutes: 0,
         completedAt: p.completed_at,
         certificateIssued: p.certificate_issued ?? false,
         quizPassed: courseId && quizPassedByCourse.has(String(courseId)),

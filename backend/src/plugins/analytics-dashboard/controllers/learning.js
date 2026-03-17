@@ -191,6 +191,25 @@ module.exports = ({ strapi }) => {
         } catch (_) {
           data.live = EMPTY_LIVE;
         }
+        // Merge per-course quiz time from live activity-log data into courseProgress
+        if (data.live?.quiz_time_by_course && Array.isArray(data.courseProgress)) {
+          const qtMap = data.live.quiz_time_by_course;
+          let totalQuizTime = 0;
+          data.courseProgress = data.courseProgress.map((row) => {
+            const numericId = row.numericCourseId ?? row.courseId;
+            const qt = Number(qtMap[String(numericId)] || 0);
+            totalQuizTime += qt;
+            const moduleTime = Number(row.moduleTimeMinutes || 0);
+            return {
+              ...row,
+              quizTimeMinutes: qt,
+              timeSpentMinutes: Math.round((moduleTime + qt) * 10) / 10,
+            };
+          });
+          if (data.kpis && totalQuizTime > 0) {
+            data.kpis.avgTimeSpentMinutes = Math.round(((data.kpis.avgTimeSpentMinutes || 0) + totalQuizTime) * 10) / 10;
+          }
+        }
         ctx.body = data;
       } catch (error) {
         strapi.log.error('Learning learningPersonal error:', error?.message || error);
