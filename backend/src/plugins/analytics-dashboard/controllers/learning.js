@@ -77,10 +77,10 @@ module.exports = ({ strapi }) => {
         const data = await service.getLearningGlobal(params) || emptyLearning();
         try {
           data.quiz = await service.getQuizGlobal(params);
-          if (data.kpis && data.kpis.avgQuizScore === undefined) data.kpis.avgQuizScore = data.quiz?.avgScore ?? 0;
+          if (data.kpis) data.kpis.avgQuizScore = data.quiz?.avgScore ?? 0;
         } catch (quizError) {
           data.quiz = { passRate: 0, avgScore: 0, totalAttempts: 0, passed: 0, failed: 0 };
-          if (data.kpis && data.kpis.avgQuizScore === undefined) data.kpis.avgQuizScore = 0;
+          if (data.kpis) data.kpis.avgQuizScore = 0;
         }
         try {
           const liveParams = {

@@ -790,19 +790,24 @@ module.exports = ({ strapi }) => {
       const courseIdStr = String(courseId).trim();
       if (numericCourseId == null && /^\d+$/.test(courseIdStr)) numericCourseId = Number(courseIdStr);
       if (numericCourseId == null && courseIdStr.length > 10) {
-        const c = await strapi.db.query('api::course.course').findOne({ where: { documentId: courseIdStr }, select: ['id'] });
-        if (c?.id) numericCourseId = c.id;
-        else {
-          const c2 = await strapi.db.query('api::course.course').findOne({ where: { document_id: courseIdStr }, select: ['id'] });
-          if (c2?.id) numericCourseId = c2.id;
+        // Use findMany to get ALL rows (draft + published) for this documentId
+        const cRows = await strapi.db.query('api::course.course').findMany({ where: { documentId: courseIdStr }, select: ['id'] });
+        if (Array.isArray(cRows) && cRows.length > 0) {
+          numericCourseId = cRows.map(r => r.id).filter(Boolean);
+        } else {
+          const cRows2 = await strapi.db.query('api::course.course').findMany({ where: { document_id: courseIdStr }, select: ['id'] });
+          if (Array.isArray(cRows2) && cRows2.length > 0) numericCourseId = cRows2.map(r => r.id).filter(Boolean);
         }
       }
       if (numericCourseId == null) return out;
 
+      const numericCourseIds = Array.isArray(numericCourseId) ? numericCourseId : [numericCourseId];
       const whereVariants = [
-        { course: { id: { $eq: numericCourseId } } },
-        { course: { id: numericCourseId } },
-        { course_id: numericCourseId },
+        ...numericCourseIds.flatMap(nid => [
+          { course: { id: { $eq: nid } } },
+          { course: { id: nid } },
+          { course_id: nid },
+        ]),
       ];
       if (courseIdStr.length > 10) whereVariants.push({ course: { documentId: courseIdStr } });
       let raw = [];
@@ -1427,31 +1432,32 @@ module.exports = ({ strapi }) => {
     const wantCourseId = params.courseId && String(params.courseId).trim();
     if (wantCourseId) {
       const courseIdStr = String(params.courseId).trim();
-      let resolvedNumericId = null;
+      let resolvedNumericIds = new Set();
       if (courseIdStr.length > 10 && !/^\d+$/.test(courseIdStr)) {
         try {
-          const row = await strapi.db.query('api::course.course').findOne({
+          // Use findMany to get ALL rows (draft + published) for this documentId
+          const rows = await strapi.db.query('api::course.course').findMany({
             where: { documentId: courseIdStr },
             select: ['id'],
           });
-          if (!row?.id) {
-            const row2 = await strapi.db.query('api::course.course').findOne({
+          if (Array.isArray(rows) && rows.length > 0) {
+            rows.forEach(r => { if (r?.id) resolvedNumericIds.add(r.id); });
+          } else {
+            const rows2 = await strapi.db.query('api::course.course').findMany({
               where: { document_id: courseIdStr },
               select: ['id'],
             });
-            if (row2?.id) resolvedNumericId = row2.id;
-          } else {
-            resolvedNumericId = row.id;
+            if (Array.isArray(rows2)) rows2.forEach(r => { if (r?.id) resolvedNumericIds.add(r.id); });
           }
         } catch (_) {}
       } else if (/^\d+$/.test(courseIdStr)) {
-        resolvedNumericId = Number(courseIdStr);
+        resolvedNumericIds.add(Number(courseIdStr));
       }
       progresses = progresses.filter((p) => {
         const cid = p.course?.id ?? p.course_id ?? p.courseId ?? p.course?.documentId ?? p.course?.document_id ?? p.course;
         if (cid == null) return false;
         if (String(cid) === courseIdStr) return true;
-        if (resolvedNumericId != null && (Number(cid) === resolvedNumericId || cid === resolvedNumericId)) return true;
+        if (resolvedNumericIds.size > 0 && (resolvedNumericIds.has(Number(cid)) || resolvedNumericIds.has(cid))) return true;
         if (Number(cid) === Number(courseIdStr)) return true;
         return false;
       });
@@ -1704,30 +1710,37 @@ module.exports = ({ strapi }) => {
 
     let records = [];
     const wantCourseId = params.courseId && String(params.courseId).trim();
-    let resolvedCourseNumericId = null;
+    let resolvedCourseNumericIds = new Set();
     if (wantCourseId) {
       const courseIdStr = String(params.courseId).trim();
       if (courseIdStr.length > 10 && !/^\d+$/.test(courseIdStr)) {
         try {
-          const row = await strapi.db.query('api::course.course').findOne({ where: { documentId: courseIdStr }, select: ['id'] });
-          if (row?.id) resolvedCourseNumericId = row.id;
-          else {
-            const row2 = await strapi.db.query('api::course.course').findOne({ where: { document_id: courseIdStr }, select: ['id'] });
-            if (row2?.id) resolvedCourseNumericId = row2.id;
+          // Use findMany to get ALL rows (draft + published) for this documentId
+          const rows = await strapi.db.query('api::course.course').findMany({ where: { documentId: courseIdStr }, select: ['id'] });
+          if (Array.isArray(rows) && rows.length > 0) {
+            rows.forEach(r => { if (r?.id) resolvedCourseNumericIds.add(r.id); });
+          } else {
+            const rows2 = await strapi.db.query('api::course.course').findMany({ where: { document_id: courseIdStr }, select: ['id'] });
+            if (Array.isArray(rows2)) rows2.forEach(r => { if (r?.id) resolvedCourseNumericIds.add(r.id); });
           }
         } catch (_) {}
       } else if (/^\d+$/.test(courseIdStr)) {
-        resolvedCourseNumericId = Number(courseIdStr);
+        resolvedCourseNumericIds.add(Number(courseIdStr));
       }
     }
+    // Back-compat alias: pick first resolved id for whereVariants that need a single value
+    const resolvedCourseNumericId = resolvedCourseNumericIds.size > 0 ? [...resolvedCourseNumericIds][0] : null;
 
     // 0) When course is selected: use same db.query pattern as Course view (user_id + course_id) so we get data
     const courseIdStrForQuery = wantCourseId ? String(params.courseId).trim() : '';
-    if (numericUserId != null && (resolvedCourseNumericId != null || courseIdStrForQuery.length > 10)) {
+    if (numericUserId != null && (resolvedCourseNumericIds.size > 0 || courseIdStrForQuery.length > 10)) {
       const whereVariants = [
-        resolvedCourseNumericId != null && { user_id: numericUserId, course_id: resolvedCourseNumericId },
-        resolvedCourseNumericId != null && { user: { id: numericUserId }, course: { id: resolvedCourseNumericId } },
-        resolvedCourseNumericId != null && { user: { id: numericUserId }, course_id: resolvedCourseNumericId },
+        // Try each resolved numeric ID
+        ...[...resolvedCourseNumericIds].flatMap(rid => [
+          { user_id: numericUserId, course_id: rid },
+          { user: { id: numericUserId }, course: { id: rid } },
+          { user: { id: numericUserId }, course_id: rid },
+        ]),
         courseIdStrForQuery.length > 10 && { user_id: numericUserId, course: { documentId: courseIdStrForQuery } },
       ].filter(Boolean);
       for (const where of whereVariants) {
@@ -1898,7 +1911,7 @@ module.exports = ({ strapi }) => {
           if (cid == null) return false;
           const courseIdStr = String(params.courseId).trim();
           const courseMatches = String(cid) === courseIdStr ||
-            (resolvedCourseNumericId != null && (Number(cid) === resolvedCourseNumericId || cid === resolvedCourseNumericId)) ||
+            (resolvedCourseNumericIds.size > 0 && (resolvedCourseNumericIds.has(Number(cid)) || resolvedCourseNumericIds.has(cid))) ||
             Number(cid) === Number(courseIdStr);
           if (!courseMatches) return false;
         }
