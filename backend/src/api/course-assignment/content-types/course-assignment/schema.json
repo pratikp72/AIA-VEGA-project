@@ -13,12 +13,11 @@
   "attributes": {
     "assignment_target_type": {
       "type": "enumeration",
-      "required": true,
+      "required": false,
       "enum": [
-        "Department",
+        "Individual",
         "Location",
-        "Company",
-        "Individual"
+        "Department"
       ]
     },
     "due_date": {
@@ -70,17 +69,7 @@
     "company": {
       "type": "relation",
       "relation": "oneToOne",
-      "target": "api::company.company",
-      "conditions": {
-        "visible": {
-          "==": [
-            {
-              "var": "assignment_target_type"
-            },
-            "Company"
-          ]
-        }
-      }
+      "target": "api::company.company"
     },
     "work_locations": {
       "type": "relation",
