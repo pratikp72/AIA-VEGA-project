@@ -16,7 +16,17 @@ module.exports = [
   'strapi::poweredBy',
   'strapi::query',
   'global::capture-feedback-body',
-  'strapi::body',
+  {
+    name: 'strapi::body',
+    config: {
+      formLimit: '2560mb', // modify form body
+      jsonLimit: '2560mb', // modify JSON body
+      textLimit: '2560mb', // modify text body
+      formidable: {
+        maxFileSize: 2560 * 1024 * 1024, // multipart data, 2.5GB limit
+      },
+    },
+  },
   'strapi::session',
   'strapi::favicon',
   'strapi::public',

@@ -68,6 +68,20 @@ module.exports = ({ env }) => ({
   },
 
   /**
+   * 🚀 Upload Plugin configuration
+   */
+  upload: {
+    config: {
+      providerOptions: {
+        localServer: {
+          maxage: 300000
+        },
+      },
+      sizeLimit: 2560 * 1024 * 1024, // 2.5GB limit in bytes
+    },
+  },
+
+  /**
    * 🔌 IO Plugin (WebSockets / Realtime)
    */
   io: {
