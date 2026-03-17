@@ -42,8 +42,14 @@ module.exports = ({ env }) => {
       },
       pool: {
         min: env.int('DATABASE_POOL_MIN', 0),
-        max: env.int('DATABASE_POOL_MAX', 2),
-        idleTimeoutMillis: 30000,
+        max: env.int('DATABASE_POOL_MAX', 3),
+        acquireTimeoutMillis: env.int('DATABASE_POOL_ACQUIRE_TIMEOUT', 30000),
+        createTimeoutMillis: env.int('DATABASE_POOL_CREATE_TIMEOUT', 30000),
+        destroyTimeoutMillis: env.int('DATABASE_POOL_DESTROY_TIMEOUT', 5000),
+        idleTimeoutMillis: env.int('DATABASE_POOL_IDLE_TIMEOUT', 5000),
+        reapIntervalMillis: env.int('DATABASE_POOL_REAP_INTERVAL', 1000),
+        createRetryIntervalMillis: env.int('DATABASE_POOL_CREATE_RETRY_INTERVAL', 200),
+        propagateCreateError: false,
       },
     },
     sqlite: {
@@ -58,7 +64,7 @@ module.exports = ({ env }) => {
     connection: {
       client,
       ...connections[client],
-      acquireConnectionTimeout: env.int('DATABASE_CONNECTION_TIMEOUT', 60000),
+      acquireConnectionTimeout: env.int('DATABASE_CONNECTION_TIMEOUT', 120000),
     },
   };
 };
