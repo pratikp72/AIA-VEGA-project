@@ -196,6 +196,7 @@ export function LearningPersonalView({
         </Button>
       </Flex>
 
+
       {dataView === 'chart' && (
         <>
           {/* {!hasModule && (
