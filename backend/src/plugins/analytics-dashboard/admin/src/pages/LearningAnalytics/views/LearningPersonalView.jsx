@@ -120,7 +120,9 @@ export function LearningPersonalView({
       { key: 'courseCategory', label: 'Category' },
       { key: 'status', label: 'Status' },
       { key: 'percentage', label: 'Progress %', render: (v) => (v != null ? `${v}%` : '—') },
-      { key: 'timeSpentMinutes', label: 'Time (min)' },
+      { key: 'moduleTimeMinutes', label: 'Module Time (min)' },
+      { key: 'quizTimeMinutes', label: 'Quiz Time (min)' },
+      { key: 'timeSpentMinutes', label: 'Total Time (min)' },
       { key: 'certificateIssued', label: 'Certificate', render: (v) => (v ? 'Yes' : 'No') },
       { key: 'inactiveDays', label: 'Inactive Days', render: (v) => v != null ? `${v} days` : '—' },
     ];

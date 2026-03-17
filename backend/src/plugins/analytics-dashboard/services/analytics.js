@@ -1491,6 +1491,7 @@ module.exports = ({ strapi }) => {
     let quizPassedByCourse = new Set();
     let feedbackGivenByCourse = new Set();
     let feedbackPendingByCourse = new Set();
+    let quizTimeByCourse = new Map(); // numeric courseId (string) → total quiz time_taken_minutes
     try {
       const userIdNum = progressesDedup[0]?.user?.id ?? progressesDedup[0]?.user_id ?? progressesDedup[0]?.userId ?? null;
       const courseIds = progressesDedup.map(p => p.course?.id ?? p.course_id ?? p.courseId).filter(Boolean);
@@ -1501,11 +1502,16 @@ module.exports = ({ strapi }) => {
             submitted_by: { id: userIdNum },
             course: { id: { $in: courseIds } },
           },
-          select: ['course', 'passed'],
+          select: ['course', 'passed', 'time_taken_minutes'],
         });
         (quizSubs || []).forEach(q => {
           const cid = q.course?.id ?? q.course;
           if (cid != null && q.passed === true) quizPassedByCourse.add(String(cid));
+          // Accumulate quiz time per course
+          if (cid != null && q.time_taken_minutes) {
+            const key = String(cid);
+            quizTimeByCourse.set(key, (quizTimeByCourse.get(key) ?? 0) + Number(q.time_taken_minutes));
+          }
         });
         // Feedback submissions
         const feedbackSubs = await strapi.db.query('api::feedback-submission.feedback-submission').findMany({
@@ -1533,13 +1539,17 @@ module.exports = ({ strapi }) => {
 
     progressesDedup.forEach((p) => {
       statusCounts[p.progress_status] = (statusCounts[p.progress_status] || 0) + 1;
-      totalTimeSpent += p.time_spent_minutes || 0;
 
       // course_category on course is an enum (Mandatory/Orientation/Other), not a relation
       const catNamePersonal = p.course?.course_category ?? p.course?.courseCategory ?? 'Other';
       categoryCounts[catNamePersonal] = (categoryCounts[catNamePersonal] || 0) + 1;
 
       const courseId = p.course?.documentId ?? p.course?.document_id ?? p.course?.id ?? p.course_id ?? p.courseId;
+      const numericCourseId = p.course?.id ?? p.course_id ?? p.courseId;
+      const quizTimeMinutes = numericCourseId ? (quizTimeByCourse.get(String(numericCourseId)) ?? 0) : 0;
+      const moduleTimeMinutes = p.time_spent_minutes ?? 0;
+
+      totalTimeSpent += moduleTimeMinutes + quizTimeMinutes;
 
       // Calculate inactive days
       let inactiveDays = null;
@@ -1556,7 +1566,9 @@ module.exports = ({ strapi }) => {
         courseCategory: catNamePersonal,
         status: p.progress_status,
         percentage: p.progress_percentage ?? 0,
-        timeSpentMinutes: p.time_spent_minutes ?? 0,
+        timeSpentMinutes: moduleTimeMinutes + quizTimeMinutes,
+        moduleTimeMinutes,
+        quizTimeMinutes,
         completedAt: p.completed_at,
         certificateIssued: p.certificate_issued ?? false,
         quizPassed: courseId && quizPassedByCourse.has(String(courseId)),
