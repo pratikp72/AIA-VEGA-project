@@ -16,6 +16,7 @@ export function LearningGlobalView({
   courseContentViewType,
   setCourseContentViewType,
   kpis,
+  live,
   quiz,
   filterCourse,
   filterModule,
@@ -32,6 +33,7 @@ export function LearningGlobalView({
   const hasCourse = Boolean(filterCourse);
   const hasModule = Boolean(filterModule !== '' && filterModule != null);
   const moduleIndexSelected = hasModule ? Number(filterModule) : null;
+  const liveTotals = live?.totals || {};
 
   const courseProgress = Array.isArray(data?.courseProgress) ? data.courseProgress : [];
 

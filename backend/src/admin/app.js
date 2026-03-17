@@ -23,6 +23,10 @@
 import CourseLanguageSyncOnSelect from './components/CourseLanguageSyncOnSelect.jsx';
 import AutoFillComponentIds from './components/AutoFillComponentIds.jsx';
 import HideAddButtonsForQuizFeedback from './components/HideAddButtonsForQuizFeedback.jsx';
+import CourseWorkflowOfflineModuleSyncOnSelect from './components/CourseWorkflowOfflineModuleSyncOnSelect.jsx';
+import WorkflowPrerequisitePickerInput from './components/WorkflowPrerequisitePickerInput.jsx';
+import CourseWorkflowModuleIndexLabel from './components/CourseWorkflowModuleIndexLabel';
+import CourseAssignmentCompanyFilter from './components/CourseAssignmentCompanyFilter.jsx';
 
 export default {
   /**
@@ -196,6 +200,24 @@ export default {
       },
     });
 
+    // Custom field: prerequisite module picker for Course Workflow — shows other modules in the same form
+    app.customFields.register({
+      name: 'workflow-prerequisite-picker',
+      type: 'json',
+      intlLabel: {
+        id: 'app.custom-fields.workflow-prerequisite-picker.label',
+        defaultMessage: 'Prerequisite Modules',
+      },
+      intlDescription: {
+        id: 'app.custom-fields.workflow-prerequisite-picker.description',
+        defaultMessage: 'Select other workflow modules that must be completed before this one.',
+      },
+      components: {
+        Input: async () =>
+          import('./components/WorkflowPrerequisitePickerInput.jsx').then((m) => ({ default: m.default })),
+      },
+    });
+
     // When Course language selection changes, sync modules/quiz/feedback_question in the form (on select, not on save)
     const contentManager = app.getPlugin('content-manager');
     if (contentManager && typeof contentManager.injectComponent === 'function') {
@@ -212,6 +234,21 @@ export default {
       contentManager.injectComponent('editView', 'right-links', {
         name: 'HideAddButtonsForQuizFeedback',
         Component: HideAddButtonsForQuizFeedback,
+      });
+      // For Course Workflow: create offline_module entries instantly when users are selected in Offline mode
+      contentManager.injectComponent('editView', 'right-links', {
+        name: 'CourseWorkflowOfflineModuleSyncOnSelect',
+        Component: CourseWorkflowOfflineModuleSyncOnSelect,
+      });
+      // For Course Workflow: prefix each module entry label with its 1-based index (e.g. "1 - Online")
+      contentManager.injectComponent('editView', 'right-links', {
+        name: 'CourseWorkflowModuleIndexLabel',
+        Component: CourseWorkflowModuleIndexLabel,
+      });
+      // For Course Assignment: filter courses picker to only show courses of the selected company
+      contentManager.injectComponent('editView', 'right-links', {
+        name: 'CourseAssignmentCompanyFilter',
+        Component: CourseAssignmentCompanyFilter,
       });
     }
 

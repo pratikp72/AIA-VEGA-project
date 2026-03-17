@@ -8,17 +8,146 @@ const getShared = (strapi) => require('./analyticsShared')({ strapi });
 const getCommon = (strapi) => require('./analyticsCommon')({ strapi });
 const getLearningQuiz = (strapi) => require('./learning/learningQuiz')({ strapi });
 const getOverall = (strapi) => require('./overall/overall')({ strapi });
+const getTelemetry = (strapi) => require('./analyticsTelemetry')({ strapi });
 
 module.exports = ({ strapi }) => {
+  if (strapi.__analyticsDashboardService) {
+    return strapi.__analyticsDashboardService;
+  }
+
   const shared = getShared(strapi);
   const common = getCommon(strapi);
   const learningQuiz = getLearningQuiz(strapi);
   const overall = getOverall(strapi);
-  return {
+  const telemetry = getTelemetry(strapi);
+  const service = {
     ...shared,
     ...common,
     ...learningQuiz,
     ...overall,
+    ...telemetry,
+
+  async _getRealtimeLearningMinutesByCourse(params = {}, userId = null) {
+    const out = {
+      byCourseId: new Map(),
+      byCourseTitle: new Map(),
+      totalMinutes: 0,
+    };
+    try {
+      const telemetryParams = /** @type {any} */ ({
+        ...params,
+        location: params.location ?? params.unitLocation,
+      });
+      if (userId != null) telemetryParams.userId = userId;
+      const self = /** @type {any} */ (this);
+      if (typeof self.getLearningStats !== 'function') return out;
+      const raw = await self.getLearningStats(telemetryParams);
+      const entities = Array.isArray(raw?.by_entity) ? raw.by_entity : [];
+      const entityCourseIds = [];
+      entities.forEach((entity) => {
+        if (String(entity?.entity_type || '').toLowerCase() !== 'course') return;
+        const seconds = Number(entity?.total_time_seconds || 0);
+        if (!Number.isFinite(seconds) || seconds <= 0) return;
+        const minutes = Math.round((seconds / 60) * 10) / 10;
+        const idKey = entity?.entity_id != null ? String(entity.entity_id).trim() : '';
+        const titleKey = entity?.entity_label ? String(entity.entity_label).trim().toLowerCase() : '';
+        if (idKey) {
+          entityCourseIds.push(idKey);
+          out.byCourseId.set(idKey, Math.max(out.byCourseId.get(idKey) || 0, minutes));
+        }
+        if (titleKey) {
+          out.byCourseTitle.set(titleKey, Math.max(out.byCourseTitle.get(titleKey) || 0, minutes));
+        }
+      });
+
+      if (entityCourseIds.length > 0) {
+        const uniqueIds = [...new Set(entityCourseIds)];
+        const numericIds = uniqueIds.filter((id) => /^\d+$/.test(id)).map(Number);
+        const documentIds = uniqueIds.filter((id) => !/^\d+$/.test(id));
+        const [coursesByNumeric, coursesByDocument] = await Promise.all([
+          numericIds.length > 0
+            ? strapi.db.query('api::course.course').findMany({ where: { id: { $in: numericIds } }, select: ['id', 'documentId'] })
+            : [],
+          documentIds.length > 0
+            ? strapi.db.query('api::course.course').findMany({ where: { documentId: { $in: documentIds } }, select: ['id', 'documentId'] })
+            : [],
+        ]);
+        [...(coursesByNumeric || []), ...(coursesByDocument || [])].forEach((course) => {
+          const idKey = course?.id != null ? String(course.id) : '';
+          const docKey = course?.documentId ? String(course.documentId) : '';
+          const linkedMinutes = Math.max(
+            idKey ? (out.byCourseId.get(idKey) || 0) : 0,
+            docKey ? (out.byCourseId.get(docKey) || 0) : 0,
+          );
+          if (linkedMinutes > 0) {
+            if (idKey) out.byCourseId.set(idKey, linkedMinutes);
+            if (docKey) out.byCourseId.set(docKey, linkedMinutes);
+          }
+        });
+      }
+
+      const totals = raw?.totals || {};
+      const totalSeconds = Number(totals.module_time_seconds || 0)
+        + Number(totals.video_time_seconds || 0)
+        + Number(totals.quiz_time_seconds || 0)
+        + Number(totals.feedback_time_seconds || 0);
+      out.totalMinutes = Math.round(((Number(totalSeconds) || 0) / 60) * 10) / 10;
+    } catch (e) {
+      strapi.log.warn('Learning realtime by course resolve failed:', e?.message);
+    }
+    return out;
+  },
+
+  _mergeRealtimeMinutesIntoCourseRows(rows = [], realtime = null) {
+    if (!Array.isArray(rows) || !realtime) return rows;
+    return rows.map((row) => {
+      const idKey = row?.courseId != null ? String(row.courseId).trim() : '';
+      const titleKey = row?.courseTitle ? String(row.courseTitle).trim().toLowerCase() : '';
+      let realtimeMinutes = 0;
+      if (idKey && realtime.byCourseId?.has(idKey)) {
+        realtimeMinutes = realtime.byCourseId.get(idKey) || 0;
+      } else if (titleKey && realtime.byCourseTitle?.has(titleKey)) {
+        realtimeMinutes = realtime.byCourseTitle.get(titleKey) || 0;
+      }
+      if (!Number.isFinite(realtimeMinutes) || realtimeMinutes <= 0) return row;
+      const existing = Number(row.timeSpentMinutes || 0);
+      return {
+        ...row,
+        // Divide realtime total by enrollmentCount so we compare per-enrollment averages.
+        // realtimeMinutes is the SUM across all users for that course, not per-enrollment.
+        timeSpentMinutes: Math.max(existing, Math.round((realtimeMinutes / (row.enrollmentCount || 1)) * 10) / 10),
+      };
+    });
+  },
+
+  _applyRealtimeToSelectedCourseRows(rows = [], selectedCourseId = null, realtime = null) {
+    if (!Array.isArray(rows) || !selectedCourseId || !realtime || (Number(realtime.totalMinutes) || 0) <= 0) return rows;
+    const selected = String(selectedCourseId).trim();
+    if (!selected) return rows;
+
+    // When filtered by course, backend usually returns one course row.
+    // Divide realtime.totalMinutes by enrollmentCount so it's a per-enrollment figure.
+    if (rows.length === 1) {
+      const only = rows[0] || {};
+      const n = only.enrollmentCount || 1;
+      const realtimePerEnrollment = Math.round((Number(realtime.totalMinutes) / n) * 10) / 10;
+      return [{ ...only, timeSpentMinutes: Math.max(Number(only.timeSpentMinutes) || 0, realtimePerEnrollment) }];
+    }
+
+    const selectedNum = /^\d+$/.test(selected) ? Number(selected) : NaN;
+    return rows.map((row) => {
+      const rowId = row?.courseId != null ? String(row.courseId).trim() : '';
+      const rowNum = /^\d+$/.test(rowId) ? Number(rowId) : NaN;
+      const matches = rowId === selected || (!Number.isNaN(selectedNum) && !Number.isNaN(rowNum) && selectedNum === rowNum);
+      if (!matches) return row;
+      const n = row.enrollmentCount || 1;
+      const realtimePerEnrollment = Math.round((Number(realtime.totalMinutes) / n) * 10) / 10;
+      return {
+        ...row,
+        timeSpentMinutes: Math.max(Number(row.timeSpentMinutes) || 0, realtimePerEnrollment),
+      };
+    });
+  },
 
   /**
    * LEARNING ANALYTICS - Global (all employees)
@@ -105,7 +234,7 @@ module.exports = ({ strapi }) => {
         (courses || []).forEach((c) => { courseById[c.id] = c; });
         const userById = {};
         (users || []).forEach((u) => { userById[u.id] = u; });
-        progresses = raw.map((r) => {
+        const mapped = raw.map((r) => {
           const uid = r.user_id ?? r.userId ?? r.user?.id;
           const cid = r.course_id ?? r.courseId ?? r.course?.id ?? r.course?.documentId;
           const course = (cid != null && courseById[cid]) ? courseById[cid] : (r.course && typeof r.course === 'object' && (r.course.title != null || r.course.id != null) ? r.course : null);
@@ -118,6 +247,24 @@ module.exports = ({ strapi }) => {
             course: course ? { ...course, course_category: cat } : null,
           };
         });
+
+        // Deduplicate by (userId, courseId): strapi.db.query returns both draft and
+        // published versions of a Strapi v5 document, which would double-count enrollments.
+        // Keep published record (published_at != null) over draft; if tied keep higher id.
+        const dedupMap = new Map();
+        mapped.forEach((r) => {
+          const uid = r.user_id ?? r.user?.id;
+          const cid = r.course?.id ?? r.course_id;
+          const key = `${uid}::${cid}`;
+          const existing = dedupMap.get(key);
+          if (!existing) { dedupMap.set(key, r); return; }
+          const rPublished = r.published_at ?? r.publishedAt;
+          const exPublished = existing.published_at ?? existing.publishedAt;
+          if (rPublished && !exPublished) { dedupMap.set(key, r); return; }
+          if (!rPublished && exPublished) return;
+          if ((r.id ?? 0) > (existing.id ?? 0)) dedupMap.set(key, r);
+        });
+        progresses = Array.from(dedupMap.values());
       }
     } catch (e) {
       strapi.log.warn('Learning global: db.query failed:', e?.message);
@@ -528,6 +675,7 @@ module.exports = ({ strapi }) => {
         status,
         percentage: avgPct,
         timeSpentMinutes: avgTime,
+        enrollmentCount: agg.total,
         certificateIssued: certStr,
         dropOffRate,
         dropOffCount,
@@ -540,6 +688,9 @@ module.exports = ({ strapi }) => {
         totalEnrollments: total,
         totalAssignments: total,
         completionRate,
+        // avgTimeSpent = average of time_spent_minutes across all user-progress records.
+        // Realtime telemetry totals are cumulative across all sessions and not a per-enrollment
+        // average, so we use the DB value only.
         avgTimeSpentMinutes: avgTimeSpent,
         avgQuizScore,
         completedCourse: completed,
@@ -566,10 +717,26 @@ module.exports = ({ strapi }) => {
         const modIndexes = (params.moduleIndex !== undefined && params.moduleIndex !== null && params.moduleIndex !== '')
           ? [Number(params.moduleIndex)]
           : (courseModules || []).map((m) => m.index ?? m.moduleIndex ?? 0);
+        // Build title→correct index map from courseModules to fix records saved with
+        // the old language-filtered index (e.g. module_index=1 for "test module 2 in english"
+        // when the correct global index is 3).
+        const titleToCorrectIndex = new Map();
+        (courseModules || []).forEach((m) => {
+          const t = (m.title ?? '').trim().toLowerCase();
+          const idx = m.index ?? m.moduleIndex ?? 0;
+          if (t) titleToCorrectIndex.set(t, idx);
+        });
+
         const byCourseMod = new Map();
         moduleVideoRaw.forEach((mv) => {
           const cid = mv.courseId ?? '';
-          const midx = mv.moduleIndex ?? mv.module_index;
+          let midx = mv.moduleIndex ?? mv.module_index;
+          // Self-heal: if record has a title that maps to a different (correct) index,
+          // use the correct index so data lands in the right column.
+          const recTitle = (mv.moduleTitle ?? '').trim().toLowerCase();
+          if (recTitle && titleToCorrectIndex.has(recTitle)) {
+            midx = titleToCorrectIndex.get(recTitle);
+          }
           if (midx === undefined || midx === null) return;
           const key = `${cid}::${midx}`;
           if (!byCourseMod.has(key)) byCourseMod.set(key, { watched: [], duration: [] });
@@ -623,19 +790,24 @@ module.exports = ({ strapi }) => {
       const courseIdStr = String(courseId).trim();
       if (numericCourseId == null && /^\d+$/.test(courseIdStr)) numericCourseId = Number(courseIdStr);
       if (numericCourseId == null && courseIdStr.length > 10) {
-        const c = await strapi.db.query('api::course.course').findOne({ where: { documentId: courseIdStr }, select: ['id'] });
-        if (c?.id) numericCourseId = c.id;
-        else {
-          const c2 = await strapi.db.query('api::course.course').findOne({ where: { document_id: courseIdStr }, select: ['id'] });
-          if (c2?.id) numericCourseId = c2.id;
+        // Use findMany to get ALL rows (draft + published) for this documentId
+        const cRows = await strapi.db.query('api::course.course').findMany({ where: { documentId: courseIdStr }, select: ['id'] });
+        if (Array.isArray(cRows) && cRows.length > 0) {
+          numericCourseId = cRows.map(r => r.id).filter(Boolean);
+        } else {
+          const cRows2 = await strapi.db.query('api::course.course').findMany({ where: { document_id: courseIdStr }, select: ['id'] });
+          if (Array.isArray(cRows2) && cRows2.length > 0) numericCourseId = cRows2.map(r => r.id).filter(Boolean);
         }
       }
       if (numericCourseId == null) return out;
 
+      const numericCourseIds = Array.isArray(numericCourseId) ? numericCourseId : [numericCourseId];
       const whereVariants = [
-        { course: { id: { $eq: numericCourseId } } },
-        { course: { id: numericCourseId } },
-        { course_id: numericCourseId },
+        ...numericCourseIds.flatMap(nid => [
+          { course: { id: { $eq: nid } } },
+          { course: { id: nid } },
+          { course_id: nid },
+        ]),
       ];
       if (courseIdStr.length > 10) whereVariants.push({ course: { documentId: courseIdStr } });
       let raw = [];
@@ -679,11 +851,13 @@ module.exports = ({ strapi }) => {
         const timeWat = r.time_watched_min ?? 0;
         const duration = r.video_duration_min;
         const mIdx = r.module_index ?? r.moduleIndex;
+        const mTitle = r.module_title ?? r.moduleTitle ?? null;
         out.push({
           userId: uid,
           userName,
           courseId: cid != null ? String(cid) : null,
           moduleIndex: mIdx != null ? Number(mIdx) : null,
+          moduleTitle: mTitle,
           timeWatchedMinutes: timeWat,
           videoDurationMinutes: duration != null ? duration : null,
         });
@@ -710,7 +884,7 @@ module.exports = ({ strapi }) => {
           });
         } catch (e) {
           return [];
-        }
+        };
       };
 
       let raw = [];
@@ -1258,31 +1432,32 @@ module.exports = ({ strapi }) => {
     const wantCourseId = params.courseId && String(params.courseId).trim();
     if (wantCourseId) {
       const courseIdStr = String(params.courseId).trim();
-      let resolvedNumericId = null;
+      let resolvedNumericIds = new Set();
       if (courseIdStr.length > 10 && !/^\d+$/.test(courseIdStr)) {
         try {
-          const row = await strapi.db.query('api::course.course').findOne({
+          // Use findMany to get ALL rows (draft + published) for this documentId
+          const rows = await strapi.db.query('api::course.course').findMany({
             where: { documentId: courseIdStr },
             select: ['id'],
           });
-          if (!row?.id) {
-            const row2 = await strapi.db.query('api::course.course').findOne({
+          if (Array.isArray(rows) && rows.length > 0) {
+            rows.forEach(r => { if (r?.id) resolvedNumericIds.add(r.id); });
+          } else {
+            const rows2 = await strapi.db.query('api::course.course').findMany({
               where: { document_id: courseIdStr },
               select: ['id'],
             });
-            if (row2?.id) resolvedNumericId = row2.id;
-          } else {
-            resolvedNumericId = row.id;
+            if (Array.isArray(rows2)) rows2.forEach(r => { if (r?.id) resolvedNumericIds.add(r.id); });
           }
         } catch (_) {}
       } else if (/^\d+$/.test(courseIdStr)) {
-        resolvedNumericId = Number(courseIdStr);
+        resolvedNumericIds.add(Number(courseIdStr));
       }
       progresses = progresses.filter((p) => {
         const cid = p.course?.id ?? p.course_id ?? p.courseId ?? p.course?.documentId ?? p.course?.document_id ?? p.course;
         if (cid == null) return false;
         if (String(cid) === courseIdStr) return true;
-        if (resolvedNumericId != null && (Number(cid) === resolvedNumericId || cid === resolvedNumericId)) return true;
+        if (resolvedNumericIds.size > 0 && (resolvedNumericIds.has(Number(cid)) || resolvedNumericIds.has(cid))) return true;
         if (Number(cid) === Number(courseIdStr)) return true;
         return false;
       });
@@ -1316,6 +1491,7 @@ module.exports = ({ strapi }) => {
     let quizPassedByCourse = new Set();
     let feedbackGivenByCourse = new Set();
     let feedbackPendingByCourse = new Set();
+    let quizTimeByCourse = new Map(); // numeric courseId (string) → total quiz time_taken_minutes
     try {
       const userIdNum = progressesDedup[0]?.user?.id ?? progressesDedup[0]?.user_id ?? progressesDedup[0]?.userId ?? null;
       const courseIds = progressesDedup.map(p => p.course?.id ?? p.course_id ?? p.courseId).filter(Boolean);
@@ -1326,11 +1502,16 @@ module.exports = ({ strapi }) => {
             submitted_by: { id: userIdNum },
             course: { id: { $in: courseIds } },
           },
-          select: ['course', 'passed'],
+          select: ['course', 'passed', 'time_taken_minutes'],
         });
         (quizSubs || []).forEach(q => {
           const cid = q.course?.id ?? q.course;
           if (cid != null && q.passed === true) quizPassedByCourse.add(String(cid));
+          // Accumulate quiz time per course
+          if (cid != null && q.time_taken_minutes) {
+            const key = String(cid);
+            quizTimeByCourse.set(key, (quizTimeByCourse.get(key) ?? 0) + Number(q.time_taken_minutes));
+          }
         });
         // Feedback submissions
         const feedbackSubs = await strapi.db.query('api::feedback-submission.feedback-submission').findMany({
@@ -1358,13 +1539,17 @@ module.exports = ({ strapi }) => {
 
     progressesDedup.forEach((p) => {
       statusCounts[p.progress_status] = (statusCounts[p.progress_status] || 0) + 1;
-      totalTimeSpent += p.time_spent_minutes || 0;
 
       // course_category on course is an enum (Mandatory/Orientation/Other), not a relation
       const catNamePersonal = p.course?.course_category ?? p.course?.courseCategory ?? 'Other';
       categoryCounts[catNamePersonal] = (categoryCounts[catNamePersonal] || 0) + 1;
 
       const courseId = p.course?.documentId ?? p.course?.document_id ?? p.course?.id ?? p.course_id ?? p.courseId;
+      const numericCourseId = p.course?.id ?? p.course_id ?? p.courseId;
+      const quizTimeMinutes = numericCourseId ? (quizTimeByCourse.get(String(numericCourseId)) ?? 0) : 0;
+      const moduleTimeMinutes = p.time_spent_minutes ?? 0;
+
+      totalTimeSpent += moduleTimeMinutes + quizTimeMinutes;
 
       // Calculate inactive days
       let inactiveDays = null;
@@ -1381,7 +1566,9 @@ module.exports = ({ strapi }) => {
         courseCategory: catNamePersonal,
         status: p.progress_status,
         percentage: p.progress_percentage ?? 0,
-        timeSpentMinutes: p.time_spent_minutes ?? 0,
+        timeSpentMinutes: moduleTimeMinutes + quizTimeMinutes,
+        moduleTimeMinutes,
+        quizTimeMinutes,
         completedAt: p.completed_at,
         certificateIssued: p.certificate_issued ?? false,
         quizPassed: courseId && quizPassedByCourse.has(String(courseId)),
@@ -1395,6 +1582,29 @@ module.exports = ({ strapi }) => {
         monthlyCompletions[month] = (monthlyCompletions[month] || 0) + 1;
       }
     });
+
+    const realtimeByCoursePersonal = await this._getRealtimeLearningMinutesByCourse(params, userId);
+    let courseProgressWithRealtime = this._mergeRealtimeMinutesIntoCourseRows(courseProgress, realtimeByCoursePersonal);
+    courseProgressWithRealtime = this._applyRealtimeToSelectedCourseRows(courseProgressWithRealtime, params.courseId, realtimeByCoursePersonal);
+    const hasPersonalTimeRow = courseProgressWithRealtime.some((row) => (Number(row.timeSpentMinutes) || 0) > 0);
+    if (!hasPersonalTimeRow && realtimeByCoursePersonal.totalMinutes > 0) {
+      courseProgressWithRealtime = [{
+        courseId: 'realtime-unmapped',
+        courseTitle: 'Realtime Learning (Unmapped Course)',
+        courseCategory: 'Other',
+        status: 'In_progress',
+        percentage: 0,
+        timeSpentMinutes: realtimeByCoursePersonal.totalMinutes,
+        completedAt: null,
+        certificateIssued: false,
+        quizPassed: false,
+        feedbackGiven: false,
+        feedbackPending: false,
+        inactiveDays: 0,
+      }];
+    }
+    const totalTimeFromRows = courseProgressWithRealtime.reduce((sum, row) => sum + (Number(row.timeSpentMinutes) || 0), 0);
+    totalTimeSpent = Math.max(totalTimeSpent, Math.round(totalTimeFromRows * 10) / 10);
 
     if (progressesDedup.length > 0) {
       const userWhere = isDocumentId ? { documentId: userId } : { id: userId };
@@ -1474,7 +1684,7 @@ module.exports = ({ strapi }) => {
       statusDistribution: Object.entries(statusCounts).map(([name, value]) => ({ name, value })),
       categoryDistribution: Object.entries(categoryCounts).map(([name, value]) => ({ name, value })),
       departmentDistribution: Object.entries(departmentCounts).map(([name, value]) => ({ name, value })),
-      courseProgress,
+      courseProgress: courseProgressWithRealtime,
       monthlyCompletions: Object.entries(monthlyCompletions)
         .sort(([a], [b]) => a.localeCompare(b))
         .map(([month, value]) => ({ month, value })),
@@ -1512,30 +1722,37 @@ module.exports = ({ strapi }) => {
 
     let records = [];
     const wantCourseId = params.courseId && String(params.courseId).trim();
-    let resolvedCourseNumericId = null;
+    let resolvedCourseNumericIds = new Set();
     if (wantCourseId) {
       const courseIdStr = String(params.courseId).trim();
       if (courseIdStr.length > 10 && !/^\d+$/.test(courseIdStr)) {
         try {
-          const row = await strapi.db.query('api::course.course').findOne({ where: { documentId: courseIdStr }, select: ['id'] });
-          if (row?.id) resolvedCourseNumericId = row.id;
-          else {
-            const row2 = await strapi.db.query('api::course.course').findOne({ where: { document_id: courseIdStr }, select: ['id'] });
-            if (row2?.id) resolvedCourseNumericId = row2.id;
+          // Use findMany to get ALL rows (draft + published) for this documentId
+          const rows = await strapi.db.query('api::course.course').findMany({ where: { documentId: courseIdStr }, select: ['id'] });
+          if (Array.isArray(rows) && rows.length > 0) {
+            rows.forEach(r => { if (r?.id) resolvedCourseNumericIds.add(r.id); });
+          } else {
+            const rows2 = await strapi.db.query('api::course.course').findMany({ where: { document_id: courseIdStr }, select: ['id'] });
+            if (Array.isArray(rows2)) rows2.forEach(r => { if (r?.id) resolvedCourseNumericIds.add(r.id); });
           }
         } catch (_) {}
       } else if (/^\d+$/.test(courseIdStr)) {
-        resolvedCourseNumericId = Number(courseIdStr);
+        resolvedCourseNumericIds.add(Number(courseIdStr));
       }
     }
+    // Back-compat alias: pick first resolved id for whereVariants that need a single value
+    const resolvedCourseNumericId = resolvedCourseNumericIds.size > 0 ? [...resolvedCourseNumericIds][0] : null;
 
     // 0) When course is selected: use same db.query pattern as Course view (user_id + course_id) so we get data
     const courseIdStrForQuery = wantCourseId ? String(params.courseId).trim() : '';
-    if (numericUserId != null && (resolvedCourseNumericId != null || courseIdStrForQuery.length > 10)) {
+    if (numericUserId != null && (resolvedCourseNumericIds.size > 0 || courseIdStrForQuery.length > 10)) {
       const whereVariants = [
-        resolvedCourseNumericId != null && { user_id: numericUserId, course_id: resolvedCourseNumericId },
-        resolvedCourseNumericId != null && { user: { id: numericUserId }, course: { id: resolvedCourseNumericId } },
-        resolvedCourseNumericId != null && { user: { id: numericUserId }, course_id: resolvedCourseNumericId },
+        // Try each resolved numeric ID
+        ...[...resolvedCourseNumericIds].flatMap(rid => [
+          { user_id: numericUserId, course_id: rid },
+          { user: { id: numericUserId }, course: { id: rid } },
+          { user: { id: numericUserId }, course_id: rid },
+        ]),
         courseIdStrForQuery.length > 10 && { user_id: numericUserId, course: { documentId: courseIdStrForQuery } },
       ].filter(Boolean);
       for (const where of whereVariants) {
@@ -1706,7 +1923,7 @@ module.exports = ({ strapi }) => {
           if (cid == null) return false;
           const courseIdStr = String(params.courseId).trim();
           const courseMatches = String(cid) === courseIdStr ||
-            (resolvedCourseNumericId != null && (Number(cid) === resolvedCourseNumericId || cid === resolvedCourseNumericId)) ||
+            (resolvedCourseNumericIds.size > 0 && (resolvedCourseNumericIds.has(Number(cid)) || resolvedCourseNumericIds.has(cid))) ||
             Number(cid) === Number(courseIdStr);
           if (!courseMatches) return false;
         }
@@ -2199,6 +2416,38 @@ module.exports = ({ strapi }) => {
     try {
       const companyId = company != null && company !== '' ? await this.resolveCompanyId(company) : null;
 
+      // No company and no department selected: return all courses for filter dropdown.
+      if ((departmentId == null || departmentId === '') && companyId == null) {
+        let list = [];
+        try {
+          const docList = await strapi.documents('api::course.course').findMany({
+            status: 'published',
+            fields: ['title'],
+            pagination: { limit: 1000 },
+          });
+          list = Array.isArray(docList) ? docList : [];
+        } catch (_) {}
+
+        if (list.length === 0) {
+          try {
+            const rows = await strapi.db.query('api::course.course').findMany({
+              select: ['id', 'documentId', 'title'],
+              orderBy: { title: 'asc' },
+              limit: 1000,
+            });
+            list = Array.isArray(rows) ? rows : [];
+          } catch (_) {}
+        }
+
+        return (list || [])
+          .map((c) => ({
+            id: c.id ?? c.documentId,
+            title: c.title ?? c.attributes?.title ?? `Course ${c.id ?? c.documentId}`,
+          }))
+          .filter((c, i, arr) => c.id != null && arr.findIndex((x) => String(x.id) === String(c.id)) === i)
+          .sort((a, b) => String(a.title).localeCompare(String(b.title)));
+      }
+
       // Company selected, no department: get courses directly from course table where course.company contains this company
       if ((departmentId == null || departmentId === '') && companyId != null) {
         const list = await this._getCoursesByCompanyId(companyId);
@@ -2333,5 +2582,8 @@ module.exports = ({ strapi }) => {
     if (companyId == null) return [];
     return this._getCoursesByCompanyId(companyId);
   },
-};
+  };
+
+  strapi.__analyticsDashboardService = service;
+  return service;
 };

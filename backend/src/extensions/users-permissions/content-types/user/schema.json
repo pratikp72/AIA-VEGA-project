@@ -314,6 +314,12 @@
         }
       },
       "required": true
+    },
+    "course_workflow": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::course-workflow.course-workflow",
+      "inversedBy": "users_permissions_users"
     }
   }
 }

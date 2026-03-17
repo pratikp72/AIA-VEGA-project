@@ -55,12 +55,6 @@
       "target": "api::holiday.holiday",
       "inversedBy": "companies"
     },
-    "course_assignments": {
-      "type": "relation",
-      "relation": "manyToMany",
-      "target": "api::course-assignment.course-assignment",
-      "inversedBy": "companies"
-    },
     "work_locations": {
       "type": "relation",
       "relation": "oneToMany",

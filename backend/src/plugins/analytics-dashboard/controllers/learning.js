@@ -6,6 +6,40 @@
  */
 const getQueryParams = require('./utils/getQueryParams');
 
+const EMPTY_LIVE = {
+  totals: {
+    module_time_seconds: 0,
+    video_time_seconds: 0,
+    quiz_time_seconds: 0,
+    feedback_time_seconds: 0,
+    unique_users: 0,
+    dropoff_count: 0,
+  },
+  by_entity: [],
+};
+
+async function resolveNumericUserId(strapi, userId) {
+  if (userId == null || userId === '') return null;
+  if (typeof userId === 'number' && !Number.isNaN(userId)) return userId;
+  const asStr = String(userId).trim();
+  if (/^\d+$/.test(asStr)) return Number(asStr);
+  try {
+    const u = await strapi.db.query('plugin::users-permissions.user').findOne({
+      where: { documentId: asStr },
+      select: ['id'],
+    });
+    if (u?.id != null) return u.id;
+  } catch (_) {}
+  try {
+    const u = await strapi.db.query('plugin::users-permissions.user').findOne({
+      where: { document_id: asStr },
+      select: ['id'],
+    });
+    if (u?.id != null) return u.id;
+  } catch (_) {}
+  return null;
+}
+
 module.exports = ({ strapi }) => {
   const getAnalyticsService = () => require('../services/analytics')({ strapi });
 
@@ -43,15 +77,25 @@ module.exports = ({ strapi }) => {
         const data = await service.getLearningGlobal(params) || emptyLearning();
         try {
           data.quiz = await service.getQuizGlobal(params);
-          if (data.kpis && data.kpis.avgQuizScore === undefined) data.kpis.avgQuizScore = data.quiz?.avgScore ?? 0;
+          if (data.kpis) data.kpis.avgQuizScore = data.quiz?.avgScore ?? 0;
         } catch (quizError) {
           data.quiz = { passRate: 0, avgScore: 0, totalAttempts: 0, passed: 0, failed: 0 };
-          if (data.kpis && data.kpis.avgQuizScore === undefined) data.kpis.avgQuizScore = 0;
+          if (data.kpis) data.kpis.avgQuizScore = 0;
+        }
+        try {
+          const liveParams = {
+            ...params,
+            // telemetry where-builder uses `location`; learning filters currently send `unitLocation`
+            location: params.location || params.unitLocation,
+          };
+          data.live = await service.getLearningStats(liveParams) || EMPTY_LIVE;
+        } catch (_) {
+          data.live = EMPTY_LIVE;
         }
         ctx.body = data;
       } catch (error) {
         strapi.log.error('Learning learningGlobal error:', error?.message || error);
-        ctx.body = emptyLearning();
+        ctx.body = { ...emptyLearning(), live: EMPTY_LIVE };
         ctx.status = 200;
       }
     },
@@ -136,10 +180,21 @@ module.exports = ({ strapi }) => {
           data.moduleVideoKpis = { watchedFully: 0, skippedToEnd: 0, inProgress: 0, notStarted: 0 };
           data.moduleVideoProgress = [];
         }
+        try {
+          const numericUserId = await resolveNumericUserId(strapi, userId);
+          const liveParams = {
+            ...params,
+            userId: numericUserId ?? userId,
+            location: params.location || params.unitLocation,
+          };
+          data.live = await service.getLearningStats(liveParams) || EMPTY_LIVE;
+        } catch (_) {
+          data.live = EMPTY_LIVE;
+        }
         ctx.body = data;
       } catch (error) {
         strapi.log.error('Learning learningPersonal error:', error?.message || error);
-        ctx.body = emptyLearningPersonal();
+        ctx.body = { ...emptyLearningPersonal(), live: EMPTY_LIVE };
         ctx.status = 200;
       }
     },

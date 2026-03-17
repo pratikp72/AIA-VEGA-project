@@ -44,20 +44,99 @@ async function getCompanyFilterForDepartment(strapi, sourceUid, documentId) {
  * only returns departments that belong to the current record's company.
  */
 module.exports = (plugin) => {
+  // ── Admin helper: courses that belong to a specific company ───────────────
+  plugin.controllers['coursesForCompany'] = {
+    async find(ctx) {
+      const companyId = ctx.query?.companyId;
+      if (!companyId) return ctx.badRequest('companyId query param is required');
+
+      const numId    = parseInt(String(companyId), 10);
+      const isDocId  = isNaN(numId) || String(companyId).length > 10;
+
+      try {
+        const courses = await strapi.db.query('api::course.course').findMany({
+          where: isDocId
+            ? { company: { documentId: companyId } }
+            : { company: { id: numId } },
+          select: ['id', 'documentId', 'title'],
+          orderBy:  { title: 'asc' },
+          limit:    300,
+        });
+        ctx.body = { results: courses };
+      } catch (err) {
+        strapi.log.error('[courses-for-company]', err?.message);
+        ctx.body = { results: [] };
+      }
+    },
+  };
+
+  if (Array.isArray(plugin.routes?.['admin']?.routes)) {
+    plugin.routes['admin'].routes.push({
+      method: 'GET',
+      path:   '/courses-for-company',
+      handler: 'coursesForCompany.find',
+      config:  { policies: [] },
+    });
+  }
+
   const relationsController = plugin.controllers.relations;
   const defaultFindAvailable = relationsController.findAvailable.bind(relationsController);
 
-  const runFindAvailableSafely = async (ctx) => {
+  /**
+   * Fallback for non-i18n relation targets: Strapi's defaultFindAvailable
+   * fails with "Cannot destructure property 'locale'" when the target content
+   * type has no i18n/localization support.  Instead of returning 403, we run
+   * a direct DB query that mirrors the shape the UI expects.
+   */
+  async function findAvailableFallback(ctx, targetUid) {
+    const { _q = '', pageSize = 10, page = 1 } = ctx.request?.query ?? {};
+    const limit  = Math.max(1, parseInt(String(pageSize), 10) || 10);
+    const offset = (Math.max(1, parseInt(String(page), 10) || 1) - 1) * limit;
+
+    const targetModel = strapi.getModel(targetUid);
+    const mainField   =
+      targetModel?.info?.mainField ||
+      (targetModel?.attributes?.name ? 'name' : 'id');
+
+    const where = _q ? { [mainField]: { $containsi: String(_q) } } : {};
+    // Only published records
+    where.publishedAt = { $notNull: true };
+
+    const [results, total] = await Promise.all([
+      strapi.db.query(targetUid).findMany({ where, limit, offset, orderBy: { [mainField]: 'asc' } }),
+      strapi.db.query(targetUid).count({ where }),
+    ]);
+
+    ctx.body = {
+      data: {
+        results,
+        pagination: {
+          page:     Math.max(1, parseInt(String(page), 10) || 1),
+          pageSize: limit,
+          total,
+        },
+      },
+    };
+  }
+
+  const runFindAvailableSafely = async (ctx, targetUid) => {
     try {
       return await defaultFindAvailable(ctx);
     } catch (err) {
       const msg = String(err?.message || '');
-      const isStrapiRelationsDestructureBug =
+      const isLocaleBug =
         msg.includes("Cannot destructure property 'locale'") &&
         String(err?.stack || '').includes('content-manager') &&
         String(err?.stack || '').includes('relations.js');
 
-      if (isStrapiRelationsDestructureBug) {
+      if (isLocaleBug && targetUid) {
+        strapi.log.warn(
+          `[content-manager ext] findAvailable locale-bug for ${targetUid}; using direct-DB fallback`
+        );
+        return findAvailableFallback(ctx, targetUid);
+      }
+
+      if (isLocaleBug) {
         strapi.log.warn(
           'content-manager relations.findAvailable failed due to permission-denied destructure path; returning 403'
         );
@@ -82,7 +161,7 @@ module.exports = (plugin) => {
     }
 
     if (!ctx.state._departmentCompanyFilter) {
-      return runFindAvailableSafely(ctx);
+      return runFindAvailableSafely(ctx, targetUid);
     }
 
     const originalQuery = strapi.db.query.bind(strapi.db);
@@ -105,7 +184,7 @@ module.exports = (plugin) => {
     };
 
     try {
-      return await runFindAvailableSafely(ctx);
+      return await runFindAvailableSafely(ctx, targetUid);
     } finally {
       strapi.db.query = originalQuery;
     }

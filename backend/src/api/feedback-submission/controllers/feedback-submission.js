@@ -99,14 +99,24 @@ module.exports = createCoreController("api::feedback-submission.feedback-submiss
   async submit(ctx) {
     if (ctx.method === 'OPTIONS') return ctx.send({ ok: true });
 
-    // Use body from capture-feedback-body middleware (fixes empty body from frontend) or fallback to ctx.request.body
+    // Support both nested (Strapi style: body.data) and flat payloads
     const rawBody = ctx.state.feedbackBody || ctx.request.body || {};
-    const data = rawBody.data || (rawBody.answers != null ? rawBody : null);
+    const nested = rawBody.data || {};
 
-    if (!data) return ctx.badRequest("Missing data object");
-    const { users_permissions_user: userId, course: courseId, answers: rawAnswers } = data;
+    const courseId = Number(
+      nested.course ?? nested.courseId ??
+      rawBody.course ?? rawBody.courseId ?? 0
+    );
+    const userId = Number(
+      nested.users_permissions_user ?? nested.userId ??
+      rawBody.users_permissions_user ?? rawBody.userId ?? 0
+    );
+    const rawAnswers = Array.isArray(nested.answers) ? nested.answers
+      : Array.isArray(rawBody.answers) ? rawBody.answers
+      : nested.answers ?? rawBody.answers;
 
-    if (!userId || !courseId) return ctx.badRequest("userId and courseId required");
+    if (!Number.isFinite(courseId) || courseId === 0) return ctx.badRequest('courseId is required');
+    if (!Number.isFinite(userId) || userId === 0) return ctx.badRequest('userId is required');
 
     // Transform frontend object { "q-1": 3, "additionalFeedback": "text" } into schema format:
     // [{ question_id, question, answer_type, answer }, ...]
@@ -142,13 +152,13 @@ module.exports = createCoreController("api::feedback-submission.feedback-submiss
       entry = await strapi.entityService.create(
         "api::feedback-submission.feedback-submission",
         {
-          data: {
+          data: /** @type {any} */ ({
             answers,
-            course: courseId,            // existing relation / id (unchanged)
-            course_name: courseTitle,    // ADDED: plain text course name field
-            users_permissions_user: userId,
-            publishedAt: new Date(),     // publish immediately (draftAndPublish: true)
-          },
+            course: Number(courseId),
+            course_name: courseTitle,
+            users_permissions_user: Number(userId),
+            publishedAt: new Date(),
+          }),
         }
       );
     } catch (err) {
@@ -172,7 +182,7 @@ module.exports = createCoreController("api::feedback-submission.feedback-submiss
     try {
       await strapi
         .controller("api::user-progress.user-progress")
-        .finalizeCourse(courseId, userId);
+        .finalizeCourse(courseId, userId, entry?.id);
     } catch (err) {
       strapi.log.error('Finalize course error:', err);
     }

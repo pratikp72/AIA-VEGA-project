@@ -1,0 +1,66 @@
+{
+  "collectionName": "components_course_workflow_modules",
+  "info": {
+    "displayName": "Workflow Module"
+  },
+  "options": {},
+  "attributes": {
+    "module_type": {
+      "type": "enumeration",
+      "required": true,
+      "enum": [
+        "Online",
+        "Offline"
+      ]
+    },
+    "due_date": {
+      "type": "date",
+      "conditions": {
+        "visible": {
+          "==": [
+            {
+              "var": "module_type"
+            },
+            "Online"
+          ]
+        }
+      },
+      "required": true
+    },
+    "offline_module": {
+      "type": "component",
+      "conditions": {
+        "visible": {
+          "==": [
+            {
+              "var": "module_type"
+            },
+            "Offline"
+          ]
+        }
+      },
+      "component": "course.offline-module",
+      "repeatable": true
+    },
+    "course": {
+      "type": "relation",
+      "relation": "oneToOne",
+      "target": "api::course.course",
+      "conditions": {
+        "visible": {
+          "==": [
+            {
+              "var": "module_type"
+            },
+            "Online"
+          ]
+        }
+      }
+    },
+    "prerequisite_modules": {
+      "type": "customField",
+      "customField": "global::workflow-prerequisite-picker"
+    }
+  },
+  "config": {}
+}
