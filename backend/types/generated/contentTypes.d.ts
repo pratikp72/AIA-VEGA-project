@@ -678,14 +678,14 @@ export interface ApiCourseWorkflowCourseWorkflow
   };
   options: {
     draftAndPublish: true;
+    populateCreatorFields: true;
   };
   attributes: {
     category: Schema.Attribute.Enumeration<
       ['Mandatory', 'Orientation', 'other']
     >;
     createdAt: Schema.Attribute.DateTime;
-    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
-      Schema.Attribute.Private;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'>;
     locale: Schema.Attribute.String & Schema.Attribute.Private;
     localizations: Schema.Attribute.Relation<
       'oneToMany',
@@ -695,8 +695,7 @@ export interface ApiCourseWorkflowCourseWorkflow
     modules: Schema.Attribute.Component<'course.workflow-module', true>;
     publishedAt: Schema.Attribute.DateTime;
     updatedAt: Schema.Attribute.DateTime;
-    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
-      Schema.Attribute.Private;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'>;
     users_permissions_users: Schema.Attribute.Relation<
       'oneToMany',
       'plugin::users-permissions.user'
