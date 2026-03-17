@@ -4,8 +4,8 @@
   "private": true,
   "description": "A Strapi application",
   "scripts": {
-    "predevelop": "node scripts/fix-unit-location-note-json.js",
-    "prestart": "node scripts/fix-unit-location-note-json.js",
+    "predevelop": "node scripts/fix-unit-location-note-json.js || true",
+    "prestart": "node scripts/fix-unit-location-note-json.js || true",
     "build": "strapi build",
     "console": "strapi console",
     "deploy": "strapi deploy",

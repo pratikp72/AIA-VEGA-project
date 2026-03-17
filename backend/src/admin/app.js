@@ -25,6 +25,7 @@ import AutoFillComponentIds from './components/AutoFillComponentIds.jsx';
 import HideAddButtonsForQuizFeedback from './components/HideAddButtonsForQuizFeedback.jsx';
 import CourseWorkflowOfflineModuleSyncOnSelect from './components/CourseWorkflowOfflineModuleSyncOnSelect.jsx';
 import WorkflowPrerequisitePickerInput from './components/WorkflowPrerequisitePickerInput.jsx';
+import CourseWorkflowModuleIndexLabel from './components/CourseWorkflowModuleIndexLabel';
 
 export default {
   /**
@@ -237,6 +238,11 @@ export default {
       contentManager.injectComponent('editView', 'right-links', {
         name: 'CourseWorkflowOfflineModuleSyncOnSelect',
         Component: CourseWorkflowOfflineModuleSyncOnSelect,
+      });
+      // For Course Workflow: prefix each module entry label with its 1-based index (e.g. "1 - Online")
+      contentManager.injectComponent('editView', 'right-links', {
+        name: 'CourseWorkflowModuleIndexLabel',
+        Component: CourseWorkflowModuleIndexLabel,
       });
     }
 

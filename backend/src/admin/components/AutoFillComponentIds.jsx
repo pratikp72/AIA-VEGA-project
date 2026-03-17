@@ -17,10 +17,10 @@ function generateId(prefix) {
  */
 const CONTENT_TYPE_ID_CONFIG = {
   'api::course.course': {
-    modules: { idKey: 'module_id', prefix: 'mod', nested: {} },
+    // Top-level module_id is assigned by CourseLanguageSyncOnSelect to avoid race conditions on add-entry fanout.
+    modules: { nested: {} },
     quiz: {
-      idKey: 'quiz_id',
-      prefix: 'quiz',
+      // Top-level quiz_id is assigned by CourseLanguageSyncOnSelect to avoid race conditions on add-entry fanout.
       nested: {
         quiz_questions: { idKey: 'question_id', prefix: 'q', nested: {} },
       },
