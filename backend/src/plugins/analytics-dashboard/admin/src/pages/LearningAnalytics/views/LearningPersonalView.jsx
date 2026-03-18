@@ -160,8 +160,11 @@ export function LearningPersonalView({
           <Box style={{ flex: '1 1 200px', minWidth: 160 }}>
             <StatCard label="Total Course Completed" value={kpis.completedCourses ?? kpis.completedCourse ?? 0} colorIndex={1} />
           </Box>
-          <Box style={{ flex: '1 1 200px', minWidth: 160 }}>
+          {/* <Box style={{ flex: '1 1 200px', minWidth: 160 }}>
             <StatCard label="Avg Time Spent / Course" value={`${kpis.avgTimeSpentPerCourse ?? kpis.avgTimeSpentMinutes ?? 0} min`} colorIndex={2} />
+          </Box> */}
+          <Box style={{ flex: '1 1 200px', minWidth: 160 }}>
+            <StatCard label="Avg Time Spent / Course" value={`${courseProgress.length > 0 ? Math.round(courseProgress.reduce((s, c) => s + (Number(c.timeSpentMinutes) || 0), 0) / courseProgress.length * 10) / 10 : 0} min`} colorIndex={2} />
           </Box>
           <Box style={{ flex: '1 1 200px', minWidth: 160 }}>
             <StatCard label="Certificates Earned" value={kpis.certificatesEarned ?? 0} colorIndex={3} />

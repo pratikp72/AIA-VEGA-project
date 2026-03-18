@@ -1,8 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { useForm } from '@strapi/admin/strapi-admin';
 
-const COURSE_ASSIGNMENT_MODEL = 'api::course-assignment.course-assignment';
-const FILTERED_FIELDS = new Set(['courses', 'individual_user', 'work_locations', 'departments']);
+const COURSE_WORKFLOW_MODEL = 'api::course-workflow.course-workflow';
 
 function extractCompanyId(value) {
   if (!value) return null;
@@ -47,14 +46,14 @@ function extractCompanyId(value) {
   return null;
 }
 
-export default function CourseAssignmentCompanyFilter({ slug, model }) {
+export default function CourseWorkflowCompanyFilter({ slug, model }) {
   const uid = slug || model;
-  if (uid !== COURSE_ASSIGNMENT_MODEL) return null;
+  if (uid !== COURSE_WORKFLOW_MODEL) return null;
   return <FilterCore />;
 }
 
 function FilterCore() {
-  const values = useForm('CourseAssignmentCompanyFilter', (state) => state?.values, false);
+  const values = useForm('CourseWorkflowCompanyFilter', (state) => state?.values, false);
   const companyIdRef = useRef(null);
   const originalFetchRef = useRef(null);
   const patchedRef = useRef(false);
@@ -79,19 +78,22 @@ function FilterCore() {
                 ? input.toString()
                 : '';
 
-        if (!baseUrl.includes('/content-manager/relations/api::course-assignment.course-assignment/')) {
+        const isWorkflowRelation =
+          baseUrl.includes('/content-manager/relations/api::course-workflow.course-workflow/') ||
+          baseUrl.includes('/content-manager/relations/course.workflow-module/');
+
+        if (!isWorkflowRelation) {
           return originalFetch(input, init);
         }
 
         const url = new URL(baseUrl, window.location.origin);
-        const match = url.pathname.match(/\/content-manager\/relations\/api::course-assignment\.course-assignment\/([^/?]+)/);
-        const targetField = match?.[1] || '';
         const selectedCompanyId = companyIdRef.current;
 
-        if (!selectedCompanyId || !FILTERED_FIELDS.has(targetField)) {
+        if (!selectedCompanyId) {
           return originalFetch(input, init);
         }
 
+        // For workflow form, we need filtering on users relation and module course relation.
         url.searchParams.set('companyId', selectedCompanyId);
 
         if (input instanceof Request) {

@@ -27,6 +27,7 @@ import CourseWorkflowOfflineModuleSyncOnSelect from './components/CourseWorkflow
 import WorkflowPrerequisitePickerInput from './components/WorkflowPrerequisitePickerInput.jsx';
 import CourseWorkflowModuleIndexLabel from './components/CourseWorkflowModuleIndexLabel';
 import CourseAssignmentCompanyFilter from './components/CourseAssignmentCompanyFilter.jsx';
+import CourseWorkflowCompanyFilter from './components/CourseWorkflowCompanyFilter.jsx';
 
 export default {
   /**
@@ -250,6 +251,11 @@ export default {
         name: 'CourseAssignmentCompanyFilter',
         Component: CourseAssignmentCompanyFilter,
       });
+      // For Course Workflow: filter users and online module course relation by selected company
+      contentManager.injectComponent('editView', 'right-links', {
+        name: 'CourseWorkflowCompanyFilter',
+        Component: CourseWorkflowCompanyFilter,
+      });
     }
 
     /**
@@ -425,19 +431,8 @@ export default {
      */
     
     try {
-      // Attempt to modify Content Manager menu link visibility
-      // This API may or may not be available depending on Strapi version
-      if (typeof app.modifyMenuLink === 'function') {
-        app.modifyMenuLink('content-manager', {
-          // Add permission check - only Super Admin can see
-          permissions: [
-            {
-              action: 'plugin::content-manager.read',
-              subject: null,
-            },
-          ],
-        });
-      }
+      // Keep default Content Manager/Home navigation behavior.
+      // Role-based visibility should be managed from Settings -> Roles.
     } catch (error) {
       // If modifyMenuLink is not available, that's okay
       // Visibility will be controlled through role permissions instead

@@ -65,6 +65,61 @@ async function resolveCourseIdForDb(strapi, courseId) {
   return courseId;
 }
 
+function normalizeCompanyName(name) {
+  const lower = String(name || '').trim().toLowerCase();
+  if (lower === 'aia') return 'AIA';
+  if (lower === 'vega') return 'Vega';
+  return String(name || '').trim();
+}
+
+function extractCompanyNamesFromEntity(raw) {
+  const items = Array.isArray(raw) ? raw : (raw ? [raw] : []);
+  return [...new Set(items.map((item) => item?.name ?? item?.attributes?.name).filter(Boolean).map(normalizeCompanyName))];
+}
+
+async function resolveCompanyNames(strapi, rawCompany, fallbackCompany) {
+  const relationIds = extractRelationIds(rawCompany);
+  const numericIds = relationIds
+    .filter((value) => typeof value === 'number' || (typeof value === 'string' && /^\d+$/.test(String(value))))
+    .map(Number);
+  const docIds = relationIds.filter((value) => typeof value === 'string' && value.length > 10);
+
+  let companies = [];
+  if (numericIds.length > 0) {
+    const byId = await strapi.db.query('api::company.company').findMany({
+      where: { id: { $in: numericIds } },
+      select: ['name'],
+    });
+    companies = companies.concat(byId || []);
+  }
+  if (docIds.length > 0) {
+    const byDocId = await strapi.db.query('api::company.company').findMany({
+      where: { documentId: { $in: docIds } },
+      select: ['name'],
+    });
+    (byDocId || []).forEach((company) => {
+      if (company?.name && !companies.some((item) => item?.name === company.name)) companies.push(company);
+    });
+  }
+
+  const names = companies.map((company) => normalizeCompanyName(company?.name)).filter(Boolean);
+  if (names.length > 0) return [...new Set(names)];
+  return extractCompanyNamesFromEntity(fallbackCompany);
+}
+
+function scopeUserWhere(where, companyNames) {
+  if (!Array.isArray(companyNames) || companyNames.length === 0) return where;
+  if (companyNames.length === 1) {
+    return { ...where, company: companyNames[0] };
+  }
+  return {
+    $and: [
+      where,
+      { $or: companyNames.map((name) => ({ company: name })) },
+    ],
+  };
+}
+
 /**
  * Resolve user IDs from the create payload (params.data) so we don't depend on relations being populated when re-loading.
  * Use this first when event.params.data is available (e.g. Content Manager create).
@@ -75,11 +130,8 @@ async function getAssignedUserIdsFromParams(strapi, params, result) {
     strapi.log.debug('user-progress-automation: getAssignedUserIdsFromParams no params.data');
     return null;
   }
-  const targetType = data.assignment_target_type;
-  if (!targetType) {
-    strapi.log.warn('user-progress-automation: getAssignedUserIdsFromParams no assignment_target_type');
-    return null;
-  }
+  // When no target type selected, treat as 'Company' → assign to all users of that company
+  const targetType = data.assignment_target_type || 'Company';
   const doc = result?.document ?? result;
   // Schema field is 'courses' (plural manyToMany); also try legacy 'course' for backwards compat
   let courseId = getCourseId(data.courses) ?? getCourseId(data.course) ??
@@ -99,13 +151,11 @@ async function getAssignedUserIdsFromParams(strapi, params, result) {
     return null;
   }
 
+  const companyNames = await resolveCompanyNames(strapi, data.company ?? data.companies, result?.company ?? result?.companies);
+
   let userIds = [];
   if (targetType === 'Individual') {
     const raw = data.individual_user ?? data.individual_user_id;
-    // extractRelationIds handles { connect: [...] }, { set: [...] }, arrays, and plain IDs.
-    // Strapi v5 Content Manager sends relations as { connect: [{documentId: "xyz..."}] },
-    // so extracted values may be documentId strings rather than numeric IDs.
-    // Resolve any non-numeric IDs to numeric user IDs via a DB lookup.
     const extracted = extractRelationIds(raw);
     const numericIds = [];
     const docIds = [];
@@ -127,7 +177,16 @@ async function getAssignedUserIdsFromParams(strapi, params, result) {
         strapi.log.warn('user-progress-automation: failed to resolve user documentIds', e?.message || e);
       }
     }
-    userIds = numericIds;
+
+    if (companyNames.length > 0 && numericIds.length > 0) {
+      const users = await strapi.db.query('plugin::users-permissions.user').findMany({
+        where: scopeUserWhere({ id: { $in: [...new Set(numericIds)] }, blocked: { $ne: true } }, companyNames),
+        select: ['id'],
+      });
+      userIds = (users || []).map((u) => u.id).filter(Boolean);
+    } else {
+      userIds = [...new Set(numericIds)];
+    }
   } else if (targetType === 'Department') {
     const ids = extractRelationIds(data.departments ?? data.departments_id);
     if (ids.length > 0) {
@@ -138,65 +197,13 @@ async function getAssignedUserIdsFromParams(strapi, params, result) {
       const deptNames = (depts || []).map((d) => d.name).filter(Boolean);
       if (deptNames.length > 0) {
         const users = await strapi.db.query('plugin::users-permissions.user').findMany({
-          where: { department: { $in: deptNames }, blocked: { $ne: true } },
+          where: scopeUserWhere({ department: { $in: deptNames }, blocked: { $ne: true } }, companyNames),
           select: ['id'],
         });
         userIds = (users || []).map((u) => u.id).filter(Boolean);
       }
     }
-  } else if (targetType === 'Company') {
-    const raw = data.companies;
-    let companyIds = [];
-    if (Array.isArray(raw)) {
-      companyIds = raw.map((c) => (c && typeof c === 'object' ? (c.id ?? c.documentId) : c)).filter(Boolean);
-    } else if (raw && typeof raw === 'object') {
-      const arr = raw.set ?? raw.connect ?? raw.disconnect;
-      if (Array.isArray(arr)) companyIds = arr.map((c) => (c && typeof c === 'object' ? (c.id ?? c.documentId) : c)).filter(Boolean);
-      else if (raw.id != null) companyIds = [raw.id];
-      else if (raw.documentId != null) companyIds = [raw.documentId];
-    } else if (raw != null) {
-      companyIds = Array.isArray(raw) ? raw : [typeof raw === 'object' ? (raw.id ?? raw.documentId) : raw];
-    }
-    if (companyIds.length > 0) {
-      const numericIds = companyIds.filter((x) => typeof x === 'number' || (typeof x === 'string' && /^\d+$/.test(x))).map(Number);
-      const docIds = companyIds.filter((x) => typeof x === 'string' && x.length > 10);
-      let companies = [];
-      if (numericIds.length > 0) {
-        const byId = await strapi.db.query('api::company.company').findMany({
-          where: { id: { $in: numericIds } },
-          select: ['name'],
-        });
-        companies = companies.concat(byId || []);
-      }
-      if (docIds.length > 0) {
-        const byDocId = await strapi.db.query('api::company.company').findMany({
-          where: { documentId: { $in: docIds } },
-          select: ['name'],
-        });
-        (byDocId || []).forEach((c) => { if (c && !companies.some((x) => x && x.name === c.name)) companies.push(c); });
-      }
-      let companyNames = companies.map((c) => c.name).filter(Boolean);
-      if (companyNames.length === 0 && result) {
-        const fromResult = Array.isArray(result.companies) ? result.companies : (result.companies ? [result.companies] : []);
-        companyNames = fromResult.map((c) => c?.name ?? c?.attributes?.name).filter(Boolean);
-      }
-      // user.company enum is 'AIA' or 'Vega' — normalize company entity name to match
-      const normalizeCompany = (n) => {
-        const l = (n || '').toLowerCase();
-        if (l === 'aia') return 'AIA';
-        if (l === 'vega') return 'Vega';
-        return n;
-      };
-      for (const name of companyNames) {
-        const users = await strapi.db.query('plugin::users-permissions.user').findMany({
-          where: { company: normalizeCompany(name), blocked: { $ne: true } },
-          select: ['id'],
-        });
-        (users || []).forEach((u) => { if (u.id && !userIds.includes(u.id)) userIds.push(u.id); });
-      }
-    }
   } else if (targetType === 'Location') {
-    // Schema field is 'work_locations' (target: api::work-location.work-location)
     const ids = extractRelationIds(data.work_locations ?? data.unit_locations ?? data.work_locations_id ?? data.unit_locations_id);
     if (ids.length > 0) {
       const locs = await strapi.db.query('api::work-location.work-location').findMany({
@@ -205,21 +212,39 @@ async function getAssignedUserIdsFromParams(strapi, params, result) {
       });
       const locationNames = (locs || []).map((l) => l.name).filter(Boolean);
       if (locationNames.length > 0) {
-        // Vega users store location in `working_location`; AIA users store it in `branch`.
-        const [vegaUsers, aiaUsers] = await Promise.all([
-          strapi.db.query('plugin::users-permissions.user').findMany({
-            where: { company: 'Vega', working_location: { $in: locationNames }, blocked: { $ne: true } },
-            select: ['id'],
-          }),
-          strapi.db.query('plugin::users-permissions.user').findMany({
-            where: { company: 'AIA', branch: { $in: locationNames }, blocked: { $ne: true } },
-            select: ['id'],
-          }),
+        const includeVega = companyNames.length === 0 || companyNames.includes('Vega');
+        const includeAia = companyNames.length === 0 || companyNames.includes('AIA');
+        const userLists = await Promise.all([
+          includeVega
+            ? strapi.db.query('plugin::users-permissions.user').findMany({
+              where: { company: 'Vega', working_location: { $in: locationNames }, blocked: { $ne: true } },
+              select: ['id'],
+            })
+            : Promise.resolve([]),
+          includeAia
+            ? strapi.db.query('plugin::users-permissions.user').findMany({
+              where: { company: 'AIA', branch: { $in: locationNames }, blocked: { $ne: true } },
+              select: ['id'],
+            })
+            : Promise.resolve([]),
         ]);
         const idSet = new Set();
-        [...(vegaUsers || []), ...(aiaUsers || [])].forEach((u) => { if (u.id) idSet.add(u.id); });
+        userLists.flat().forEach((u) => { if (u?.id) idSet.add(u.id); });
         userIds = [...idSet];
       }
+    }
+  } else if (targetType === 'Company') {
+    // No target type selected (or explicitly Company): assign to all users of the selected company
+    if (companyNames.length > 0) {
+      for (const name of companyNames) {
+        const users = await strapi.db.query('plugin::users-permissions.user').findMany({
+          where: { company: name, blocked: { $ne: true } },
+          select: ['id'],
+        });
+        (users || []).forEach((u) => { if (u.id && !userIds.includes(u.id)) userIds.push(u.id); });
+      }
+    } else {
+      strapi.log.warn('user-progress-automation: Company fallback but no company resolved — skipping');
     }
   }
 
@@ -230,6 +255,7 @@ async function getAssignedUserIdsFromParams(strapi, params, result) {
     due_date: data.due_date ?? result?.due_date,
     active: data.active !== false,
     targetType,
+    company: data.company ?? result?.company,
   };
 }
 
@@ -243,20 +269,20 @@ async function loadAssignment(strapi, assignmentId) {
   if (isNumeric) {
     assignment = await strapi.db.query(COURSE_ASSIGNMENT_UID).findOne({
       where: { id: Number(assignmentId) },
-      populate: { courses: true, individual_user: true, departments: true, companies: true, work_locations: true },
+      populate: { courses: true, individual_user: true, departments: true, company: true, work_locations: true },
     });
   }
   if (!assignment && typeof assignmentId === 'string') {
     assignment = await strapi.db.query(COURSE_ASSIGNMENT_UID).findOne({
       where: { documentId: assignmentId },
-      populate: { courses: true, individual_user: true, departments: true, companies: true, work_locations: true },
+      populate: { courses: true, individual_user: true, departments: true, company: true, work_locations: true },
     });
   }
   if (!assignment && typeof assignmentId === 'string') {
     try {
       const doc = await strapi.documents(COURSE_ASSIGNMENT_UID).findOne({
         documentId: assignmentId,
-        populate: { courses: true, individual_user: true, departments: true, companies: true, work_locations: true },
+        populate: { courses: true, individual_user: true, departments: true, company: true, work_locations: true },
       });
       if (doc) assignment = doc;
     } catch (_) {}
@@ -286,82 +312,91 @@ async function getAssignedUserIds(strapi, assignmentId) {
   const courseId = getCourseId(coursesField);
   if (!courseId) return { courseId: null, userIds: [], due_date: assignment.due_date, active: assignment.active, targetType: assignment.assignment_target_type };
 
-  const targetType = assignment.assignment_target_type;
+  // When no target type, treat as 'Company' → assign to all users of that company
+  const targetType = assignment.assignment_target_type || 'Company';
+  const companyNames = await resolveCompanyNames(strapi, assignment.company ?? assignment.companies, assignment.company ?? assignment.companies);
   let userIds = [];
 
   if (targetType === 'Individual' && Array.isArray(assignment.individual_user)) {
     userIds = assignment.individual_user.map(getUserId).filter(Boolean);
-  } else if (targetType === 'Department' && Array.isArray(assignment.departments)) {
-    const deptNames = assignment.departments.map((d) => d?.name).filter(Boolean);
-    if (deptNames.length > 0) {
+    if (companyNames.length > 0 && userIds.length > 0) {
       const users = await strapi.db.query('plugin::users-permissions.user').findMany({
-        where: { department: { $in: deptNames }, blocked: { $ne: true } },
+        where: scopeUserWhere({ id: { $in: userIds }, blocked: { $ne: true } }, companyNames),
         select: ['id'],
       });
       userIds = (users || []).map((u) => u.id).filter(Boolean);
     }
-  } else if (targetType === 'Company') {
-    const companies = Array.isArray(assignment.companies) ? assignment.companies : (assignment.companies ? [assignment.companies] : []);
-    const companyNames = companies.map((c) => (c && (c.name != null ? c.name : c.attributes?.name))).filter(Boolean);
-    if (companyNames.length > 0) {
-      try {
-        // user.company enum is 'AIA' or 'Vega' — normalize company entity name to match
-        const normalizeCompany = (n) => {
-          const l = (n || '').toLowerCase();
-          if (l === 'aia') return 'AIA';
-          if (l === 'vega') return 'Vega';
-          return n;
-        };
-        const normalizedNames = companyNames.map(normalizeCompany);
-        const orConditions = normalizedNames.map((name) => ({ company: name }));
-        const users = await strapi.db.query('plugin::users-permissions.user').findMany({
-          where: { $or: orConditions, blocked: { $ne: true } },
-          select: ['id'],
-        });
-        userIds = (users || []).map((u) => u.id).filter(Boolean);
-      } catch (e) {
-        strapi.log.warn('user-progress-automation: Company user query failed', e?.message || e);
-      }
+  } else if (targetType === 'Department' && Array.isArray(assignment.departments)) {
+    const deptNames = assignment.departments.map((d) => d?.name).filter(Boolean);
+    if (deptNames.length > 0) {
+      const users = await strapi.db.query('plugin::users-permissions.user').findMany({
+        where: scopeUserWhere({ department: { $in: deptNames }, blocked: { $ne: true } }, companyNames),
+        select: ['id'],
+      });
+      userIds = (users || []).map((u) => u.id).filter(Boolean);
     }
   } else if (targetType === 'Location' && Array.isArray(assignment.work_locations ?? assignment.unit_locations) && (assignment.work_locations ?? assignment.unit_locations).length > 0) {
     const locationNames = (assignment.work_locations ?? assignment.unit_locations).map((l) => l?.name).filter(Boolean);
     if (locationNames.length > 0) {
-      // Vega users store location in `working_location`; AIA users store it in `branch`.
-      const [vegaUsers, aiaUsers] = await Promise.all([
-        strapi.db.query('plugin::users-permissions.user').findMany({
-          where: { company: 'Vega', working_location: { $in: locationNames }, blocked: { $ne: true } },
-          select: ['id'],
-        }),
-        strapi.db.query('plugin::users-permissions.user').findMany({
-          where: { company: 'AIA', branch: { $in: locationNames }, blocked: { $ne: true } },
-          select: ['id'],
-        }),
+      const includeVega = companyNames.length === 0 || companyNames.includes('Vega');
+      const includeAia = companyNames.length === 0 || companyNames.includes('AIA');
+      const userLists = await Promise.all([
+        includeVega
+          ? strapi.db.query('plugin::users-permissions.user').findMany({
+            where: { company: 'Vega', working_location: { $in: locationNames }, blocked: { $ne: true } },
+            select: ['id'],
+          })
+          : Promise.resolve([]),
+        includeAia
+          ? strapi.db.query('plugin::users-permissions.user').findMany({
+            where: { company: 'AIA', branch: { $in: locationNames }, blocked: { $ne: true } },
+            select: ['id'],
+          })
+          : Promise.resolve([]),
       ]);
       const idSet = new Set();
-      [...(vegaUsers || []), ...(aiaUsers || [])].forEach((u) => { if (u.id) idSet.add(u.id); });
+      userLists.flat().forEach((u) => { if (u?.id) idSet.add(u.id); });
       userIds = [...idSet];
     }
   }
 
   strapi.log.info('user-progress-automation: getAssignedUserIds', { assignmentId, targetType, userIdsCount: userIds.length });
+  // --- Company / no-target-type fallback already handled by targetType defaulting to 'Company' above.
+  // The Individual / Department / Location branches won't match, so we add the Company branch here. ---
+  if (userIds.length === 0 && targetType === 'Company' && companyNames.length > 0) {
+    for (const name of companyNames) {
+      const users = await strapi.db.query('plugin::users-permissions.user').findMany({
+        where: { company: name, blocked: { $ne: true } },
+        select: ['id'],
+      });
+      (users || []).forEach((u) => { if (u.id && !userIds.includes(u.id)) userIds.push(u.id); });
+    }
+  }
+
+  strapi.log.info('user-progress-automation: getAssignedUserIds (final)', { assignmentId, targetType, userIdsCount: userIds.length });
   return {
     courseId,
     userIds,
     due_date: assignment.due_date,
     active: assignment.active,
     targetType,
+    company: assignment.company,
   };
 }
 
 /**
  * Create one Individual-type course-assignment per user (same course, due_date, active).
  * Uses Document Service so entries appear in admin and have documentId (Strapi 5).
+ * If user+course already exists, update the due_date instead of skipping.
  */
-async function createCourseAssignmentEntries(strapi, courseId, userIds, dueDate, active) {
+async function createCourseAssignmentEntries(strapi, courseId, userIds, dueDate, active, companyRaw) {
   if (!courseId || !Array.isArray(userIds) || userIds.length === 0) return;
   const due = dueDate instanceof Date ? dueDate : (dueDate ? new Date(dueDate) : new Date());
+  const dueValue = due.toISOString().slice(0, 10);
   const isActive = active !== false;
-  let existingUserIds = new Set();
+  
+  // Map userId → existing assignment record so we can update due_date if needed
+  const existingByUserId = new Map();
   try {
     const existing = await strapi.db.query(COURSE_ASSIGNMENT_UID).findMany({
       where: { assignment_target_type: 'Individual', courses: { id: Number(courseId) } },
@@ -371,25 +406,75 @@ async function createCourseAssignmentEntries(strapi, courseId, userIds, dueDate,
     (existing || []).forEach((a) => {
       const users = Array.isArray(a?.individual_user) ? a.individual_user : (a?.individual_user ? [a.individual_user] : []);
       users.forEach((u) => {
-        const id = u?.id ?? u?.documentId;
-        if (id != null) existingUserIds.add(Number(id));
+        const keys = [];
+        if (u?.id != null) keys.push(String(u.id));
+        if (u?.documentId != null) keys.push(String(u.documentId));
+
+        keys.forEach((key) => {
+          const bucket = existingByUserId.get(key);
+          if (bucket) {
+            bucket.push(a);
+          } else {
+            existingByUserId.set(key, [a]);
+          }
+        });
       });
     });
   } catch (_) {}
+  
   const docService = strapi.documents(COURSE_ASSIGNMENT_UID);
   let created = 0;
+  let updated = 0;
   _creatingSubEntries = true;
   try {
     for (const userId of userIds) {
-      if (existingUserIds.has(Number(userId))) continue;
+      const existingAssignments = existingByUserId.get(String(userId)) || [];
+      
+      if (existingAssignments.length > 0) {
+        // Update due_date instead of skipping
+        try {
+          const seen = new Set();
+          for (const existingAssignment of existingAssignments) {
+            const key = existingAssignment?.documentId
+              ? `doc:${existingAssignment.documentId}`
+              : existingAssignment?.id != null
+                ? `id:${existingAssignment.id}`
+                : null;
+            if (!key || seen.has(key)) continue;
+            seen.add(key);
+
+            if (existingAssignment?.documentId) {
+              await docService.update({
+                documentId: existingAssignment.documentId,
+                data: { due_date: dueValue, active: isActive },
+                status: 'published',
+              });
+            } else if (existingAssignment?.id != null) {
+              await strapi.db.query(COURSE_ASSIGNMENT_UID).update({
+                where: { id: existingAssignment.id },
+                data: { due_date: dueValue, active: isActive },
+              });
+            }
+          }
+          updated++;
+          strapi.log.info('Updated due_date for existing course-assignment (userId=%s, courseId=%s, newDueDate=%s)', userId, courseId, due.toISOString());
+        } catch (e) {
+          strapi.log.warn('Failed to update due_date for course-assignment (userId=%s):', userId, e?.message || String(e));
+        }
+        continue;
+      }
+      
+      // Create new entry if user doesn't have this course yet
       try {
+        const companyId = companyRaw?.id ?? (Array.isArray(companyRaw?.connect) ? companyRaw.connect[0]?.id : null);
         await docService.create({
           data: {
             assignment_target_type: 'Individual',
             courses: { connect: [{ id: Number(courseId) }] },
-            due_date: due,
+            due_date: dueValue,
             active: isActive,
             individual_user: [userId],
+            ...(companyId ? { company: { connect: [{ id: companyId }] } } : {}),
           },
           status: 'published',
         });
@@ -401,7 +486,9 @@ async function createCourseAssignmentEntries(strapi, courseId, userIds, dueDate,
   } finally {
     _creatingSubEntries = false;
   }
-  if (created > 0) strapi.log.info('user-progress-automation: created %d individual course-assignment entries', created);
+  if (created > 0 || updated > 0) {
+    strapi.log.info('user-progress-automation: created %d individual course-assignment entries, updated %d entries with new due_date', created, updated);
+  }
 }
 
 /**
@@ -526,7 +613,7 @@ function registerUserProgressLifecycles(strapi) {
         if (!courseId) return;
         await createUserProgressEntries(strapi, courseId, userIds);
         if (targetType !== 'Individual') {
-          await createCourseAssignmentEntries(strapi, courseId, userIds, due_date, active);
+          await createCourseAssignmentEntries(strapi, courseId, userIds, due_date, active, payload?.company);
         }
       } catch (e) {
         strapi.log.error('user-progress-automation (course-assignment afterCreate):', e?.message || e);

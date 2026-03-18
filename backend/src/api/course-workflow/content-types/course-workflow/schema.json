@@ -7,8 +7,7 @@
     "displayName": "Course Workflow"
   },
   "options": {
-    "draftAndPublish": true,
-    "populateCreatorFields": true
+    "draftAndPublish": true
   },
   "pluginOptions": {},
   "attributes": {
@@ -30,6 +29,11 @@
       "type": "component",
       "component": "course.workflow-module",
       "repeatable": true
+    },
+    "company": {
+      "type": "relation",
+      "relation": "oneToOne",
+      "target": "api::company.company"
     }
   }
 }

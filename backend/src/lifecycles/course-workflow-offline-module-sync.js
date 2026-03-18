@@ -73,6 +73,7 @@ async function loadWorkflow(strapi, workflowLike) {
     where,
     select: ['id', 'documentId'],
     populate: {
+      company: { select: ['id', 'documentId'] },
       users_permissions_users: { select: ['id', 'documentId', 'username', 'email'] },
       [workflowFieldKey]: {
         populate: {
@@ -99,8 +100,8 @@ function getCourseIdFromModule(module) {
   return module?.course?.id ?? null;
 }
 
-async function getExistingIndividualAssignedUserIdsForCourse(strapi, courseId) {
-  const out = new Set();
+async function getExistingIndividualAssignmentsForCourse(strapi, courseId) {
+  const out = new Map();
   if (!courseId) return out;
 
   try {
@@ -116,7 +117,14 @@ async function getExistingIndividualAssignedUserIdsForCourse(strapi, courseId) {
     for (const row of existing || []) {
       const users = Array.isArray(row?.individual_user) ? row.individual_user : (row?.individual_user ? [row.individual_user] : []);
       for (const user of users) {
-        if (user?.id != null) out.add(Number(user.id));
+        if (user?.id == null) continue;
+        const userId = Number(user.id);
+        const bucket = out.get(userId);
+        if (bucket) {
+          bucket.push(row);
+        } else {
+          out.set(userId, [row]);
+        }
       }
     }
   } catch (e) {
@@ -143,6 +151,7 @@ async function syncOnlineAssignmentsForWorkflow(strapi, workflowLike) {
   const docService = strapi.documents(COURSE_ASSIGNMENT_UID);
 
   let created = 0;
+  let updated = 0;
   const workflowModules = getWorkflowModules(workflow);
 
   for (const module of workflowModules) {
@@ -155,25 +164,65 @@ async function syncOnlineAssignmentsForWorkflow(strapi, workflowLike) {
       continue;
     }
 
-    const existingUserIds = await getExistingIndividualAssignedUserIdsForCourse(strapi, courseId);
+    const existingAssignmentsByUserId = await getExistingIndividualAssignmentsForCourse(strapi, courseId);
+    const parsedDueDate = new Date(dueDate);
+    if (Number.isNaN(parsedDueDate.getTime())) {
+      strapi.log.warn('[course-workflow] invalid due_date for assignment sync (workflow=%s, module=%s, due_date=%s)', workflow.id, module?.id ?? 'new', String(dueDate));
+      continue;
+    }
+    const dueDateValue = parsedDueDate.toISOString().slice(0, 10);
 
     for (const user of users) {
       const userId = user?.id;
       if (userId == null) continue;
-      if (existingUserIds.has(Number(userId))) continue;
+
+      const existingAssignments = existingAssignmentsByUserId.get(Number(userId)) || [];
+      if (existingAssignments.length > 0) {
+        try {
+          const seen = new Set();
+          for (const existingAssignment of existingAssignments) {
+            const key = existingAssignment?.documentId
+              ? `doc:${existingAssignment.documentId}`
+              : existingAssignment?.id != null
+                ? `id:${existingAssignment.id}`
+                : null;
+            if (!key || seen.has(key)) continue;
+            seen.add(key);
+
+            if (existingAssignment?.documentId) {
+              await docService.update({
+                documentId: existingAssignment.documentId,
+                data: { due_date: dueDateValue, active: true },
+                status: 'published',
+              });
+            } else if (existingAssignment?.id != null) {
+              await strapi.db.query(COURSE_ASSIGNMENT_UID).update({
+                where: { id: existingAssignment.id },
+                data: { due_date: dueDateValue, active: true },
+              });
+            }
+          }
+          updated++;
+        } catch (e) {
+          strapi.log.warn('[course-workflow] failed updating due_date for existing assignment (workflow=%s, module=%s, user=%s): %s', workflow.id, module?.id ?? 'new', userId, e?.message || String(e));
+        }
+        continue;
+      }
 
       try {
+        const companyId = workflow?.company?.id ?? null;
         await docService.create({
           data: {
             assignment_target_type: 'Individual',
             courses: { connect: [{ id: Number(courseId) }] },
-            due_date: dueDate,
+            due_date: dueDateValue,
             active: true,
             individual_user: { connect: [{ id: Number(userId) }] },
+            ...(companyId != null ? { company: { connect: [{ id: Number(companyId) }] } } : {}),
           },
           status: 'published',
         });
-        existingUserIds.add(Number(userId));
+        existingAssignmentsByUserId.set(Number(userId), [{ id: null }]);
         created++;
       } catch (e) {
         strapi.log.warn('[course-workflow] failed creating workflow assignment (workflow=%s, module=%s, user=%s): %s', workflow.id, module?.id ?? 'new', userId, e?.message || String(e));
@@ -181,8 +230,8 @@ async function syncOnlineAssignmentsForWorkflow(strapi, workflowLike) {
     }
   }
 
-  if (created > 0) {
-    strapi.log.info('[course-workflow] created %d Individual course-assignment entries for workflow %s', created, workflow.id);
+  if (created > 0 || updated > 0) {
+    strapi.log.info('[course-workflow] created %d and updated %d Individual course-assignment entries for workflow %s', created, updated, workflow.id);
   }
 }
 
