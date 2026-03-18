@@ -29,6 +29,7 @@ import CourseWorkflowModuleIndexLabel from './components/CourseWorkflowModuleInd
 import CourseAssignmentCompanyFilter from './components/CourseAssignmentCompanyFilter.jsx';
 import CourseWorkflowCompanyFilter from './components/CourseWorkflowCompanyFilter.jsx';
 import EventCompanyFilter from './components/EventCompanyFilter.jsx';
+import HolidayCompanyFilter from './components/HolidayCompanyFilter.jsx';
 
 export default {
   /**
@@ -261,6 +262,11 @@ export default {
       contentManager.injectComponent('editView', 'right-links', {
         name: 'EventCompanyFilter',
         Component: EventCompanyFilter,
+      });
+      // For Holiday: filter work_locations to only show locations of selected companies
+      contentManager.injectComponent('editView', 'right-links', {
+        name: 'HolidayCompanyFilter',
+        Component: HolidayCompanyFilter,
       });
     }
 

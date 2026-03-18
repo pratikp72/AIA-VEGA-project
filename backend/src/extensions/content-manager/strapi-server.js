@@ -9,6 +9,7 @@ const WORK_LOCATION_UID = 'api::work-location.work-location';
 const USER_UID = 'plugin::users-permissions.user';
 const COMPANY_UID = 'api::company.company';
 const EVENT_UID = 'api::event.event';
+const HOLIDAY_UID = 'api::holiday.holiday';
 
 function mergeWithAnd(existing, filter) {
   if (!existing || Object.keys(existing).length === 0) return filter;
@@ -265,7 +266,8 @@ module.exports = (plugin) => {
       sourceUid === COURSE_ASSIGNMENT_UID ||
       sourceUid === COURSE_WORKFLOW_UID ||
       sourceUid === WORKFLOW_MODULE_COMPONENT_UID ||
-      sourceUid === EVENT_UID;
+      sourceUid === EVENT_UID ||
+      sourceUid === HOLIDAY_UID;
 
     if (isWorkflowSource && selectedCompanyId && targetUid) {
       const companyFilter = await getCompanyScopedFilter(strapi, targetUid, selectedCompanyId);
