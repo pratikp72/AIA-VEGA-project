@@ -7,6 +7,43 @@
 
 const { createCoreController } = require('@strapi/strapi').factories;
 
+function normalizeCompanyName(value) {
+  const upper = String(value || '').trim().toUpperCase();
+  if (upper === 'AIA') return 'AIA';
+  if (upper === 'VEGA') return 'Vega';
+  return null;
+}
+
+function normalizeLocation(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function eventHasCompany(eventItem, userCompany) {
+  const eventCompanies = Array.isArray(eventItem?.company) ? eventItem.company : [];
+  if (eventCompanies.length === 0) return false;
+  return eventCompanies.some((c) => normalizeCompanyName(c?.name) === userCompany);
+}
+
+function canUserAccessEvent(eventItem, userCompany, userLocation) {
+  if (!userCompany) return false;
+  if (!eventHasCompany(eventItem, userCompany)) return false;
+
+  if (!eventItem?.event_created_for || eventItem.event_created_for === 'All') {
+    return true;
+  }
+
+  if (eventItem.event_created_for === 'Location') {
+    const evLocations = Array.isArray(eventItem?.work_locations) ? eventItem.work_locations : [];
+    if (evLocations.length === 0) return false;
+    const normalizedUserLocation = normalizeLocation(userLocation);
+    if (!normalizedUserLocation) return false;
+
+    return evLocations.some((loc) => normalizeLocation(loc?.name) === normalizedUserLocation);
+  }
+
+  return false;
+}
+
 async function getUserInfo(strapi, ctx) {
   let userId = ctx.state?.user?.id;
   if (!userId) {
@@ -29,13 +66,7 @@ async function getUserInfo(strapi, ctx) {
     where: { id: userId },
     select: ['company', 'working_location', 'branch'],
   });
-  const raw = (user?.company || '').trim();
-  let company = null;
-  if (raw) {
-    const upper = raw.toUpperCase();
-    if (upper === 'AIA') company = 'AIA';
-    else if (upper === 'VEGA') company = 'Vega';
-  }
+  const company = normalizeCompanyName(user?.company);
   // AIA users store location in `branch`; Vega users use `working_location`
   const workingLocation = (
     company === 'AIA'
@@ -48,33 +79,30 @@ async function getUserInfo(strapi, ctx) {
 module.exports = createCoreController('api::event.event', ({ strapi }) => ({
   async find(ctx) {
     const { company: userCompany, workingLocation: userLocation } = await getUserInfo(strapi, ctx);
-    const where = { publishedAt: { $notNull: true } };
-    if (userCompany) {
-      where.company = { name: userCompany };
+
+    // No authenticated company means no event visibility.
+    if (!userCompany) {
+      ctx.body = {
+        data: [],
+        meta: { pagination: { page: 1, pageSize: 0, pageCount: 0, total: 0 } },
+      };
+      return;
     }
+
+    const where = {
+      publishedAt: { $notNull: true },
+      company: { name: userCompany },
+    };
     const items = await strapi.db.query('api::event.event').findMany({
       where,
       orderBy: { start_date: 'asc' },
       populate: ['event_image', 'company', 'work_locations', 'type_of_event'],
     });
 
-    // Filter location-specific events: only show to users whose working_location
-    // matches one of the event's assigned work_locations.
-    // Events with event_created_for = 'All' (or unset) are always shown.
-    const filtered = items.filter((ev) => {
-      if (!ev.event_created_for || ev.event_created_for === 'All') return true;
-      if (ev.event_created_for === 'Location') {
-        const evLocations = Array.isArray(ev.work_locations) ? ev.work_locations : [];
-        // No locations assigned → hide (misconfigured)
-        if (evLocations.length === 0) return false;
-        // User location unknown → deny (strict)
-        if (!userLocation) return false;
-        return evLocations.some(
-          (loc) => (loc?.name || '').trim().toLowerCase() === userLocation.toLowerCase()
-        );
-      }
-      return true;
-    });
+    // Enforce event access rules:
+    // - All: users from selected event company can see it
+    // - Location: user company must match and user location must match assigned work location
+    const filtered = items.filter((ev) => canUserAccessEvent(ev, userCompany, userLocation));
 
     ctx.body = {
       data: filtered,
@@ -82,6 +110,10 @@ module.exports = createCoreController('api::event.event', ({ strapi }) => ({
     };
   },
   async findOne(ctx) {
+    const { company: userCompany, workingLocation: userLocation } = await getUserInfo(strapi, ctx);
+
+    if (!userCompany) return ctx.notFound();
+
     const id = ctx.params.documentId ?? ctx.params.id;
     if (!id) return ctx.badRequest('Missing event id');
     const item = await strapi.db.query('api::event.event').findOne({
@@ -89,6 +121,11 @@ module.exports = createCoreController('api::event.event', ({ strapi }) => ({
       populate: ['event_image', 'company', 'work_locations', 'type_of_event'],
     });
     if (!item) return ctx.notFound();
+
+    if (!canUserAccessEvent(item, userCompany, userLocation)) {
+      return ctx.notFound();
+    }
+
     ctx.body = { data: item };
   },
 }));
