@@ -8,6 +8,7 @@ const DEPARTMENT_UID = 'api::department.department';
 const WORK_LOCATION_UID = 'api::work-location.work-location';
 const USER_UID = 'plugin::users-permissions.user';
 const COMPANY_UID = 'api::company.company';
+const EVENT_UID = 'api::event.event';
 
 function mergeWithAnd(existing, filter) {
   if (!existing || Object.keys(existing).length === 0) return filter;
@@ -24,18 +25,53 @@ function normalizeCompanyName(name) {
   return String(name || '').trim();
 }
 
+function parseRawCompanyIds(rawCompanyId) {
+  if (rawCompanyId == null) return [];
+
+  const values = Array.isArray(rawCompanyId)
+    ? rawCompanyId
+    : String(rawCompanyId)
+      .split(',')
+      .map((part) => part.trim())
+      .filter(Boolean);
+
+  const uniq = [];
+  values.forEach((value) => {
+    const normalized = String(value || '').trim();
+    if (!normalized) return;
+    if (!uniq.includes(normalized)) uniq.push(normalized);
+  });
+
+  return uniq;
+}
+
 async function getCompanyNamesFromRawId(strapi, rawCompanyId) {
-  if (!rawCompanyId) return [];
+  const ids = parseRawCompanyIds(rawCompanyId);
+  if (ids.length === 0) return [];
 
-  const raw = String(rawCompanyId).trim();
-  if (!raw) return [];
+  const numericIds = [];
+  const docIds = [];
 
-  const numId = parseInt(raw, 10);
-  const isDocId = Number.isNaN(numId) || raw.length > 10;
+  ids.forEach((raw) => {
+    const numId = parseInt(raw, 10);
+    const isDocId = Number.isNaN(numId) || raw.length > 10;
+    if (isDocId) docIds.push(raw);
+    else numericIds.push(numId);
+  });
+
+  const companyWhere = [];
+  if (numericIds.length > 0) {
+    companyWhere.push({ id: { $in: numericIds } });
+  }
+  if (docIds.length > 0) {
+    companyWhere.push({ documentId: { $in: docIds } });
+  }
+  if (companyWhere.length === 0) return [];
+
   const companies = await strapi.db.query(COMPANY_UID).findMany({
-    where: isDocId ? { documentId: raw } : { id: numId },
+    where: companyWhere.length === 1 ? companyWhere[0] : { $or: companyWhere },
     select: ['name'],
-    limit: 5,
+    limit: Math.max(5, ids.length * 3),
   });
 
   return [...new Set((companies || []).map((c) => normalizeCompanyName(c?.name)).filter(Boolean))];
@@ -74,22 +110,33 @@ async function getCompanyFilterForDepartment(strapi, sourceUid, documentId) {
 }
 
 async function getCompanyScopedFilter(strapi, targetUid, rawCompanyId) {
-  if (!rawCompanyId) return null;
+  const ids = parseRawCompanyIds(rawCompanyId);
+  if (ids.length === 0) return null;
 
-  const raw = String(rawCompanyId).trim();
-  if (!raw) return null;
+  const numericIds = [];
+  const docIds = [];
 
-  const numId = parseInt(raw, 10);
-  const isDocId = Number.isNaN(numId) || raw.length > 10;
+  ids.forEach((raw) => {
+    const numId = parseInt(raw, 10);
+    const isDocId = Number.isNaN(numId) || raw.length > 10;
+    if (isDocId) docIds.push(raw);
+    else numericIds.push(numId);
+  });
+
+  const companyClauses = [];
+  if (numericIds.length === 1) companyClauses.push({ company: { id: numericIds[0] } });
+  else if (numericIds.length > 1) companyClauses.push({ company: { id: { $in: numericIds } } });
+
+  if (docIds.length === 1) companyClauses.push({ company: { documentId: docIds[0] } });
+  else if (docIds.length > 1) companyClauses.push({ company: { documentId: { $in: docIds } } });
 
   if (targetUid === COURSE_UID || targetUid === DEPARTMENT_UID || targetUid === WORK_LOCATION_UID) {
-    return {
-      company: isDocId ? { documentId: raw } : { id: numId },
-    };
+    if (companyClauses.length === 0) return null;
+    return companyClauses.length === 1 ? companyClauses[0] : { $or: companyClauses };
   }
 
   if (targetUid === USER_UID) {
-    const companyNames = await getCompanyNamesFromRawId(strapi, raw);
+    const companyNames = await getCompanyNamesFromRawId(strapi, ids);
     if (companyNames.length === 0) return { id: { $eq: -1 } };
     if (companyNames.length === 1) {
       return { company: companyNames[0], blocked: { $ne: true } };
@@ -217,7 +264,8 @@ module.exports = (plugin) => {
     const isWorkflowSource =
       sourceUid === COURSE_ASSIGNMENT_UID ||
       sourceUid === COURSE_WORKFLOW_UID ||
-      sourceUid === WORKFLOW_MODULE_COMPONENT_UID;
+      sourceUid === WORKFLOW_MODULE_COMPONENT_UID ||
+      sourceUid === EVENT_UID;
 
     if (isWorkflowSource && selectedCompanyId && targetUid) {
       const companyFilter = await getCompanyScopedFilter(strapi, targetUid, selectedCompanyId);

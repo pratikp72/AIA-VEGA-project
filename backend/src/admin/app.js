@@ -28,6 +28,7 @@ import WorkflowPrerequisitePickerInput from './components/WorkflowPrerequisitePi
 import CourseWorkflowModuleIndexLabel from './components/CourseWorkflowModuleIndexLabel';
 import CourseAssignmentCompanyFilter from './components/CourseAssignmentCompanyFilter.jsx';
 import CourseWorkflowCompanyFilter from './components/CourseWorkflowCompanyFilter.jsx';
+import EventCompanyFilter from './components/EventCompanyFilter.jsx';
 
 export default {
   /**
@@ -255,6 +256,11 @@ export default {
       contentManager.injectComponent('editView', 'right-links', {
         name: 'CourseWorkflowCompanyFilter',
         Component: CourseWorkflowCompanyFilter,
+      });
+      // For Event: filter work_locations to only show locations of the selected company
+      contentManager.injectComponent('editView', 'right-links', {
+        name: 'EventCompanyFilter',
+        Component: EventCompanyFilter,
       });
     }
 
