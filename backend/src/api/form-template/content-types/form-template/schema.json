@@ -105,6 +105,7 @@
     },
     "description": {
       "type": "text",
+      "maxLength": 1000,
       "required": true
     }
   }

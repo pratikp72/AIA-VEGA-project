@@ -13,6 +13,7 @@
   "attributes": {
     "title": {
       "type": "string",
+      "maxLength": 100,
       "required": true
     },
     "image": {
@@ -41,11 +42,6 @@
         "Video"
       ]
     },
-    "visibility": {
-      "type": "boolean",
-      "required": true,
-      "default": true
-    },
     "company": {
       "type": "relation",
       "relation": "manyToMany",
@@ -71,7 +67,7 @@
       ]
     },
     "description": {
-      "type": "string",
+      "type": "text",
       "required": true
     },
     "date": {
@@ -80,6 +76,7 @@
     },
     "location": {
       "type": "string",
+      "maxLength": 100,
       "required": true
     }
   }

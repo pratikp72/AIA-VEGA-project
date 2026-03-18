@@ -13,6 +13,7 @@
   "attributes": {
     "title": {
       "type": "string",
+      "maxLength": 90,
       "required": true
     },
     "url": {
