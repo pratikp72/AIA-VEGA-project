@@ -406,10 +406,18 @@ async function createCourseAssignmentEntries(strapi, courseId, userIds, dueDate,
     (existing || []).forEach((a) => {
       const users = Array.isArray(a?.individual_user) ? a.individual_user : (a?.individual_user ? [a.individual_user] : []);
       users.forEach((u) => {
-        const numericId = u?.id;
-        const documentId = u?.documentId;
-        if (numericId != null) existingByUserId.set(String(numericId), a);
-        if (documentId != null) existingByUserId.set(String(documentId), a);
+        const keys = [];
+        if (u?.id != null) keys.push(String(u.id));
+        if (u?.documentId != null) keys.push(String(u.documentId));
+
+        keys.forEach((key) => {
+          const bucket = existingByUserId.get(key);
+          if (bucket) {
+            bucket.push(a);
+          } else {
+            existingByUserId.set(key, [a]);
+          }
+        });
       });
     });
   } catch (_) {}
@@ -420,22 +428,33 @@ async function createCourseAssignmentEntries(strapi, courseId, userIds, dueDate,
   _creatingSubEntries = true;
   try {
     for (const userId of userIds) {
-      const existingAssignment = existingByUserId.get(String(userId));
+      const existingAssignments = existingByUserId.get(String(userId)) || [];
       
-      if (existingAssignment) {
+      if (existingAssignments.length > 0) {
         // Update due_date instead of skipping
         try {
-          if (existingAssignment?.documentId) {
-            await docService.update({
-              documentId: existingAssignment.documentId,
-              data: { due_date: dueValue, active: isActive },
-              status: 'published',
-            });
-          } else if (existingAssignment?.id != null) {
-            await strapi.db.query(COURSE_ASSIGNMENT_UID).update({
-              where: { id: existingAssignment.id },
-              data: { due_date: dueValue, active: isActive },
-            });
+          const seen = new Set();
+          for (const existingAssignment of existingAssignments) {
+            const key = existingAssignment?.documentId
+              ? `doc:${existingAssignment.documentId}`
+              : existingAssignment?.id != null
+                ? `id:${existingAssignment.id}`
+                : null;
+            if (!key || seen.has(key)) continue;
+            seen.add(key);
+
+            if (existingAssignment?.documentId) {
+              await docService.update({
+                documentId: existingAssignment.documentId,
+                data: { due_date: dueValue, active: isActive },
+                status: 'published',
+              });
+            } else if (existingAssignment?.id != null) {
+              await strapi.db.query(COURSE_ASSIGNMENT_UID).update({
+                where: { id: existingAssignment.id },
+                data: { due_date: dueValue, active: isActive },
+              });
+            }
           }
           updated++;
           strapi.log.info('Updated due_date for existing course-assignment (userId=%s, courseId=%s, newDueDate=%s)', userId, courseId, due.toISOString());
