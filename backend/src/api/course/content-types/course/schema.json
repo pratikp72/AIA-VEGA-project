@@ -86,28 +86,6 @@
         "placeholder": "Example 70%"
       }
     },
-    "orientation_required": {
-      "type": "customField",
-      "customField": "global::yes-no-toggle",
-      "options": {
-        "required": true
-      }
-    },
-    "orientation_detail": {
-      "type": "component",
-      "conditions": {
-        "visible": {
-          "==": [
-            {
-              "var": "orientation_required"
-            },
-            true
-          ]
-        }
-      },
-      "component": "course.orientation",
-      "repeatable": true
-    },
     "feedback": {
       "type": "component",
       "component": "feedback-form.feedback-form",

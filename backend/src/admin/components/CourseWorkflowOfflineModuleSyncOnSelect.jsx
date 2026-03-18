@@ -1,0 +1,215 @@
+import React, { useEffect } from 'react';
+import { useForm } from '@strapi/admin/strapi-admin';
+
+const COURSE_WORKFLOW_MODEL = 'api::course-workflow.course-workflow';
+
+function isOffline(value) {
+  return String(value || '').trim().toLowerCase() === 'offline';
+}
+
+function getRelationArray(raw) {
+  if (Array.isArray(raw)) return raw;
+  if (raw && typeof raw === 'object') {
+    if (Array.isArray(raw.set)) return raw.set;
+    if (Array.isArray(raw.connect)) return raw.connect;
+    if (Array.isArray(raw.data)) return raw.data;
+    if (Array.isArray(raw.results)) return raw.results;
+  }
+  return [];
+}
+
+function getUserDisplayName(user) {
+  if (!user || typeof user !== 'object') return null;
+
+  const candidates = [
+    user.username,
+    user.email,
+    user.label,
+    user.displayName,
+    user.mainField,
+    user.name,
+    user.value?.label,
+    user.attributes?.username,
+    user.attributes?.email,
+  ];
+
+  for (const value of candidates) {
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+
+  const fallbackId = user.id ?? user.documentId ?? user.value;
+  if (fallbackId != null && String(fallbackId).trim()) return `User #${String(fallbackId).trim()}`;
+
+  return null;
+}
+
+function getUniqueSelectedUsers(users) {
+  const list = Array.isArray(users) ? users : [];
+  const out = [];
+  const seen = new Set();
+  for (let i = 0; i < list.length; i++) {
+    const key = getUserKey(list[i], i);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(list[i]);
+  }
+  return out;
+}
+
+function getUserKey(user, index) {
+  if (!user || typeof user !== 'object') return `idx:${index}`;
+  if (user.id != null) return `id:${String(user.id)}`;
+  if (user.documentId) return `doc:${String(user.documentId)}`;
+
+  if (user.value != null) {
+    if (typeof user.value === 'object') {
+      if (user.value.id != null) return `id:${String(user.value.id)}`;
+      if (user.value.documentId) return `doc:${String(user.value.documentId)}`;
+    }
+    return `val:${String(user.value)}`;
+  }
+
+  return `idx:${index}`;
+}
+
+function tempKey(prefix, i) {
+  return `${prefix}-${i}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+}
+
+function buildOfflineModuleFromUsers(users, currentRows) {
+  const existingRows = Array.isArray(currentRows) ? currentRows : [];
+
+  const existingByUsername = new Map();
+  for (const row of existingRows) {
+    const key = typeof row?.username === 'string' ? row.username.trim() : '';
+    if (!key || existingByUsername.has(key)) continue;
+    existingByUsername.set(key, row);
+  }
+
+  const seenUserKeys = new Set();
+  const out = [];
+
+  for (let i = 0; i < users.length; i++) {
+    const user = users[i];
+    const userKey = getUserKey(user, i);
+    if (seenUserKeys.has(userKey)) continue;
+    seenUserKeys.add(userKey);
+
+    const username = getUserDisplayName(user);
+    const byIndex = existingRows[i];
+    const byName = username ? existingByUsername.get(username) : null;
+    const existing = byName || byIndex || null;
+
+    const finalUsername =
+      (typeof username === 'string' && username.trim())
+        ? username.trim()
+        : (typeof existing?.username === 'string' && existing.username.trim())
+          ? existing.username.trim()
+          : `User #${i + 1}`;
+
+    if (existing && typeof existing === 'object') {
+      out.push({
+        ...existing,
+        username: finalUsername,
+        __temp_key__: existing.__temp_key__ || tempKey('wf-offline', i),
+      });
+    } else {
+      out.push({
+        username: finalUsername,
+        __temp_key__: tempKey('wf-offline', i),
+      });
+    }
+  }
+
+  return out;
+}
+
+function sameUsernames(a, b) {
+  const left = Array.isArray(a) ? a : [];
+  const right = Array.isArray(b) ? b : [];
+  if (left.length !== right.length) return false;
+  for (let i = 0; i < left.length; i++) {
+    if (String(left[i]?.username || '') !== String(right[i]?.username || '')) return false;
+  }
+  return true;
+}
+
+function getWorkflowItems(raw) {
+  return Array.isArray(raw) ? raw : [];
+}
+
+function getWorkflowItemsFromValues(values) {
+  if (Array.isArray(values?.modules)) return values.modules;
+  if (Array.isArray(values?.workflow)) return values.workflow;
+  return [];
+}
+
+function withUpdatedWorkflowItems(values, nextWorkflowItems) {
+  if (Array.isArray(values?.modules)) {
+    return {
+      ...values,
+      modules: nextWorkflowItems,
+    };
+  }
+
+  return {
+    ...values,
+    workflow: nextWorkflowItems,
+  };
+}
+
+function syncWorkflowOfflineModules(workflowItems, selectedUsers) {
+  let changed = false;
+
+  const nextWorkflowItems = workflowItems.map((item) => {
+    if (!isOffline(item?.module_type)) return item;
+
+    const currentRows = Array.isArray(item?.offline_module) ? item.offline_module : [];
+    const nextRows = buildOfflineModuleFromUsers(selectedUsers, currentRows);
+
+    if (sameUsernames(currentRows, nextRows)) return item;
+
+    changed = true;
+    return {
+      ...item,
+      offline_module: nextRows,
+    };
+  });
+
+  return { changed, nextWorkflowItems };
+}
+
+/**
+ * For Course Workflow edit view:
+ * - If any workflow item has module_type = Offline and users relation changes, create offline_module rows instantly.
+ * - Each offline workflow item gets one row per selected user.
+ * - username is auto-filled from selected relation label.
+ */
+function CourseWorkflowOfflineModuleSyncOnSelect({ slug, model }) {
+  const uid = slug || model;
+  const values = useForm('useContentManagerContext', (state) => state?.values, false);
+  const setValues = useForm('useContentManagerContext', (state) => state?.setValues, false);
+
+  useEffect(() => {
+    if (uid !== COURSE_WORKFLOW_MODEL || !values || typeof setValues !== 'function') return;
+
+    const selectedUsersRaw = getRelationArray(values.users_permissions_users);
+    const selectedUsers = getUniqueSelectedUsers(selectedUsersRaw);
+
+    // On publish/view reload, relation values can be temporarily empty before full form hydration.
+    // Guarding here avoids accidentally clearing existing offline_module rows in the UI.
+    if (selectedUsers.length === 0) return;
+
+    const workflowItems = getWorkflowItemsFromValues(values);
+    if (workflowItems.length === 0) return;
+
+    const { changed, nextWorkflowItems } = syncWorkflowOfflineModules(workflowItems, selectedUsers);
+    if (!changed) return;
+
+    setValues(withUpdatedWorkflowItems(values, nextWorkflowItems));
+  }, [uid, values, setValues]);
+
+  return null;
+}
+
+export default CourseWorkflowOfflineModuleSyncOnSelect;

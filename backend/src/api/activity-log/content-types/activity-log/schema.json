@@ -18,45 +18,58 @@
     },
     "company": {
       "type": "relation",
-      "relation": "manyToMany",
+      "relation": "manyToOne",
       "target": "api::company.company"
     },
     "activity_type": {
-      "type": "enumeration",
-      "required": true,
-      "enum": [
-        "News",
-        "Event",
-        "Course",
-        "Quiz",
-        "Feedback",
-        "Location",
-        "Routes",
-        "People",
-        "Gallery",
-        "Home",
-        "Company policy",
-        "Form & Templates",
-        "Calendar"
-      ]
+      "type": "string"
     },
     "activity_description": {
-      "type": "string",
-      "required": true
+      "type": "string"
     },
     "timestamp": {
       "type": "datetime",
       "required": true
     },
     "activity_duration": {
-      "type": "customField",
-      "customField": "global::number-range",
-      "options": {
-        "required": true,
-        "positiveOnly": true,
-        "max": "",
-        "min": "1"
-      }
+      "type": "integer",
+      "default": 0
+    },
+    "event_id": {
+      "type": "string",
+      "unique": true
+    },
+    "session_id": {
+      "type": "string"
+    },
+    "route_path": {
+      "type": "string"
+    },
+    "page_type": {
+      "type": "string"
+    },
+    "entity_type": {
+      "type": "string"
+    },
+    "entity_id": {
+      "type": "string"
+    },
+    "click_count": {
+      "type": "integer",
+      "default": 0
+    },
+    "source": {
+      "type": "string",
+      "default": "web"
+    },
+    "ingested_at": {
+      "type": "datetime"
+    },
+    "client_ts": {
+      "type": "datetime"
+    },
+    "tz_offset": {
+      "type": "integer"
     }
   }
 }

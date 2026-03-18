@@ -7,6 +7,51 @@
 
 const { createCoreController } = require('@strapi/strapi').factories;
 
+function normalizeCompanyName(value) {
+  const upper = String(value || '').trim().toUpperCase();
+  if (upper === 'AIA') return 'AIA';
+  if (upper === 'VEGA') return 'Vega';
+  return null;
+}
+
+function normalizeLocation(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function hasAnySelectedLocations(holidayItem) {
+  const locations = Array.isArray(holidayItem?.work_locations) ? holidayItem.work_locations : [];
+  return locations.length > 0;
+}
+
+function holidayIncludesUserCompany(holidayItem, userCompany) {
+  if (!userCompany) return false;
+  const companies = Array.isArray(holidayItem?.companies) ? holidayItem.companies : [];
+  if (companies.length === 0) return false;
+  return companies.some((c) => normalizeCompanyName(c?.name) === userCompany);
+}
+
+function holidayIncludesUserLocation(holidayItem, userLocation) {
+  const normalizedUserLocation = normalizeLocation(userLocation);
+  if (!normalizedUserLocation) return false;
+
+  const locations = Array.isArray(holidayItem?.work_locations) ? holidayItem.work_locations : [];
+  if (locations.length === 0) return false;
+
+  return locations.some((loc) => normalizeLocation(loc?.name) === normalizedUserLocation);
+}
+
+function canUserAccessHoliday(holidayItem, userCompany, userLocation) {
+  const hasLocations = hasAnySelectedLocations(holidayItem);
+
+  // Rule 1: If location is selected, holiday visibility is location-based.
+  if (hasLocations) {
+    return holidayIncludesUserLocation(holidayItem, userLocation);
+  }
+
+  // Rule 2: If location is not selected, holiday visibility is company-based.
+  return holidayIncludesUserCompany(holidayItem, userCompany);
+}
+
 async function getUserInfo(strapi, ctx) {
   let userId = ctx.state?.user?.id;
   if (!userId) {
@@ -29,18 +74,14 @@ async function getUserInfo(strapi, ctx) {
     where: { id: userId },
     select: ['company', 'working_location', 'branch'],
   });
-  const raw = (user?.company || '').trim();
-  let company = null;
-  if (raw) {
-    const upper = raw.toUpperCase();
-    if (upper === 'AIA') company = 'AIA';
-    if (upper === 'VEGA') company = 'Vega';
-  }
-  // AIA users store location in `branch`; Vega users use `working_location`
+  const company = normalizeCompanyName(user?.company);
+  // Strict field mapping avoids stale cross-field values leaking visibility.
   const workingLocation = (
     company === 'AIA'
-      ? (user?.branch || user?.working_location || '')
-      : (user?.working_location || user?.branch || '')
+      ? (user?.branch || '')
+      : company === 'Vega'
+        ? (user?.working_location || '')
+        : ''
   ).trim() || null;
   return { company, workingLocation };
 }
@@ -55,29 +96,31 @@ module.exports = createCoreController('api::holiday.holiday', ({ strapi }) => ({
       populate: ['companies', 'work_locations'],
     });
 
-    const items = (all || []).filter((h) => {
-      const companies = Array.isArray(h.companies) ? h.companies : [];
-      const workLocations = Array.isArray(h.work_locations) ? h.work_locations : [];
-
-      if (h.holiday_for === 'Location') {
-        // No work_locations assigned: hide (misconfigured)
-        if (workLocations.length === 0) return false;
-        // User location unknown: deny access (strict)
-        if (!userLocation) return false;
-        return workLocations.some(
-          (loc) => (loc?.name || '').trim().toLowerCase() === userLocation.toLowerCase()
-        );
-      }
-
-      // holiday_for === 'Company' (or unset)
-      if (!userCompany) return true;
-      if (companies.length === 0) return false;
-      return companies.some((c) => (c?.name || '').trim() === userCompany);
-    });
+    const items = (all || []).filter((h) => canUserAccessHoliday(h, userCompany, userLocation));
 
     ctx.body = {
       data: items,
       meta: { pagination: { page: 1, pageSize: items.length, pageCount: 1, total: items.length } },
     };
+  },
+  async findOne(ctx) {
+    const { company: userCompany, workingLocation: userLocation } = await getUserInfo(strapi, ctx);
+
+    const id = ctx.params.documentId ?? ctx.params.id;
+    if (!id) return ctx.badRequest('Missing holiday id');
+
+    const item = await strapi.db.query('api::holiday.holiday').findOne({
+      where: {
+        publishedAt: { $notNull: true },
+        active: true,
+        $or: [{ documentId: id }, { id: Number(id) || 0 }],
+      },
+      populate: ['companies', 'work_locations'],
+    });
+
+    if (!item) return ctx.notFound();
+    if (!canUserAccessHoliday(item, userCompany, userLocation)) return ctx.notFound();
+
+    ctx.body = { data: item };
   },
 }));

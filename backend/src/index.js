@@ -24,6 +24,10 @@ module.exports = {
       name: 'yes-no-toggle',
       type: 'boolean',
     });
+    strapi.customFields.register({
+      name: 'workflow-prerequisite-picker',
+      type: 'json',
+    });
 
     // When a course is created or updated, sync modules/quiz/feedback_question to match course_language (one entry per language)
     strapi.documents.use(async (context, next) => {
@@ -150,6 +154,14 @@ module.exports = {
       registerQuizReattemptNotificationLifecycles(strapi);
     } catch (e) {
       strapi.log.error('Quiz reattempt notification bootstrap failed:', e?.message || e);
+    }
+
+    // Course-workflow: when module_type is Offline, create one offline_module row per selected user.
+    try {
+      const { registerCourseWorkflowOfflineModuleSync } = require('./lifecycles/course-workflow-offline-module-sync');
+      registerCourseWorkflowOfflineModuleSync(strapi);
+    } catch (e) {
+      strapi.log.error('Course-workflow offline-module sync bootstrap failed:', e?.message || e);
     }
 
     // Fallback: ensure department when user is created/updated via Content Manager

@@ -9,7 +9,38 @@
 
 const { createCoreController } = require('@strapi/strapi').factories;
 
+const COURSE_UID = 'api::course.course';
 const COURSE_ASSIGNMENT_UID = 'api::course-assignment.course-assignment';
+
+function filterCourseByLanguage(course, language) {
+  if (!language || !course) return course;
+
+  const lang = String(language).toLowerCase();
+  const filteredCourse = { ...course };
+
+  if (filteredCourse.modules && Array.isArray(filteredCourse.modules)) {
+    filteredCourse.modules = filteredCourse.modules.filter((module) => {
+      const moduleLang = typeof module?.language === 'string' ? module.language.toLowerCase() : '';
+      return moduleLang === lang;
+    });
+  }
+
+  if (filteredCourse.quiz && Array.isArray(filteredCourse.quiz)) {
+    filteredCourse.quiz = filteredCourse.quiz.filter((quiz) => {
+      const quizLang = typeof quiz?.language === 'string' ? quiz.language.toLowerCase() : '';
+      return quizLang === lang;
+    });
+  }
+
+  if (filteredCourse.feedback && Array.isArray(filteredCourse.feedback)) {
+    filteredCourse.feedback = filteredCourse.feedback.filter((feedback) => {
+      const feedbackLang = typeof feedback?.language === 'string' ? feedback.language.toLowerCase() : '';
+      return feedbackLang === lang;
+    });
+  }
+
+  return filteredCourse;
+}
 
 /**
  * Returns course IDs (numeric) that the user is allowed to see based on active course assignments.
@@ -125,43 +156,6 @@ async function getAssignedCourseIdsForUser(strapi, user) {
 }
 
 module.exports = createCoreController('api::course.course', ({ strapi }) => ({
-  // Helper function to filter course content by language
-  filterCourseByLanguage(course, language) {
-    if (!language || !course) return course;
-
-    const filteredCourse = { ...course };
-    
-    // Filter modules by language
-    if (filteredCourse.modules && Array.isArray(filteredCourse.modules)) {
-      filteredCourse.modules = filteredCourse.modules.filter(
-        module => module.language && module.language.toLowerCase() === language.toLowerCase()
-      );
-    }
-
-    // Filter quiz by language
-    if (filteredCourse.quiz && Array.isArray(filteredCourse.quiz)) {
-      filteredCourse.quiz = filteredCourse.quiz.filter(
-        quiz => quiz.language && quiz.language.toLowerCase() === language.toLowerCase()
-      );
-    }
-
-    // Filter feedback by language
-    if (filteredCourse.feedback && Array.isArray(filteredCourse.feedback)) {
-      filteredCourse.feedback = filteredCourse.feedback.filter(
-        feedback => feedback.language && feedback.language.toLowerCase() === language.toLowerCase()
-      );
-    }
-
-    // Filter orientation_detail by language (set to null if doesn't match)
-    if (filteredCourse.orientation_detail && filteredCourse.orientation_detail.language) {
-      if (filteredCourse.orientation_detail.language.toLowerCase() !== language.toLowerCase()) {
-        filteredCourse.orientation_detail = null;
-      }
-    }
-
-    return filteredCourse;
-  },
-
   async find(ctx) {
     // Require authenticated user; only return courses assigned to this user
     const user = ctx.state?.user;
@@ -176,7 +170,7 @@ module.exports = createCoreController('api::course.course', ({ strapi }) => ({
     ctx.query = {
       ...ctx.query,
       filters: {
-        ...(ctx.query.filters || {}),
+        ...((ctx.query?.filters && typeof ctx.query.filters === 'object') ? ctx.query.filters : {}),
         id: { $in: idFilter },
       },
       populate: {
@@ -196,7 +190,6 @@ module.exports = createCoreController('api::course.course', ({ strapi }) => ({
         thumbnail: true,
         prerequisite_courses: { fields: ['title'], populate: { thumbnail: true } },
         company: { fields: ['name'] },
-        orientation_detail: { populate: '*' },
         feedback: { populate: '*' },
       },
     };
@@ -206,8 +199,8 @@ module.exports = createCoreController('api::course.course', ({ strapi }) => ({
 
     if (language && data) {
       const filteredData = Array.isArray(data)
-        ? data.map(course => this.filterCourseByLanguage(course, language))
-        : this.filterCourseByLanguage(data, language);
+        ? data.map((course) => filterCourseByLanguage(course, language))
+        : filterCourseByLanguage(data, language);
       return { data: filteredData, meta };
     }
 
@@ -240,7 +233,6 @@ module.exports = createCoreController('api::course.course', ({ strapi }) => ({
         thumbnail: true,
         prerequisite_courses: { fields: ['title'], populate: { thumbnail: true } },
         company: { fields: ['name'] },
-        orientation_detail: { populate: '*' },
         feedback: { populate: '*' },
       },
     };
@@ -256,7 +248,7 @@ module.exports = createCoreController('api::course.course', ({ strapi }) => ({
 
     const { language } = ctx.query;
     if (language && data) {
-      const filteredData = this.filterCourseByLanguage(data, language);
+      const filteredData = filterCourseByLanguage(data, language);
       return { data: filteredData, meta };
     }
 

@@ -13,12 +13,11 @@
   "attributes": {
     "assignment_target_type": {
       "type": "enumeration",
-      "required": true,
+      "required": false,
       "enum": [
-        "Department",
+        "Individual",
         "Location",
-        "Company",
-        "Individual"
+        "Department"
       ]
     },
     "due_date": {
@@ -67,21 +66,10 @@
       },
       "description": "Select employees to assign"
     },
-    "companies": {
+    "company": {
       "type": "relation",
-      "relation": "manyToMany",
-      "target": "api::company.company",
-      "conditions": {
-        "visible": {
-          "==": [
-            {
-              "var": "assignment_target_type"
-            },
-            "Company"
-          ]
-        }
-      },
-      "mappedBy": "course_assignments"
+      "relation": "oneToOne",
+      "target": "api::company.company"
     },
     "work_locations": {
       "type": "relation",

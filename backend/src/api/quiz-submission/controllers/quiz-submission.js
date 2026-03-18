@@ -6,14 +6,17 @@
 
 const { createCoreController } = require("@strapi/strapi").factories;
 
-module.exports = createCoreController(
-  "api::quiz-submission.quiz-submission",
-  ({ strapi }) => ({
-
-    // ----------------------------------------------------------
-    // ⭐ SCORE CALCULATION LOGIC
-    // ----------------------------------------------------------
-    async calculateScore(courseId, answers) {
+// ----------------------------------------------------------
+// ⭐ SCORE CALCULATION LOGIC (standalone – avoids controller
+//    type-inference conflict with createCoreController)
+// ----------------------------------------------------------
+/**
+ * @param {any} strapi
+ * @param {number} courseId
+ * @param {any[]} answers
+ * @returns {Promise<number>}
+ */
+async function calculateScore(strapi, courseId, answers) {
       // 1. Fetch quiz questions from course
       const course = await strapi.db.query("api::course.course").findOne({
         where: { id: courseId },
@@ -195,7 +198,11 @@ module.exports = createCoreController(
 
       // Return percentage 0–100 (frontend displays "{score}%")
       return Math.round((earnedPoints / totalPoints) * 100);
-    },
+}
+
+module.exports = createCoreController(
+  "api::quiz-submission.quiz-submission",
+  ({ strapi }) => ({
 
     // ----------------------------------------------------------
     // ⭐ GET LATEST SUBMISSION
@@ -230,7 +237,20 @@ module.exports = createCoreController(
     // ----------------------------------------------------------
     async submit(ctx) {
       try {
-        const { userId, courseId, answers, time_taken_minutes } = ctx.request.body;
+        const {
+          userId,
+          courseId: courseIdParam,
+          course: courseParam,
+          answers,
+          time_taken_minutes: timeTakenRaw,
+          submitted_at: submittedAtRaw,
+        } = ctx.request.body;
+
+        // Accept either `courseId` or `course` from the request body
+        const courseId = Number(courseIdParam ?? courseParam);
+  // Enforce minimum 1 minute — never store 0
+  const time_taken_minutes = Math.max(1, Math.round(Number(timeTakenRaw ?? 0)));
+  const submitted_at = submittedAtRaw ? new Date(submittedAtRaw) : new Date();
 
         console.log("[quiz submit] received body → userId:", userId, "courseId:", courseId, "type:", typeof courseId);
 
@@ -296,7 +316,7 @@ module.exports = createCoreController(
         // ------------------------------------------------------
         // 3. Calculate score securely (backend only)
         // ------------------------------------------------------
-        const scoreRaw = await this.calculateScore(courseId, answers);
+        const scoreRaw = await calculateScore(strapi, courseId, answers);
         const score = Number.isFinite(Number(scoreRaw)) ? Number(scoreRaw) : 0;
         const passed = score >= minPassingScore;
 
@@ -339,21 +359,28 @@ module.exports = createCoreController(
         // strapi.entityService handles repeatable components (answers)
         // correctly; strapi.db.query().create() cannot build component
         // records from raw data and throws "Invalid id" on [object Object].
+        // Sanitize answers: ensure required 'question' field is never null.
         // ------------------------------------------------------
+        const sanitizedAnswers = (Array.isArray(answers) ? answers : []).map((a) => ({
+          ...a,
+          question: a.question || a.question_id || 'Unknown',
+          question_id: a.question_id || a.question || 'unknown',
+          selected_answer_for_multiChoice: a.selected_answer_for_multiChoice ?? '',
+        }));
         const entry = await strapi.entityService.create(
           "api::quiz-submission.quiz-submission",
           {
-            data: {
-              answers,
+            data: /** @type {any} */ ({
+              answers: sanitizedAnswers,
               score,
               passed,
-              course: courseId,
-              submitted_by: userId,
+              course: Number(courseId),
+              submitted_by: Number(userId),
               attempt_number: nextAttempt,
-              submitted_at: new Date(),
+              submitted_at,
               time_taken_minutes,
               publishedAt: new Date(), // publish immediately, not draft
-            },
+            }),
           }
         );
   

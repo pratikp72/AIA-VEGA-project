@@ -114,20 +114,15 @@ export default function LearningAnalyticsPage() {
     return list.length ? list : null;
   }, [viewMode, data?.courseProgress, filterCourse, personalEnrolledCourses]);
 
-  // Fetch all courses (for dropdown when no department/company filter). Called only from one place.
+  // Fetch all courses (for dropdown when no department/company filter). Uses analytics endpoint for consistent auth/shape.
   const fetchAllCourses = useCallback(async () => {
     try {
-      const res = await fetch('/api/courses?pagination[limit]=1000');
-      if (!res.ok) throw new Error('Failed to fetch courses');
-      const json = await res.json();
-      setCourses(Array.isArray(json.data) ? json.data.map(c => ({
-        id: c.id,
-        title: c.attributes?.title || c.title || `Course ${c.id}`
-      })) : []);
+      const list = await fetchCoursesByDepartment('', '');
+      setCourses(Array.isArray(list) ? list : []);
     } catch (err) {
       setCourses([]);
     }
-  }, []);
+  }, [fetchCoursesByDepartment]);
 
   useEffect(() => {
     if (!filterCourse) {
@@ -448,6 +443,7 @@ export default function LearningAnalyticsPage() {
                   courseContentViewType={courseContentViewType}
                   setCourseContentViewType={setCourseContentViewType}
                   kpis={kpis}
+                  live={data?.live}
                   quiz={quiz}
                   filterCourse={filterCourse}
                   filterModule={filterModule}
@@ -466,6 +462,7 @@ export default function LearningAnalyticsPage() {
                   filterModule={filterModule}
                   courseModules={courseModules}
                   kpis={kpis}
+                  live={data?.live}
                   quiz={quiz}
                   courseProgressPage={courseProgressPage}
                   courseProgressPageSize={courseProgressPageSize}

@@ -4,6 +4,8 @@
   "private": true,
   "description": "A Strapi application",
   "scripts": {
+    "predevelop": "node scripts/cleanup-db-sessions.js || true",
+    "prestart": "node scripts/cleanup-db-sessions.js || true",
     "build": "strapi build",
     "console": "strapi console",
     "deploy": "strapi deploy",

@@ -7,7 +7,7 @@ module.exports = [
   {
     name: 'strapi::cors',
     config: {
-      origin: ['http://192.168.2.85:3000', 'http://localhost:3000'],
+      origin: ['http://192.168.2.84:3000', 'http://localhost:3000'],
       methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'],
       headers: ['Content-Type', 'Authorization', 'Origin', 'Accept'],
       keepHeaderOnError: true,
@@ -16,7 +16,17 @@ module.exports = [
   'strapi::poweredBy',
   'strapi::query',
   'global::capture-feedback-body',
-  'strapi::body',
+  {
+    name: 'strapi::body',
+    config: {
+      formLimit: '2560mb', // modify form body
+      jsonLimit: '2560mb', // modify JSON body
+      textLimit: '2560mb', // modify text body
+      formidable: {
+        maxFileSize: 2560 * 1024 * 1024, // multipart data, 2.5GB limit
+      },
+    },
+  },
   'strapi::session',
   'strapi::favicon',
   'strapi::public',
