@@ -115,19 +115,18 @@ async function getEmployeeRoleId(strapi) {
 
 async function ensureUniqueUsername(strapi, desiredUsername, currentUserId) {
   const base = safeString(desiredUsername, 'employee').slice(0, 60);
-  let candidate = base;
-  let attempt = 0;
-  while (attempt < 5) {
-    const where = currentUserId
-      ? { username: candidate, id: { $ne: currentUserId } }
-      : { username: candidate };
-    const existing = await strapi.db.query(USER_UID).findOne({ where, select: ['id'] });
-    if (!existing) return candidate;
-    attempt += 1;
-    const suffix = String(attempt);
-    candidate = `${base.slice(0, Math.max(1, 60 - suffix.length - 1))}_${suffix}`;
-  }
-  return `${base.slice(0, 48)}_${crypto.randomBytes(4).toString('hex')}`;
+  // If updating existing user, just return the base — no need to check uniqueness
+  if (currentUserId) return base;
+
+  // For new users, do a single check only
+  const existing = await strapi.db.query(USER_UID).findOne({
+    where: { username: base },
+    select: ['id'],
+  });
+  if (!existing) return base;
+
+  // Collision — append random suffix once
+  return `${base.slice(0, 52)}_${crypto.randomBytes(3).toString('hex')}`;
 }
 
 async function uploadPhotograph(strapi, photoUrl, username) {
@@ -277,15 +276,7 @@ async function syncEmployeesFromHrms(strapi) {
           }
 
           if (existing) {
-            // Also patch password if the existing user has none (e.g. created by a previous broken sync)
-            const existingWithPw = await strapi.db.query(USER_UID).findOne({
-              where: { id: existing.id },
-              select: ['id', 'password'],
-            });
-            const updateData = existingWithPw?.password
-              ? userData
-              : { ...userData, password: passwordHash };
-            await strapi.db.query(USER_UID).update({ where: { id: existing.id }, data: updateData });
+            await strapi.db.query(USER_UID).update({ where: { id: existing.id }, data: userData });
             updatedCount += 1;
           } else {
             await strapi.db.query(USER_UID).create({ data: { ...userData, password: passwordHash } });
