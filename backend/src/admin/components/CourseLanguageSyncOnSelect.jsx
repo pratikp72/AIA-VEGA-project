@@ -89,7 +89,11 @@ function syncModuleBlocks(current, prevLanguages, nextLanguages, createPlacehold
 
   // If empty, create the first module block (one per language)
   if (list.length === 0) {
-    return nextLanguages.map((lang, i) => createPlaceholder(lang, i));
+    const initialModuleId = generateId('mod');
+    return nextLanguages.map((lang, i) => ({
+      ...createPlaceholder(lang, i),
+      module_id: initialModuleId,
+    }));
   }
 
   // Infer block size using previous language count whenever possible.
@@ -112,6 +116,11 @@ function syncModuleBlocks(current, prevLanguages, nextLanguages, createPlacehold
   const out = [];
 
   blocks.forEach((block, blockIdx) => {
+    const blockModuleId =
+      block
+        .map((m) => (typeof m?.module_id === 'string' ? m.module_id.trim() : ''))
+        .find(Boolean) || generateId('mod');
+
     // index by language for best preservation when removing/adding languages
     const byLang = new Map();
     block.forEach((m) => {
@@ -122,10 +131,10 @@ function syncModuleBlocks(current, prevLanguages, nextLanguages, createPlacehold
     nextLanguages.forEach((lang, langIdx) => {
       const found = byLang.get(normalizeLang(lang));
       if (found) {
-        out.push({ ...found, language: lang });
+        out.push({ ...found, language: lang, module_id: blockModuleId });
       } else {
         // New language added: create a clean placeholder (do not clone IDs from another language)
-        out.push(createPlaceholder(lang, langIdx));
+        out.push({ ...createPlaceholder(lang, langIdx), module_id: blockModuleId });
       }
 
       const last = out[out.length - 1];
@@ -299,17 +308,61 @@ function expandLastModuleSetToLanguages(modules, languages) {
   const expanded = expandLastSetToLanguages(modules, languages);
   if (!expanded) return null;
 
+  const bulkModuleId = generateId('mod');
+  const bulkStartIdx = Math.max(0, expanded.length - languages.length);
+
   return expanded.map((m, idx) => {
+    if (idx < bulkStartIdx) return m;
+
     const base = typeof m === 'object' && m != null ? m : {};
     const cleaned = cloneWithoutKeys(base, ['module_id', '__temp_key__']);
     return {
       ...cleaned,
       language: cleaned.language,
-      module_id: generateId('mod'),
+      module_id: bulkModuleId,
       module_duration_min: cleaned.module_duration_min ?? 1,
       __temp_key__: `mod-expand-${idx}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
     };
   });
+}
+
+function moduleEntryKey(entry, idx) {
+  if (!entry || typeof entry !== 'object') return `idx:${idx}`;
+
+  if (typeof entry.__temp_key__ === 'string' && entry.__temp_key__.trim()) {
+    return `tmp:${entry.__temp_key__.trim()}`;
+  }
+  if (entry.id != null) return `id:${String(entry.id)}`;
+  if (typeof entry.documentId === 'string' && entry.documentId.trim()) {
+    return `doc:${entry.documentId.trim()}`;
+  }
+
+  const moduleId = typeof entry.module_id === 'string' ? entry.module_id.trim() : '';
+  const lang = normalizeLang(entry.language);
+  const title = typeof entry.title === 'string' ? entry.title.trim().toLowerCase() : '';
+
+  if (moduleId) return `mid:${moduleId}|lang:${lang}|title:${title}`;
+  if (lang || title) return `lang:${lang}|title:${title}|idx:${idx}`;
+  return `idx:${idx}`;
+}
+
+function findRemovedEntry(previousItems, currentItems) {
+  if (!Array.isArray(previousItems) || !Array.isArray(currentItems)) return null;
+
+  const currentCount = new Map();
+  currentItems.forEach((entry, idx) => {
+    const key = moduleEntryKey(entry, idx);
+    currentCount.set(key, (currentCount.get(key) || 0) + 1);
+  });
+
+  for (let i = 0; i < previousItems.length; i += 1) {
+    const key = moduleEntryKey(previousItems[i], i);
+    const count = currentCount.get(key) || 0;
+    if (count === 0) return previousItems[i];
+    currentCount.set(key, count - 1);
+  }
+
+  return null;
 }
 
 function expandLastQuizSetToLanguages(quiz, languages) {
@@ -376,6 +429,7 @@ function CourseLanguageSyncOnSelect({ slug, model }) {
   const setValues = useForm('useContentManagerContext', (state) => state?.setValues, false);
   const prevLangRef = useRef(null);
   const prevOrientationRequiredRef = useRef(null);
+  const prevModulesRef = useRef([]);
   const prevLengthsRef = useRef({
     modules: 0,
     quiz: 0,
@@ -393,6 +447,7 @@ function CourseLanguageSyncOnSelect({ slug, model }) {
     const feedback = ensureArray(values.feedback);
     const orientationRequired = values.orientation_required === true;
     const orientationDetail = ensureArray(values.orientation_detail);
+    const prevModules = ensureArray(prevModulesRef.current);
     const prevLengths = prevLengthsRef.current;
 
     // 1. When course_language changed, sync all components (add/remove entries per language).
@@ -410,6 +465,7 @@ function CourseLanguageSyncOnSelect({ slug, model }) {
         feedback: synced.feedback.length,
         orientation_detail: synced.orientation_detail.length,
       };
+      prevModulesRef.current = synced.modules;
       setValues(synced);
       return;
     }
@@ -425,6 +481,7 @@ function CourseLanguageSyncOnSelect({ slug, model }) {
         feedback: synced.feedback.length,
         orientation_detail: synced.orientation_detail.length,
       };
+      prevModulesRef.current = synced.modules;
       setValues(synced);
       return;
     }
@@ -437,11 +494,58 @@ function CourseLanguageSyncOnSelect({ slug, model }) {
         feedback: feedback.length,
         orientation_detail: 0,
       };
+      prevModulesRef.current = modules;
       setValues({ ...values, orientation_detail: [] });
       return;
     }
 
-    // 3. When user clicks "Add an entry", Strapi adds 1 row. Expand it to N rows (one per language).
+    // 3. If one module row from a bulk-created group is deleted, confirm and delete the full group.
+    if (modules.length === prevModules.length - 1) {
+      const removed = findRemovedEntry(prevModules, modules);
+      const removedModuleId = typeof removed?.module_id === 'string' ? removed.module_id.trim() : '';
+
+      if (removedModuleId) {
+        const grouped = prevModules.filter(
+          (m) => typeof m?.module_id === 'string' && m.module_id.trim() === removedModuleId,
+        );
+
+        if (grouped.length > 1) {
+          const ok = window.confirm(
+            'This module was created in bulk for selected languages. Press OK to delete all entries in this bulk.',
+          );
+
+          if (!ok) {
+            prevOrientationRequiredRef.current = orientationRequired;
+            prevLengthsRef.current = {
+              modules: prevModules.length,
+              quiz: quiz.length,
+              feedback: feedback.length,
+              orientation_detail: orientationDetail.length,
+            };
+            prevModulesRef.current = prevModules;
+            setValues({ ...values, modules: prevModules });
+            return;
+          }
+
+          const filteredModules = prevModules.filter(
+            (m) => !(typeof m?.module_id === 'string' && m.module_id.trim() === removedModuleId),
+          );
+
+          prevOrientationRequiredRef.current = orientationRequired;
+          prevLengthsRef.current = {
+            modules: filteredModules.length,
+            quiz: quiz.length,
+            feedback: feedback.length,
+            orientation_detail: orientationDetail.length,
+          };
+          prevModulesRef.current = filteredModules;
+          setValues({ ...values, modules: filteredModules });
+          return;
+        }
+      }
+    }
+
+    // 4. When user clicks "Add an entry", Strapi adds 1 row. Expand it to N rows (one per language).
     if (shouldExpandAfterSingleAdd(modules.length, prevLengths.modules, N)) {
       const expanded = expandLastModuleSetToLanguages(modules, languages);
       if (expanded) {
@@ -450,6 +554,7 @@ function CourseLanguageSyncOnSelect({ slug, model }) {
           ...prevLengths,
           modules: expanded.length,
         };
+        prevModulesRef.current = expanded;
         setValues({ ...values, modules: expanded });
         return;
       }
@@ -501,6 +606,7 @@ function CourseLanguageSyncOnSelect({ slug, model }) {
       feedback: feedback.length,
       orientation_detail: orientationDetail.length,
     };
+    prevModulesRef.current = modules;
   }, [uid, values, setValues]);
 
   return null;

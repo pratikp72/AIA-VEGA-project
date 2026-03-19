@@ -24,6 +24,7 @@ import CourseLanguageSyncOnSelect from './components/CourseLanguageSyncOnSelect.
 import AutoFillComponentIds from './components/AutoFillComponentIds.jsx';
 import HideAddButtonsForQuizFeedback from './components/HideAddButtonsForQuizFeedback.jsx';
 import CourseWorkflowOfflineModuleSyncOnSelect from './components/CourseWorkflowOfflineModuleSyncOnSelect.jsx';
+import CourseWorkflowDisableOfflineModuleAddButtons from './components/CourseWorkflowDisableOfflineModuleAddButtons.jsx';
 import WorkflowPrerequisitePickerInput from './components/WorkflowPrerequisitePickerInput.jsx';
 import CourseWorkflowModuleIndexLabel from './components/CourseWorkflowModuleIndexLabel';
 import CourseAssignmentCompanyFilter from './components/CourseAssignmentCompanyFilter.jsx';
@@ -242,6 +243,12 @@ export default {
       contentManager.injectComponent('editView', 'right-links', {
         name: 'CourseWorkflowOfflineModuleSyncOnSelect',
         Component: CourseWorkflowOfflineModuleSyncOnSelect,
+      });
+      // For Course Workflow: disable offline_module add-entry controls in Offline modules
+      // because rows are auto-managed from selected users.
+      contentManager.injectComponent('editView', 'right-links', {
+        name: 'CourseWorkflowDisableOfflineModuleAddButtons',
+        Component: CourseWorkflowDisableOfflineModuleAddButtons,
       });
       // For Course Workflow: prefix each module entry label with its 1-based index (e.g. "1 - Online")
       contentManager.injectComponent('editView', 'right-links', {
