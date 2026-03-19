@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+﻿import React, { useEffect, useRef } from 'react';
 import { useForm } from '@strapi/admin/strapi-admin';
 
 const WORKFLOW_MODEL = 'api::course-workflow.course-workflow';
@@ -8,141 +8,138 @@ function isBefore(a, b) {
   return Boolean(a?.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
 }
 
-function findModuleLabelTarget(btn) {
-  const leafs = [...btn.querySelectorAll('span, p, div, strong, label')].filter(
-    (el) => el.childElementCount === 0 && (el.textContent || '').trim().length > 0
-  );
+function isModuleTriggerButton(btn) {
+  if (!btn || btn.getAttribute('aria-expanded') == null) return false;
 
-  const candidates = leafs.filter((el) => {
-    const txt = (el.textContent || '').trim();
-    if (!txt) return false;
-    if (/^\d+$/.test(txt)) return false;
-    if (/^[^a-zA-Z0-9]+$/.test(txt)) return false;
-    if (/^(delete|remove|menu)$/i.test(txt)) return false;
-    return true;
+  const item = btn.closest('[data-state]');
+  if (!item) return false;
+
+  const region = item.querySelector('[role="region"]');
+  if (!region) return false;
+
+  const txt = (region.textContent || '').toLowerCase();
+  return txt.includes('module_type');
+}
+
+function getTopLevelButtonsInWrapper(wrapper) {
+  const allBtns = [...wrapper.querySelectorAll('button[aria-expanded]')];
+  if (allBtns.length === 0) return [];
+
+  const withDepth = allBtns.map((btn) => {
+    let d = 0;
+    let p = btn;
+    while (p && p !== wrapper) {
+      p = p.parentElement;
+      d++;
+    }
+    return { btn, d };
   });
 
-  return candidates[candidates.length - 1] || null;
+  const minDepth = Math.min(...withDepth.map((x) => x.d));
+  return withDepth.filter((x) => x.d === minDepth).map((x) => x.btn);
+}
+
+function findModulesHeading() {
+  for (const el of document.querySelectorAll('span, p, h1, h2, h3, h4, h5, h6, div, label, strong')) {
+    const txt = (el.textContent || '').trim();
+    if (/^modules(\s*\(\d+\))?$/i.test(txt)) {
+      return el;
+    }
+  }
+  return null;
+}
+
+function getModuleTriggerButtons(expectedCount) {
+  const expected = typeof expectedCount === 'number' ? expectedCount : 0;
+
+  const heading = findModulesHeading();
+  if (heading) {
+    const allHeadings = [...document.querySelectorAll('span, p, h1, h2, h3, h4, h5, h6, div, label, strong')];
+    const nextCategoryHeading = allHeadings.find(
+      (el) =>
+        el !== heading &&
+        /^category$/i.test((el.textContent || '').trim()) &&
+        isBefore(heading, el),
+    );
+
+    const candidates = [...document.querySelectorAll('button[aria-expanded]')].filter((btn) => {
+      if (!isBefore(heading, btn)) return false;
+      if (nextCategoryHeading && !isBefore(btn, nextCategoryHeading)) return false;
+      // Exclude nested form controls inside module body; keep top-level module triggers.
+      if (btn.closest('[role="region"]')) return false;
+      return true;
+    });
+
+    if (candidates.length > 0) {
+      if (expected > 0) return candidates.slice(0, expected);
+      return candidates;
+    }
+  }
+
+  // Fallback when heading-based lookup fails.
+  const byRegion = [...document.querySelectorAll('button[aria-expanded]')].filter(isModuleTriggerButton);
+  if (expected > 0 && byRegion.length > 0) return byRegion.slice(0, expected);
+  return byRegion;
 }
 
 function CourseWorkflowModuleIndexLabel({ slug, model }) {
   const uid = slug || model;
-  // Re-run labeling whenever modules array length changes
-  useForm('CourseWorkflowModuleIndexLabel', (s) => {
+  const modules = useForm('CourseWorkflowModuleIndexLabel.modules', (s) => {
     const m = s?.values?.modules;
-    return Array.isArray(m) ? m.length : 0;
+    return Array.isArray(m) ? m : [];
   }, false);
-
-  const timerRef = useRef(null);
+  const modulesLen = useForm(
+    'CourseWorkflowModuleIndexLabel',
+    (s) => {
+      const m = s?.values?.modules;
+      return Array.isArray(m) ? m.length : 0;
+    },
+    false,
+  );
 
   useEffect(() => {
     if (uid !== WORKFLOW_MODEL) return;
 
-    // Inject CSS once — ::before prepends "(N) - " on the module label text
     if (!document.getElementById(STYLE_ID)) {
       const st = document.createElement('style');
       st.id = STYLE_ID;
       st.textContent = `
-        [data-wf-module-idx-label]::before {
-          content: "Module (" attr(data-wf-module-idx-label) ") - ";
+        [data-wf-module-idx]::after {
+          content: "Module (" attr(data-wf-module-idx) ") - " attr(data-wf-module-type);
           font-weight: 600;
+          font-size: 14px;
+          margin-left: 8px;
         }
       `;
       document.head.appendChild(st);
     }
 
     function applyLabels() {
-      // 1. Find "modules (N)" heading — search ALL element types (not just span/p)
-      let heading = null;
-      for (const el of document.querySelectorAll('span, p, h1, h2, h3, h4, h5, h6, div, label, strong')) {
-        if (el.childElementCount > 0) continue;
-        if (/^modules\s*\(\d+\)$/i.test((el.textContent || '').trim())) {
-          heading = el;
-          break;
-        }
-      }
-      if (!heading) return;
-
-      // 2. Find the field boundary marker (either add-entry button or empty-state button)
-      const addEntryBtn = [...document.querySelectorAll('button')].find((btn) =>
-        /add\s+an\s+entry|click\s+to\s+add\s+one/i.test((btn.textContent || '').trim())
-      );
-
-      // 3. Walk up to find the field section that owns the module accordion entries
-      let wrapper = heading;
-      let moduleBtns = [];
-
-      for (let i = 0; i < 20; i++) {
-        wrapper = wrapper.parentElement;
-        if (!wrapper || wrapper === document.body) break;
-
-        const allBtns = [...wrapper.querySelectorAll('button[aria-expanded]')].filter((btn) => {
-          if (!isBefore(heading, btn)) return false;
-          if (addEntryBtn && !isBefore(btn, addEntryBtn)) return false;
-          return true;
-        });
-        if (allBtns.length === 0) continue;
-
-        // Pick only the SHALLOWEST buttons (direct module entries, not nested component triggers)
-        const withDepth = allBtns.map((btn) => {
-          let d = 0;
-          let p = btn;
-          while (p && p !== wrapper) { p = p.parentElement; d++; }
-          return { btn, d };
-        });
-        const minD = Math.min(...withDepth.map((x) => x.d));
-        const topLevel = withDepth.filter((x) => x.d === minD).map((x) => x.btn);
-
-        if (topLevel.length > 0) {
-          moduleBtns = topLevel;
-          break;
-        }
-      }
-
+      const moduleBtns = getModuleTriggerButtons(modulesLen);
       if (moduleBtns.length === 0) return;
 
-      // 3. Clear stale labels
-      document
-        .querySelectorAll('[data-wf-module-idx], [data-wf-module-idx-btn], [data-wf-module-idx-label]')
-        .forEach((el) => {
-          el.removeAttribute('data-wf-module-idx');
-          el.removeAttribute('data-wf-module-idx-btn');
-          el.removeAttribute('data-wf-module-idx-label');
-        });
-
-      // 5. Stamp each module header label with the 1-based index
       moduleBtns.forEach((btn, idx) => {
-        const target = findModuleLabelTarget(btn);
-        if (!target) return;
-        target.setAttribute('data-wf-module-idx-label', String(idx + 1));
+        const moduleType = String(modules?.[idx]?.module_type || '').trim();
+        btn.setAttribute('data-wf-module-idx', String(idx + 1));
+        if (moduleType) {
+          btn.setAttribute('data-wf-module-type', moduleType);
+        }
       });
     }
 
-    function scheduleApply() {
-      if (timerRef.current) clearTimeout(timerRef.current);
-      timerRef.current = setTimeout(applyLabels, 100);
-    }
-
-    // attribute changes (our own setAttribute) do NOT use 'attributes: true',
-    // so the observer won't loop when we stamp data-wf-module-idx.
-    const observer = new MutationObserver(scheduleApply);
-    observer.observe(document.body, { childList: true, subtree: true });
-
-    scheduleApply();
+    // Apply labels only when modules array actually changes
+    applyLabels();
 
     return () => {
-      if (timerRef.current) clearTimeout(timerRef.current);
-      observer.disconnect();
       document
-        .querySelectorAll('[data-wf-module-idx], [data-wf-module-idx-btn], [data-wf-module-idx-label]')
+        .querySelectorAll('[data-wf-module-idx]')
         .forEach((el) => {
           el.removeAttribute('data-wf-module-idx');
-          el.removeAttribute('data-wf-module-idx-btn');
-          el.removeAttribute('data-wf-module-idx-label');
+          el.removeAttribute('data-wf-module-type');
         });
       document.getElementById(STYLE_ID)?.remove();
     };
-  }, [uid]);
+  }, [uid, modulesLen, modules]);
 
   return null;
 }
