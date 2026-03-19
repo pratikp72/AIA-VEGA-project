@@ -235,7 +235,8 @@
       "required": true
     },
     "description": {
-      "type": "text"
+      "type": "text",
+      "maxLength": 255
     },
     "designation": {
       "type": "string",
