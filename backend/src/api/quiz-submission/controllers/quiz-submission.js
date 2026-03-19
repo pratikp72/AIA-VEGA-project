@@ -244,6 +244,7 @@ module.exports = createCoreController(
           answers,
           time_taken_minutes: timeTakenRaw,
           submitted_at: submittedAtRaw,
+          submission_type: submissionTypeRaw,
         } = ctx.request.body;
 
         // Accept either `courseId` or `course` from the request body
@@ -251,6 +252,12 @@ module.exports = createCoreController(
   // Enforce minimum 1 minute — never store 0
   const time_taken_minutes = Math.max(1, Math.round(Number(timeTakenRaw ?? 0)));
   const submitted_at = submittedAtRaw ? new Date(submittedAtRaw) : new Date();
+
+        // Validate and normalise submission_type against schema enum values
+        const VALID_SUBMISSION_TYPES = ['Auto Submit or Leave', 'Time Limit Exceed', 'Manual Submit'];
+        const submission_type = VALID_SUBMISSION_TYPES.includes(submissionTypeRaw)
+          ? submissionTypeRaw
+          : 'Manual Submit';
 
         console.log("[quiz submit] received body → userId:", userId, "courseId:", courseId, "type:", typeof courseId);
 
@@ -379,6 +386,7 @@ module.exports = createCoreController(
               attempt_number: nextAttempt,
               submitted_at,
               time_taken_minutes,
+              submission_type,
               publishedAt: new Date(), // publish immediately, not draft
             }),
           }

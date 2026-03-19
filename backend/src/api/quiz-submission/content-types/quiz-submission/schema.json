@@ -51,6 +51,14 @@
       "relation": "oneToOne",
       "target": "api::user-progress.user-progress",
       "inversedBy": "quiz_submission"
+    },
+    "submission_type": {
+      "type": "enumeration",
+      "enum": [
+        "Auto Submit or Leave",
+        "Time Limit Exceed",
+        "Manual Submit"
+      ]
     }
   }
 }
