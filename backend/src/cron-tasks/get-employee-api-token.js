@@ -9,6 +9,8 @@ function pickTokenFromPayload(payload) {
     payload.accessToken,
     payload.access_token,
     payload.jwt,
+    // handles { "data": "<token string>" } — the AIA HRMS response shape
+    typeof payload?.data === 'string' ? payload.data : undefined,
     payload?.data?.token,
     payload?.data?.accessToken,
     payload?.result?.token,

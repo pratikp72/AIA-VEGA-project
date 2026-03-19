@@ -65,12 +65,11 @@ module.exports = {
 
       const userQuery = strapi.db.query('plugin::users-permissions.user');
 
-      // Only allow login by emp_code (AIA) or emp_id (Vega)
+      // Allow login by emp_code (AIA), emp_id (Vega), or username (employee name)
       let user =
-        // 1) Try by emp_code (AIA)
         (await userQuery.findOne({ where: { emp_code: idStr } })) ||
-        // 2) Then by emp_id (Vega)
-        (await userQuery.findOne({ where: { emp_id: idStr } }));
+        (await userQuery.findOne({ where: { emp_id: idStr } })) ||
+        (await userQuery.findOne({ where: { username: idStr } }));
 
       if (!user) {
         return ctx.unauthorized('Invalid credentials');

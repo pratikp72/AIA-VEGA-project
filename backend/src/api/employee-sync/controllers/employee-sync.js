@@ -1,0 +1,65 @@
+'use strict';
+
+const bcrypt = require('bcryptjs');
+const { syncEmployeesFromHrms } = require('../../../cron-tasks/sync-employees');
+
+module.exports = {
+  async trigger(ctx) {
+    const secret = ctx.request.headers['x-sync-secret'] || ctx.request.body?.secret;
+    const expected = process.env.EMPLOYEE_SYNC_SECRET || 'sync-secret-2026';
+
+    if (secret !== expected) {
+      return ctx.unauthorized('Invalid or missing sync secret');
+    }
+
+    syncEmployeesFromHrms(strapi).catch((err) => {
+      strapi.log.error('[employee-sync] manual trigger failed:', err?.message || err);
+    });
+
+    return ctx.send({ message: 'Employee sync triggered. Check Strapi logs for progress.' });
+  },
+
+  async patchPasswords(ctx) {
+    const secret = ctx.request.headers['x-sync-secret'] || ctx.request.body?.secret;
+    const expected = process.env.EMPLOYEE_SYNC_SECRET || 'sync-secret-2026';
+
+    if (secret !== expected) {
+      return ctx.unauthorized('Invalid or missing sync secret');
+    }
+
+    const defaultPassword = process.env.EMPLOYEE_DEFAULT_PASSWORD || 'Welcome@123';
+    const passwordHash = await bcrypt.hash(defaultPassword, 10);
+
+    // Get the Employee role id
+    const employeeRole = await strapi.db.query('plugin::users-permissions.role').findOne({
+      where: { type: 'employee' },
+      select: ['id'],
+    });
+    const roleId = employeeRole?.id;
+
+    // Single bulk update for all AIA users — no loop
+    const knex = strapi.db.connection;
+    const usersTable = 'up_users';
+    const rolesTable = 'up_users_role_lnk';
+
+    // Update password in bulk
+    const updated = await knex(usersTable)
+      .where({ company: 'AIA' })
+      .update({ password: passwordHash });
+
+    // Update role in bulk if we found the employee role
+    if (roleId) {
+      // up_users_role_lnk is the join table for user <-> role in Strapi v5
+      const userIds = await knex(usersTable)
+        .where({ company: 'AIA' })
+        .pluck('id');
+
+      if (userIds.length) {
+        await knex(rolesTable).whereIn('user_id', userIds).update({ role_id: roleId });
+      }
+    }
+
+    strapi.log.info(`[patch-passwords] bulk-patched ${updated} AIA users`);
+    return ctx.send({ message: `Patched ${updated} AIA users with default password and Employee role.` });
+  },
+};
