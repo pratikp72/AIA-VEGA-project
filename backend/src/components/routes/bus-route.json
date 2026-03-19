@@ -12,6 +12,7 @@
     },
     "unit_name": {
       "type": "string",
+      "maxLength": 100,
       "required": true
     },
     "routes": {
@@ -33,6 +34,7 @@
     },
     "address": {
       "type": "string",
+      "maxLength": 255,
       "required": true
     },
     "contact": {

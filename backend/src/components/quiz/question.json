@@ -11,6 +11,7 @@
     },
     "question_text": {
       "type": "text",
+      "maxLength": 100,
       "required": true
     },
     "question_type": {

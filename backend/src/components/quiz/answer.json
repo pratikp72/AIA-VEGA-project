@@ -11,6 +11,7 @@
     },
     "question": {
       "type": "string",
+      "maxLength": 255,
       "required": true
     },
     "question_type": {
@@ -42,13 +43,18 @@
       "type": "boolean"
     },
     "selected_answer_for_multiSelect": {
-    "type": "json",
-    "conditions": {
-      "visible": {
-        "==": [{ "var": "question_type" }, "Multiple_select"]
+      "type": "json",
+      "conditions": {
+        "visible": {
+          "==": [
+            {
+              "var": "question_type"
+            },
+            "Multiple_select"
+          ]
+        }
       }
     }
-}
   },
   "config": {}
 }

@@ -11,6 +11,7 @@
     },
     "option_label": {
       "type": "string",
+      "maxLength": 100,
       "required": true
     }
   },

@@ -12,6 +12,7 @@
     },
     "route_name": {
       "type": "string",
+      "maxLength": 100,
       "required": true
     },
     "bus_sifts": {

@@ -13,6 +13,7 @@
   "attributes": {
     "title": {
       "type": "string",
+      "maxLength": 100,
       "required": true
     },
     "document": {
@@ -24,7 +25,8 @@
       ]
     },
     "tags": {
-      "type": "string"
+      "type": "string",
+      "maxLength": 50
     },
     "active": {
       "type": "boolean",

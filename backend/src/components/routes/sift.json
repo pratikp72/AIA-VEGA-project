@@ -7,6 +7,7 @@
   "attributes": {
     "sift_name": {
       "type": "string",
+      "maxLength": 50,
       "required": true
     },
     "sift_time": {
