@@ -6,10 +6,12 @@
   "options": {},
   "attributes": {
     "name": {
-      "type": "string"
+      "type": "string",
+      "maxLength": 100
     },
     "description": {
-      "type": "text"
+      "type": "text",
+      "maxLength": 100
     },
     "icon": {
       "type": "customField",

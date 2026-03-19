@@ -13,6 +13,7 @@
   "attributes": {
     "title": {
       "type": "string",
+      "maxLength": 100,
       "required": true
     },
     "cover_image": {

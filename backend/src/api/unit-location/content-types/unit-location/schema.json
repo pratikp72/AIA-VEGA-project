@@ -13,6 +13,7 @@
   "attributes": {
     "name": {
       "type": "string",
+      "maxLength": 100,
       "required": true
     },
     "active": {

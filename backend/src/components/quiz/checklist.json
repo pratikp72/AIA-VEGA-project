@@ -5,8 +5,9 @@
   },
   "options": {},
   "attributes": {
-    "discription": {
-      "type": "text"
+    "description": {
+      "type": "text",
+      "maxLength": 100
     }
   },
   "config": {}

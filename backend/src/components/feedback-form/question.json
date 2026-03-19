@@ -10,8 +10,9 @@
       "required": true,
       "unique": true
     },
-    "qestion": {
+    "question": {
       "type": "string",
+      "maxLength": 100,
       "required": true
     },
     "answer_type": {
