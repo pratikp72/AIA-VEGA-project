@@ -50,7 +50,7 @@ module.exports = createCoreController('api::news.news', ({ strapi }) => ({
     try {
       const userCompany = await getUserCompany(strapi, ctx.state?.user?.id);
 
-      const where = { publishedAt: { $notNull: true } };
+      const where = { publishedAt: { $notNull: true }, active: true };
       const q = ctx.query || {};
       const filters = q.filters && typeof q.filters === 'object' ? q.filters : {};
       const catName = q['filters[news_category][name][$eq]'] ?? filters['news_category']?.name?.$eq;
@@ -85,7 +85,13 @@ module.exports = createCoreController('api::news.news', ({ strapi }) => ({
     const { id } = ctx.params;
     try {
       const item = await strapi.db.query('api::news.news').findOne({
-        where: { $or: [{ documentId: id }, { id: Number(id) || 0 }] },
+        where: {
+          $and: [
+            { $or: [{ documentId: id }, { id: Number(id) || 0 }] },
+            { publishedAt: { $notNull: true } },
+            { active: true },
+          ],
+        },
         populate: NEWS_POPULATE,
       });
       if (!item) return ctx.notFound('News not found');

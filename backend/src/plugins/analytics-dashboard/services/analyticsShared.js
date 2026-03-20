@@ -72,7 +72,10 @@ module.exports = ({ strapi }) => {
       };
     };
 
-    const where = { blocked: { $eq: false } };
+    const where = {
+      blocked: { $eq: false },
+      active: { $ne: false },
+    };
 
     const companyVal = params.company && String(params.company).trim() && !/^all\s*companies?$/i.test(String(params.company));
     if (companyVal) {
@@ -202,6 +205,7 @@ module.exports = ({ strapi }) => {
         description: u.description ?? null,
         branch: u.branch ?? '—',
         contact_no: u.contact_no ?? '—',
+        active: u.active !== false,
         photograph: mapPhotograph(u.photograph),
       }));
       return {

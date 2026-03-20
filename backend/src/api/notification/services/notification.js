@@ -2,7 +2,13 @@
 
 module.exports = ({ strapi }) => ({
 
+  isEmailEnabled() {
+    const raw = String(process.env.EMAIL_ENABLED || 'false').trim().toLowerCase();
+    return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'on';
+  },
+
   async send({ type, title, message, toUser, fromUser, meta = {}, email = true, socket = true }) {
+    const emailEnabled = this.isEmailEnabled();
     
     // 1. Save notification in DB (Dashboard Notification)
     const notification = await strapi.entityService.create("api::notification.notification", {
@@ -28,7 +34,7 @@ module.exports = ({ strapi }) => ({
     }
 
     // 3. EMAIL NOTIFICATION using Strapi Email Plugin
-    if (email && toUser) {
+    if (email && toUser && emailEnabled) {
       const user = await strapi.query("plugin::users-permissions.user").findOne({
         where: { id: toUser },
       });
@@ -60,6 +66,7 @@ module.exports = ({ strapi }) => ({
    * @param {Array} adminRoles - Array of admin roles to notify (optional)
    */
   async sendEventNotification(type, title, message, usersArray, meta = {}, adminRoles = []) {
+    const emailEnabled = this.isEmailEnabled();
     // Notify each user
     for (const user of usersArray) {
       await strapi.entityService.create('api::notification.notification', {
@@ -73,7 +80,7 @@ module.exports = ({ strapi }) => ({
         },
       });
       // Email
-      if (user.email) {
+      if (user.email && emailEnabled) {
         console.log('Sending email to:', user.email);
         try {
           await strapi.plugins["email"].services.email.send({
@@ -108,7 +115,7 @@ module.exports = ({ strapi }) => ({
             meta,
           },
         });
-        if (admin.email) {
+        if (admin.email && emailEnabled) {
           console.log('Sending email to admin:', admin.email);
           try {
             await strapi.plugins["email"].services.email.send({

@@ -43,6 +43,7 @@ module.exports = ({ env }) => ({
    * 📧 Email Provider (Nodemailer)
    */
   email: {
+    enabled: env.bool('EMAIL_ENABLED', false),
     config: {
       provider: 'nodemailer',
       providerOptions: {

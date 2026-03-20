@@ -172,6 +172,7 @@ module.exports = createCoreController('api::course.course', ({ strapi }) => ({
       filters: {
         ...((ctx.query?.filters && typeof ctx.query.filters === 'object') ? ctx.query.filters : {}),
         id: { $in: idFilter },
+        active: { $ne: false },
       },
       populate: {
         modules: { populate: '*' },
@@ -239,6 +240,10 @@ module.exports = createCoreController('api::course.course', ({ strapi }) => ({
 
     const { data, meta } = await super.findOne(ctx);
     if (!data) return { data: null, meta };
+
+    if (data.active === false) {
+      return ctx.notFound('Course not found');
+    }
 
     const assignedIds = await getAssignedCourseIdsForUser(strapi, user);
     const courseId = data.id ?? data.documentId;
