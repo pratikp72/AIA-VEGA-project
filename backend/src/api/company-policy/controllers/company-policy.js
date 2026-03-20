@@ -29,7 +29,7 @@ module.exports = createCoreController('api::company-policy.company-policy', ({ s
   async findOne(ctx) {
     const userCompany = await getUserCompany(strapi, ctx);
     const docId = ctx.params.documentId ?? ctx.params.id;
-    const where = { publishedAt: { $notNull: true } };
+    const where = { publishedAt: { $notNull: true }, active: true };
     if (docId) where.documentId = docId;
     if (userCompany) where.company = { name: userCompany };
     const item = await strapi.db.query('api::company-policy.company-policy').findOne({
