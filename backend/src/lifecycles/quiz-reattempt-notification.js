@@ -24,6 +24,10 @@ function registerQuizReattemptNotificationLifecycles(strapi) {
         const status = result?.request_status;
         if (status !== 'Approved' && status !== 'Rejected') return;
 
+        const rawEmailEnabled = String(process.env.EMAIL_ENABLED || 'false').trim().toLowerCase();
+        const emailEnabled = rawEmailEnabled === 'true' || rawEmailEnabled === '1' || rawEmailEnabled === 'yes' || rawEmailEnabled === 'on';
+        strapi.log.warn(`[quiz-reattempt-notification] EMAIL_ENABLED=${rawEmailEnabled} (computed: ${emailEnabled})`);
+
         const recordId = result?.id ?? result?.documentId;
         if (recordId == null) return;
 
@@ -74,7 +78,7 @@ function registerQuizReattemptNotificationLifecycles(strapi) {
           [{ id: user.id, email: user.email }],
           enrichedMeta,
           [], // admin does not get this; only the user sees it in their bell + email
-          { sendEmail: true, sendSocket: true }
+          { sendEmail: emailEnabled, sendSocket: true }
         );
       } catch (e) {
         strapi.log.error('[quiz-reattempt-notification] afterUpdate:', e?.message || e);

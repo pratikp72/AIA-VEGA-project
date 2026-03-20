@@ -10,11 +10,17 @@ module.exports = (strapi) => {
   const NOTIFICATION_UID = 'api::notification.notification';
   const USER_UID = 'plugin::users-permissions.user';
 
+  function isEmailEnabled() {
+    const raw = String(process.env.EMAIL_ENABLED || 'false').trim().toLowerCase();
+    return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'on';
+  }
+
   /**
    * Enrich meta with human-readable names (userName, courseTitle, newsTitle)
    * so the admin UI can show friendly labels without extra API calls.
    */
   async function enrichMeta(meta = {}) {
+    /** @type {Record<string, any>} */
     const out = { ...(meta || {}) };
 
     // Resolve userName from userId (portal user: username, email)
@@ -219,6 +225,12 @@ module.exports = (strapi) => {
    */
   async function sendEmail(to, subject, body, htmlOverride) {
     if (!to || !subject) return;
+    const emailEnabled = isEmailEnabled();
+    strapi.log.warn(`[notification.sendEmail] Checking EMAIL_ENABLED: ${process.env.EMAIL_ENABLED} → ${emailEnabled}`);
+    if (!emailEnabled) {
+      strapi.log.warn(`[notification.sendEmail] Email blocked: EMAIL_ENABLED=false (to: ${to})`);
+      return;
+    }
     const text = body || '';
     const html = htmlOverride || (text ? text.replace(/\n/g, '<br>') : '');
     const payload = {
@@ -302,44 +314,63 @@ module.exports = (strapi) => {
   async function getAdminUsersByRoles(roleCodes) {
     if (!Array.isArray(roleCodes) || roleCodes.length === 0) return [];
 
-    const wantsAdmin = roleCodes.includes('admin');
-    const wantsLM = roleCodes.includes('LMadmin');
-    const wantsHR = roleCodes.includes('HRadmin');
+    const normalizedRoleCodes = roleCodes
+      .map((r) => String(r || '').trim().toLowerCase())
+      .filter(Boolean);
+
+    const wantsAdmin = normalizedRoleCodes.some((c) => c === 'admin' || c.includes('super'));
+    const wantsLM = normalizedRoleCodes.some((c) => c.includes('lm'));
+    const wantsHR = normalizedRoleCodes.some((c) => c.includes('hr'));
     if (!wantsAdmin && !wantsLM && !wantsHR) return [];
 
-    let admins = [];
     try {
-      admins = await strapi.db.query('admin::user').findMany({
-        populate: ['role', 'roles'],
+      // Step 1: Fetch all admin roles to find matching IDs (reliable - no name guessing)
+      const allRoles = await strapi.db.query('admin::role').findMany({
+        select: ['id', 'name', 'code'],
+      });
+      strapi.log.info('[notification] all admin roles: ' + JSON.stringify(allRoles));
+
+      const matchedRoleIds = [];
+      for (const role of allRoles || []) {
+        const n = String(role.name || '').trim().toLowerCase();
+        const c = String(role.code || '').trim().toLowerCase();
+        const isAdminRole = wantsAdmin && (n === 'admin' || n.includes('super') || c.includes('super'));
+        const isLMRole = wantsLM && n.includes('lm');
+        const isHRRole = wantsHR && n.includes('hr');
+        if (isAdminRole || isLMRole || isHRRole) {
+          matchedRoleIds.push(role.id);
+        }
+      }
+
+      strapi.log.info('[notification] matched role IDs for ' + JSON.stringify(roleCodes) + ': ' + JSON.stringify(matchedRoleIds));
+
+      if (matchedRoleIds.length === 0) {
+        strapi.log.warn('[notification] no matching roles found for codes: ' + JSON.stringify(roleCodes));
+        return [];
+      }
+
+      // Step 2: Fetch all admin users with their roles populated, then filter by role ID
+      const allAdmins = await strapi.db.query('admin::user').findMany({
+        populate: ['roles'],
         select: ['id', 'email'],
       });
+
+      const result = (allAdmins || []).filter((admin) => {
+        const userRoleIds = (admin.roles || []).map((r) => r?.id).filter(Boolean);
+        return userRoleIds.some((id) => matchedRoleIds.includes(id));
+      });
+
+      if (result.length === 0) {
+        strapi.log.warn('[notification] no admin users matched roles: ' + JSON.stringify(roleCodes));
+      } else {
+        strapi.log.info('[notification] admin recipients for ' + JSON.stringify(roleCodes) + ': ' + JSON.stringify(result.map((u) => ({ id: u?.id, email: u?.email }))));
+      }
+
+      return result;
     } catch (err) {
-      strapi.log.error('[notification] getAdminUsersByRoles fetch error:', err?.message || err);
+      strapi.log.error('[notification] getAdminUsersByRoles error: ' + (err?.message || String(err)));
       return [];
     }
-
-    const result = [];
-    for (const admin of admins || []) {
-      const singleRoleName = admin.role?.name;
-      const multiRoleNames = Array.isArray(admin.roles)
-        ? admin.roles.map((r) => r?.name).filter(Boolean)
-        : [];
-      const allNames = [singleRoleName, ...multiRoleNames].filter(Boolean);
-      if (allNames.length === 0) continue;
-
-      const hasAdminName = allNames.some((n) => n === 'Admin' || n === 'Super Admin');
-      const hasHRName = allNames.some((n) => n === 'HR admin');
-      const hasLMName = allNames.some((n) => n === 'LM admin');
-
-      if (
-        (wantsAdmin && hasAdminName) ||
-        (wantsHR && hasHRName) ||
-        (wantsLM && hasLMName)
-      ) {
-        result.push(admin);
-      }
-    }
-    return result;
   }
 
   /**
@@ -451,6 +482,9 @@ module.exports = (strapi) => {
    */
   async function sendNotification(type, title, message, usersArray = [], meta = {}, adminRoles = [], options = {}) {
     const { sendEmail: doEmail = true, sendSocket: doSocket = true } = options;
+    const globalEmailEnabled = isEmailEnabled();
+    const shouldSendEmail = doEmail && globalEmailEnabled;
+    strapi.log.warn(`[notification.sendNotification] type=${type} doEmail=${doEmail} globalEmailEnabled=${globalEmailEnabled} effectiveEmail=${shouldSendEmail} usersCount=${usersArray.length}`);
     const users = Array.isArray(usersArray) ? usersArray.filter(Boolean) : [];
     const roles = Array.isArray(adminRoles) ? adminRoles.filter(Boolean) : [];
     const enrichedMeta = await enrichMeta(meta);
@@ -471,7 +505,7 @@ module.exports = (strapi) => {
             meta: enrichedMeta,
           },
         });
-        if (doEmail && user?.email) {
+        if (shouldSendEmail && user?.email) {
           const htmlBody = buildUserEmailHtml(type, title, message, enrichedMeta);
           await sendEmail(user.email, title, message, htmlBody);
         }
@@ -500,7 +534,7 @@ module.exports = (strapi) => {
               meta: enrichedMeta,
             },
           });
-          if (doEmail && admin?.email) {
+          if (shouldSendEmail && admin?.email) {
             const emailBody = buildAdminEmailBody(title, message, enrichedMeta);
             await sendEmail(admin.email, title, emailBody);
           }
