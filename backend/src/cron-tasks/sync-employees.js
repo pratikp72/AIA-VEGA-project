@@ -6,6 +6,8 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const bcrypt = require('bcryptjs');
 const { getEmployeeApiToken } = require('./get-employee-api-token');
+const { ensureDepartmentForUser } = require('../utils/ensure-department-for-user');
+const { ensureWorkLocationForUser } = require('../utils/ensure-work-location-for-user');
 
 const USER_UID = 'plugin::users-permissions.user';
 const ROLE_UID = 'plugin::users-permissions.role';
@@ -13,6 +15,7 @@ const ROLE_UID = 'plugin::users-permissions.role';
 let isRunning = false;
 let isRunningStartedAt = null;
 const MAX_RUN_MS = 30 * 60 * 1000;
+let isBackfillRunning = false;
 
 function safeString(value, fallback = '-') {
   if (value === null || value === undefined) return fallback;
@@ -23,6 +26,23 @@ function safeString(value, fallback = '-') {
 function normalizeEmail(value) {
   const email = String(value || '').trim().toLowerCase();
   return email || null;
+}
+
+function normalizeCompany(value) {
+  const text = String(value || '').trim();
+  if (!text) return null;
+  const lower = text.toLowerCase();
+  if (lower === 'aia') return 'AIA';
+  if (lower === 'vega') return 'Vega';
+  return text;
+}
+
+function cleanMeaningfulText(value) {
+  const text = String(value || '').trim();
+  if (!text) return null;
+  const lower = text.toLowerCase();
+  if (['-', '--', 'n/a', 'na', 'null', 'undefined'].includes(lower)) return null;
+  return text;
 }
 
 function normalizeDate(value, fallback = '1970-01-01') {
@@ -226,6 +246,17 @@ function buildUserData(record, roleId, usernameOverride, emailOverride) {
   };
 }
 
+function resolveUserLocation(userData) {
+  const company = String(userData?.company || '').trim();
+  if (!company) return null;
+  if (company.toLowerCase() === 'aia') {
+    const branch = String(userData?.branch || '').trim();
+    return branch || null;
+  }
+  const workingLocation = String(userData?.working_location || '').trim();
+  return workingLocation || null;
+}
+
 async function fetchEmployeePage(baseUrl, apiPath, token, companyId, pageNumber, pageSize) {
   const url = new URL(apiPath, baseUrl);
   url.searchParams.set('cmpId', String(companyId));
@@ -348,6 +379,23 @@ async function syncEmployeesFromHrms(strapi) {
             createdCount += 1;
             pageCreated += 1;
           }
+
+          // Sync path uses db.query directly (bypasses Content Manager middlewares),
+          // so ensure taxonomy entities here as well.
+          try {
+            await ensureDepartmentForUser(strapi, userData.department, userData.company);
+          } catch (deptErr) {
+            strapi.log.warn(`[employee-sync] ensureDepartmentForUser failed for ${email}: ${deptErr?.message || deptErr}`);
+          }
+
+          try {
+            const locationName = resolveUserLocation(userData);
+            if (locationName) {
+              await ensureWorkLocationForUser(strapi, locationName, userData.company);
+            }
+          } catch (locErr) {
+            strapi.log.warn(`[employee-sync] ensureWorkLocationForUser failed for ${email}: ${locErr?.message || locErr}`);
+          }
         } catch (employeeErr) {
           errorCount += 1;
           pageErrors += 1;
@@ -380,4 +428,83 @@ async function syncEmployeesFromHrms(strapi) {
   }
 }
 
-module.exports = { syncEmployeesFromHrms };
+async function backfillUserOrgTaxonomy(strapi, options = {}) {
+  if (isBackfillRunning) {
+    strapi.log.warn('[employee-sync backfill] previous run still active, skipping');
+    return;
+  }
+
+  isBackfillRunning = true;
+  const batchSize = Math.max(100, Number(options.batchSize) || 500);
+
+  try {
+    let offset = 0;
+    let scannedUsers = 0;
+    const uniqueDepartments = new Set();
+    const uniqueLocations = new Set();
+
+    while (true) {
+      const users = await strapi.db.query(USER_UID).findMany({
+        select: ['id', 'company', 'department', 'branch', 'working_location'],
+        limit: batchSize,
+        offset,
+        orderBy: { id: 'asc' },
+      });
+
+      if (!Array.isArray(users) || users.length === 0) break;
+
+      scannedUsers += users.length;
+
+      for (const user of users) {
+        const company = normalizeCompany(user?.company);
+        if (!company) continue;
+
+        const department = cleanMeaningfulText(user?.department);
+        if (department) {
+          uniqueDepartments.add(`${company}|||${department}`);
+        }
+
+        const locationRaw = company === 'AIA' ? user?.branch : user?.working_location;
+        const location = cleanMeaningfulText(locationRaw);
+        if (location) {
+          uniqueLocations.add(`${company}|||${location}`);
+        }
+      }
+
+      if (users.length < batchSize) break;
+      offset += users.length;
+    }
+
+    let deptErrors = 0;
+    for (const key of uniqueDepartments) {
+      const [company, department] = key.split('|||');
+      try {
+        await ensureDepartmentForUser(strapi, department, company);
+      } catch (err) {
+        deptErrors += 1;
+        strapi.log.warn(`[employee-sync backfill] ensureDepartmentForUser failed for ${company}/${department}: ${err?.message || err}`);
+      }
+    }
+
+    let locationErrors = 0;
+    for (const key of uniqueLocations) {
+      const [company, location] = key.split('|||');
+      try {
+        await ensureWorkLocationForUser(strapi, location, company);
+      } catch (err) {
+        locationErrors += 1;
+        strapi.log.warn(`[employee-sync backfill] ensureWorkLocationForUser failed for ${company}/${location}: ${err?.message || err}`);
+      }
+    }
+
+    strapi.log.info(
+      `[employee-sync backfill] done. scannedUsers=${scannedUsers}, uniqueDepartments=${uniqueDepartments.size}, uniqueLocations=${uniqueLocations.size}, deptErrors=${deptErrors}, locationErrors=${locationErrors}`
+    );
+  } catch (err) {
+    strapi.log.error(`[employee-sync backfill] run failed: ${err?.message || err}`);
+  } finally {
+    isBackfillRunning = false;
+  }
+}
+
+module.exports = { syncEmployeesFromHrms, backfillUserOrgTaxonomy };

@@ -14,5 +14,11 @@ module.exports = {
       handler: 'employee-sync.patchPasswords',
       config: { auth: false },
     },
+    {
+      method: 'POST',
+      path: '/employee-sync/backfill-org-taxonomy',
+      handler: 'employee-sync.backfillOrgTaxonomy',
+      config: { auth: false },
+    },
   ],
 };
