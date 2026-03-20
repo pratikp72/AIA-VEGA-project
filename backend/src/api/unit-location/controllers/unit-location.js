@@ -29,18 +29,20 @@ module.exports = createCoreController('api::unit-location.unit-location', ({ str
   async findOne(ctx) {
     const userCompany = await getUserCompany(strapi, ctx);
     const docId = ctx.params.documentId ?? ctx.params.id;
+    const where = {
+      documentId: docId,
+      publishedAt: { $notNull: true },
+      active: true,
+    };
     if (userCompany) {
-      const exists = await strapi.db.query('api::unit-location.unit-location').findOne({
-        where: {
-          documentId: docId,
-          publishedAt: { $notNull: true },
-          company: { name: userCompany },
-        },
-        select: ['id'],
-      });
-      if (!exists) {
-        return ctx.notFound();
-      }
+      where.company = { name: userCompany };
+    }
+    const exists = await strapi.db.query('api::unit-location.unit-location').findOne({
+      where,
+      select: ['id'],
+    });
+    if (!exists) {
+      return ctx.notFound();
     }
     return super.findOne(ctx);
   },

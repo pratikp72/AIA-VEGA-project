@@ -74,6 +74,14 @@ module.exports = {
         return ctx.unauthorized('Invalid credentials');
       }
 
+      if (user.active === false) {
+        return ctx.unauthorized('User is inactive');
+      }
+
+      if (user.blocked === true) {
+        return ctx.unauthorized('User is blocked');
+      }
+
       // 2) Validate password using users-permissions user service
       const userService = strapi.plugin('users-permissions').service('user');
 
