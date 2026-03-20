@@ -6,6 +6,43 @@ const { ensureDepartmentForUser } = require('./utils/ensure-department-for-user'
 const { syncCourseLanguageComponents } = require('./utils/sync-course-language-components');
 const { autoGenerateComponentIds } = require('./utils/auto-generate-component-ids');
 
+function isEmailEnabled() {
+  const raw = String(process.env.EMAIL_ENABLED || 'false').trim().toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'on';
+}
+
+function suppressEmailServiceIfDisabled(strapi) {
+  if (isEmailEnabled()) {
+    strapi.log.info('[email] EMAIL_ENABLED=true; outgoing emails are enabled.');
+    return;
+  }
+
+  const serviceFromPluginAccessor = strapi.plugin?.('email')?.service?.('email');
+  const serviceFromLegacyAccessor = strapi.plugins?.email?.services?.email;
+  const emailServices = [serviceFromPluginAccessor, serviceFromLegacyAccessor].filter(Boolean);
+
+  if (emailServices.length === 0) {
+    strapi.log.warn('[email] Email plugin service not found; EMAIL_ENABLED=false guard not applied.');
+    return;
+  }
+
+  const suppressedResult = { skipped: true, reason: 'EMAIL_ENABLED=false' };
+
+  for (const emailService of emailServices) {
+    if (emailService.__emailSuppressionApplied) continue;
+
+    emailService.send = async () => suppressedResult;
+
+    if (typeof emailService.sendTemplatedEmail === 'function') {
+      emailService.sendTemplatedEmail = async () => suppressedResult;
+    }
+
+    emailService.__emailSuppressionApplied = true;
+  }
+
+  strapi.log.info('[email] EMAIL_ENABLED=false; all outgoing emails are suppressed.');
+}
+
 module.exports = {
   register({ strapi }) {
     strapi.customFields.register({
@@ -84,6 +121,8 @@ module.exports = {
   },
 
   bootstrap({ strapi }) {
+    suppressEmailServiceIfDisabled(strapi);
+
     strapi.utils = strapi.utils || {};
     strapi.utils.notification = require('./utils/notification')(strapi);
 
