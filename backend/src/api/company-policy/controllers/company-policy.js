@@ -12,17 +12,53 @@ module.exports = createCoreController('api::company-policy.company-policy', ({ s
   async find(ctx) {
     const userCompany = await getUserCompany(strapi, ctx);
     const where = { publishedAt: { $notNull: true }, active: true };
+    const query = ctx.query || {};
+
+    const search = String(query.search || '').trim();
+    const date = String(query.date || '').trim();
+    const page = Math.max(1, Number(query.page || query['pagination[page]'] || 1) || 1);
+    const pageSize = Math.max(1, Math.min(100, Number(query.pageSize || query['pagination[pageSize]'] || 10) || 10));
+    const sortParam = String(query.sort || 'createdAt:desc').trim();
+    const [sortFieldRaw, sortOrderRaw] = sortParam.split(':');
+    const allowedSortFields = new Set(['createdAt', 'updatedAt', 'title']);
+    const sortField = allowedSortFields.has(sortFieldRaw) ? sortFieldRaw : 'createdAt';
+    const sortOrder = String(sortOrderRaw || 'desc').toLowerCase() === 'asc' ? 'asc' : 'desc';
+
     if (userCompany) {
       where.company = { name: userCompany };
     }
-    const items = await strapi.db.query('api::company-policy.company-policy').findMany({
-      where,
-      orderBy: { createdAt: 'desc' },
-      populate: ['document', 'company'],
-    });
+
+    if (search) {
+      where.title = { $containsi: search };
+    }
+
+    if (date) {
+      const start = new Date(`${date}T00:00:00.000Z`);
+      if (!Number.isNaN(start.getTime())) {
+        const end = new Date(start);
+        end.setUTCDate(end.getUTCDate() + 1);
+        where.createdAt = {
+          $gte: start.toISOString(),
+          $lt: end.toISOString(),
+        };
+      }
+    }
+
+    const [items, total] = await Promise.all([
+      strapi.db.query('api::company-policy.company-policy').findMany({
+        where,
+        orderBy: { [sortField]: sortOrder },
+        offset: (page - 1) * pageSize,
+        limit: pageSize,
+        populate: ['document', 'company'],
+      }),
+      strapi.db.query('api::company-policy.company-policy').count({ where }),
+    ]);
+
+    const pageCount = Math.max(1, Math.ceil(total / pageSize));
     ctx.body = {
       data: items,
-      meta: { pagination: { page: 1, pageSize: items.length, pageCount: 1, total: items.length } },
+      meta: { pagination: { page, pageSize, pageCount, total } },
     };
   },
 
