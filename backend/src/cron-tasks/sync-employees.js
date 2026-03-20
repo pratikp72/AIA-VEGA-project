@@ -101,8 +101,48 @@ function extractTotalPages(payload) {
     payload?.data?.totalPages ??
     payload?.data?.TotalPages ??
     payload?.totalPages ??
+    payload?.TotalPages ??
+    payload?.data?.total_pages ??
     null
   );
+}
+
+function extractTotalCount(payload) {
+  return (
+    payload?.data?.totalCount ??
+    payload?.data?.TotalCount ??
+    payload?.data?.totalRecords ??
+    payload?.data?.TotalRecords ??
+    payload?.totalCount ??
+    payload?.TotalCount ??
+    payload?.totalRecords ??
+    payload?.TotalRecords ??
+    null
+  );
+}
+
+function logPaginationDebug(strapi, payload) {
+  // Log the top-level keys to understand response shape
+  const topKeys = Object.keys(payload || {});
+  strapi.log.info(`[employee-sync][DEBUG] Response top-level keys: ${JSON.stringify(topKeys)}`);
+  if (payload?.data && typeof payload.data === 'object' && !Array.isArray(payload.data)) {
+    const dataKeys = Object.keys(payload.data);
+    strapi.log.info(`[employee-sync][DEBUG] Response.data keys: ${JSON.stringify(dataKeys)}`);
+    // Log non-array values to see pagination metadata
+    const meta = {};
+    for (const k of dataKeys) {
+      if (!Array.isArray(payload.data[k])) meta[k] = payload.data[k];
+    }
+    strapi.log.info(`[employee-sync][DEBUG] Pagination metadata in data: ${JSON.stringify(meta)}`);
+  }
+  // Log top-level non-array values
+  const topMeta = {};
+  for (const k of topKeys) {
+    if (!Array.isArray(payload[k]) && typeof payload[k] !== 'object') topMeta[k] = payload[k];
+  }
+  if (Object.keys(topMeta).length) {
+    strapi.log.info(`[employee-sync][DEBUG] Top-level scalar fields: ${JSON.stringify(topMeta)}`);
+  }
 }
 
 async function getEmployeeRoleId(strapi) {
@@ -239,19 +279,43 @@ async function syncEmployeesFromHrms(strapi) {
 
     let pageNumber = 1;
     let totalPages = null;
+    let totalCount = null;
+    let totalFetched = 0;
 
     while (true) {
       const payload = await fetchEmployeePage(baseUrl, apiPath, token, companyId, pageNumber, pageSize);
 
-      if (totalPages === null) {
+      if (pageNumber === 1) {
+        logPaginationDebug(strapi, payload);
         totalPages = extractTotalPages(payload);
-        strapi.log.info(`[employee-sync] totalPages=${totalPages ?? 'unknown'}`);
+        totalCount = extractTotalCount(payload);
+        strapi.log.info(
+          `[employee-sync] API reports: totalPages=${totalPages ?? 'unknown'}, totalCount=${totalCount ?? 'unknown'}, pageSize=${pageSize}`
+        );
+        if (totalCount !== null && totalPages !== null) {
+          const expectedPages = Math.ceil(totalCount / pageSize);
+          if (expectedPages !== totalPages) {
+            strapi.log.warn(
+              `[employee-sync] WARNING: totalPages(${totalPages}) does not match ceil(totalCount/pageSize)=${expectedPages} — will use page count from API`
+            );
+          }
+        }
       }
 
       const employees = extractEmployeeList(payload);
-      strapi.log.info(`[employee-sync] page ${pageNumber}: fetched ${employees.length} employees`);
+      totalFetched += employees.length;
+      strapi.log.info(
+        `[employee-sync] page ${pageNumber}/${totalPages ?? '?'}: got ${employees.length} employees | running total=${totalFetched}${totalCount !== null ? `/${totalCount}` : ''}`
+      );
 
-      if (!employees.length) break;
+      if (!employees.length) {
+        strapi.log.info('[employee-sync] empty page received, stopping pagination');
+        break;
+      }
+
+      let pageCreated = 0;
+      let pageUpdated = 0;
+      let pageErrors = 0;
 
       for (const record of employees) {
         try {
@@ -278,22 +342,37 @@ async function syncEmployeesFromHrms(strapi) {
           if (existing) {
             await strapi.db.query(USER_UID).update({ where: { id: existing.id }, data: userData });
             updatedCount += 1;
+            pageUpdated += 1;
           } else {
             await strapi.db.query(USER_UID).create({ data: { ...userData, password: passwordHash } });
             createdCount += 1;
+            pageCreated += 1;
           }
         } catch (employeeErr) {
           errorCount += 1;
+          pageErrors += 1;
           const key = record?.Work_Email || record?.Emp_Name || 'unknown';
           strapi.log.error(`[employee-sync] Failed for ${key}: ${employeeErr?.message || employeeErr}`);
         }
       }
 
-      if (totalPages !== null ? pageNumber >= totalPages : employees.length < pageSize) break;
+      strapi.log.info(
+        `[employee-sync] page ${pageNumber} processed: created=${pageCreated}, updated=${pageUpdated}, errors=${pageErrors} | totals so far: created=${createdCount}, updated=${updatedCount}, errors=${errorCount}`
+      );
+
+      const shouldStop = totalPages !== null ? pageNumber >= totalPages : employees.length < pageSize;
+      if (shouldStop) {
+        strapi.log.info(
+          `[employee-sync] stopping after page ${pageNumber} — ${totalPages !== null ? `reached totalPages(${totalPages})` : `last page had ${employees.length} < pageSize(${pageSize})`}`
+        );
+        break;
+      }
       pageNumber += 1;
     }
 
-    strapi.log.info(`[employee-sync] done. created=${createdCount}, updated=${updatedCount}, errors=${errorCount}`);
+    strapi.log.info(
+      `[employee-sync] ===== SYNC COMPLETE ===== fetched=${totalFetched}${totalCount !== null ? `/${totalCount}` : ''} | created=${createdCount}, updated=${updatedCount}, errors=${errorCount}, total processed=${createdCount + updatedCount + errorCount}`
+    );
   } catch (err) {
     strapi.log.error(`[employee-sync] run failed: ${err?.message || err}`);
   } finally {
