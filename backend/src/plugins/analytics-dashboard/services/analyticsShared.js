@@ -132,6 +132,17 @@ module.exports = ({ strapi }) => {
       Object.assign(where, locCondition);
     }
 
+    const dateFromRaw = params.dateFrom && String(params.dateFrom).trim();
+    const dateToRaw = params.dateTo && String(params.dateTo).trim();
+    if (dateFromRaw || dateToRaw) {
+      const joinDateWhere = {};
+      if (dateFromRaw) joinDateWhere.$gte = dateFromRaw;
+      if (dateToRaw) joinDateWhere.$lte = dateToRaw;
+      if (Object.keys(joinDateWhere).length > 0) {
+        where.joining_date = joinDateWhere;
+      }
+    }
+
     const sortFieldMap = {
       'name-asc':     { username: 'ASC' },
       'name-desc':    { username: 'DESC' },
