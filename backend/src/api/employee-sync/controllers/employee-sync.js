@@ -1,7 +1,7 @@
 'use strict';
 
 const bcrypt = require('bcryptjs');
-const { syncEmployeesFromHrms } = require('../../../cron-tasks/sync-employees');
+const { syncEmployeesFromHrms, backfillUserOrgTaxonomy } = require('../../../cron-tasks/sync-employees');
 
 module.exports = {
   async trigger(ctx) {
@@ -61,5 +61,25 @@ module.exports = {
 
     strapi.log.info(`[patch-passwords] bulk-patched ${updated} AIA users`);
     return ctx.send({ message: `Patched ${updated} AIA users with default password and Employee role.` });
+  },
+
+  async backfillOrgTaxonomy(ctx) {
+    const secret = ctx.request.headers['x-sync-secret'] || ctx.request.body?.secret;
+    const expected = process.env.EMPLOYEE_SYNC_SECRET || 'sync-secret-2026';
+
+    if (secret !== expected) {
+      return ctx.unauthorized('Invalid or missing sync secret');
+    }
+
+    const batchSize = Number(ctx.request.body?.batchSize || 500);
+
+    backfillUserOrgTaxonomy(strapi, { batchSize }).catch((err) => {
+      strapi.log.error('[employee-sync backfill] manual trigger failed:', err?.message || err);
+    });
+
+    return ctx.send({
+      message: 'Department/work-location backfill triggered from existing users. Check Strapi logs for progress.',
+      batchSize,
+    });
   },
 };

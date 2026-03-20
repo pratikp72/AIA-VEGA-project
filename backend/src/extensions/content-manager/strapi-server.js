@@ -21,9 +21,57 @@ function mergeWithAnd(existing, filter) {
 
 function normalizeCompanyName(name) {
   const lower = String(name || '').trim().toLowerCase();
-  if (lower === 'aia') return 'AIA';
-  if (lower === 'vega') return 'Vega';
+  if (lower === 'aia' || lower.includes('aia')) return 'AIA';
+  if (lower === 'vega' || lower.includes('vega')) return 'Vega';
   return String(name || '').trim();
+}
+
+function getSearchableFields(targetUid, targetModel) {
+  const attrs = targetModel?.attributes || {};
+  const attrNames = Object.keys(attrs);
+  const fieldSet = new Set();
+
+  const tryAdd = (field) => {
+    if (!field || !attrs[field]) return;
+    const type = attrs[field].type;
+    if (['string', 'text', 'email', 'uid'].includes(type)) {
+      fieldSet.add(field);
+    }
+  };
+
+  tryAdd(targetModel?.info?.mainField);
+
+  if (targetUid === COURSE_UID) {
+    tryAdd('title');
+  }
+
+  if (targetUid === USER_UID) {
+    ['username', 'email', 'emp_code', 'emp_id', 'designation', 'department'].forEach(tryAdd);
+  }
+
+  ['name', 'title', 'username', 'email'].forEach(tryAdd);
+
+  if (fieldSet.size === 0) {
+    attrNames.forEach((field) => tryAdd(field));
+  }
+
+  return [...fieldSet];
+}
+
+function getSortField(targetUid, targetModel) {
+  const attrs = targetModel?.attributes || {};
+  const preferred = [];
+
+  if (targetModel?.info?.mainField) preferred.push(targetModel.info.mainField);
+  if (targetUid === COURSE_UID) preferred.push('title');
+  preferred.push('name', 'username', 'email', 'documentId', 'id');
+
+  for (const field of preferred) {
+    if (field === 'id') return 'id';
+    if (attrs[field]) return field;
+  }
+
+  return 'id';
 }
 
 function parseRawCompanyIds(rawCompanyId) {
@@ -44,6 +92,34 @@ function parseRawCompanyIds(rawCompanyId) {
   });
 
   return uniq;
+}
+
+function getExcludeCourseFilter(rawExcludeCourseIds) {
+  const ids = parseRawCompanyIds(rawExcludeCourseIds);
+  if (ids.length === 0) return null;
+
+  const numericIds = [];
+  const docIds = [];
+
+  ids.forEach((raw) => {
+    const numId = parseInt(raw, 10);
+    const isDocId = Number.isNaN(numId) || raw.length > 10;
+    if (isDocId) docIds.push(raw);
+    else numericIds.push(numId);
+  });
+
+  const clauses = [];
+  if (numericIds.length > 0) clauses.push({ id: { $notIn: numericIds } });
+  if (docIds.length > 0) clauses.push({ documentId: { $notIn: docIds } });
+
+  if (clauses.length === 0) return null;
+  return clauses.length === 1 ? clauses[0] : { $and: clauses };
+}
+
+function mergeFilterIfPresent(baseFilter, nextFilter) {
+  if (!nextFilter || typeof nextFilter !== 'object') return baseFilter;
+  if (!baseFilter || typeof baseFilter !== 'object') return nextFilter;
+  return mergeWithAnd(baseFilter, nextFilter);
 }
 
 async function getCompanyNamesFromRawId(strapi, rawCompanyId) {
@@ -140,13 +216,10 @@ async function getCompanyScopedFilter(strapi, targetUid, rawCompanyId) {
     const companyNames = await getCompanyNamesFromRawId(strapi, ids);
     if (companyNames.length === 0) return { id: { $eq: -1 } };
     if (companyNames.length === 1) {
-      return { company: companyNames[0], blocked: { $ne: true } };
+      return { company: companyNames[0] };
     }
     return {
-      $and: [
-        { blocked: { $ne: true } },
-        { $or: companyNames.map((name) => ({ company: name })) },
-      ],
+      $or: companyNames.map((name) => ({ company: name })),
     };
   }
 
@@ -193,28 +266,43 @@ module.exports = (plugin) => {
   const defaultFindAvailable = relationsController.findAvailable.bind(relationsController);
 
   async function findAvailableFallback(ctx, targetUid, extraFilter = null) {
-    const { _q = '', pageSize = 10, page = 1 } = ctx.request?.query ?? {};
-    const limit = Math.max(1, parseInt(String(pageSize), 10) || 10);
-    const offset = (Math.max(1, parseInt(String(page), 10) || 1) - 1) * limit;
+    const { _q = '', pageSize = 10, _limit, page = 1, _page } = ctx.request?.query ?? {};
+    const requestedLimit = pageSize ?? _limit ?? 10;
+    const requestedPage = page ?? _page ?? 1;
+    const limit = Math.max(1, parseInt(String(requestedLimit), 10) || 10);
+    const currentPage = Math.max(1, parseInt(String(requestedPage), 10) || 1);
+    const offset = (currentPage - 1) * limit;
 
     const targetModel = strapi.getModel(targetUid);
-    const mainField = targetModel?.info?.mainField || (targetModel?.attributes?.name ? 'name' : 'id');
-    let where = _q ? { [mainField]: { $containsi: String(_q) } } : {};
+    const sortField = getSortField(targetUid, targetModel);
+    const searchableFields = getSearchableFields(targetUid, targetModel);
+    const searchTerm = String(_q || '').trim();
+    let where = {};
+
+    if (searchTerm) {
+      where = {
+        $or: searchableFields.map((field) => ({ [field]: { $containsi: searchTerm } })),
+      };
+    }
+
     if (extraFilter && typeof extraFilter === 'object') {
       where = mergeWithAnd(where, extraFilter);
     }
 
     const [results, total] = await Promise.all([
-      strapi.db.query(targetUid).findMany({ where, limit, offset, orderBy: { [mainField]: 'asc' } }),
+      strapi.db.query(targetUid).findMany({ where, limit, offset, orderBy: { [sortField]: 'asc' } }),
       strapi.db.query(targetUid).count({ where }),
     ]);
+
+    const pageCount = Math.max(1, Math.ceil(total / limit));
 
     ctx.body = {
       results,
       pagination: {
-        page: Math.max(1, parseInt(String(page), 10) || 1),
+        page: currentPage,
         pageSize: limit,
         total,
+        pageCount,
       },
     };
   }
@@ -247,6 +335,7 @@ module.exports = (plugin) => {
     const { model: sourceUid, targetField } = ctx.params;
     const id = ctx.request?.query?.id;
     const selectedCompanyId = ctx.request?.query?.companyId;
+    const excludeCourseIds = ctx.request?.query?.excludeCourseIds;
     const sourceModel = sourceUid ? strapi.getModel(sourceUid) : null;
     const targetSchema = sourceModel?.attributes?.[targetField];
     let targetUid = targetSchema?.target;
@@ -283,11 +372,26 @@ module.exports = (plugin) => {
       }
     }
 
-    const scopedRelationFilter = ctx.state._relationCompanyFilter || ctx.state._departmentCompanyFilter;
+    if (
+      (sourceUid === COURSE_WORKFLOW_UID || sourceUid === WORKFLOW_MODULE_COMPONENT_UID) &&
+      targetUid === COURSE_UID &&
+      excludeCourseIds
+    ) {
+      const excludeFilter = getExcludeCourseFilter(excludeCourseIds);
+      if (excludeFilter) {
+        ctx.state._workflowCourseExcludeFilter = { uid: COURSE_UID, filter: excludeFilter };
+      }
+    }
+
+    let scopedRelationFilter = null;
+    scopedRelationFilter = mergeFilterIfPresent(scopedRelationFilter, ctx.state._relationCompanyFilter?.filter);
+    scopedRelationFilter = mergeFilterIfPresent(scopedRelationFilter, ctx.state._departmentCompanyFilter?.filter);
+    scopedRelationFilter = mergeFilterIfPresent(scopedRelationFilter, ctx.state._workflowCourseExcludeFilter?.filter);
+
     if (!scopedRelationFilter) {
       return runFindAvailableSafely(ctx, targetUid);
     }
-    return findAvailableFallback(ctx, targetUid, scopedRelationFilter.filter);
+    return findAvailableFallback(ctx, targetUid, scopedRelationFilter);
   };
 
   return plugin;
