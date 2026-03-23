@@ -1289,30 +1289,38 @@ module.exports = ({ strapi }) => {
     }
 
     let progresses = [];
-    // 1) Prefer Document Service with user filter (so we only fetch this user's progress)
+    // 1) Prefer Document Service with user filter (read both published + draft to avoid stale published rows)
     if (numericUserId != null) {
-      try {
-        const filtered = await strapi.documents('api::user-progress.user-progress').findMany({
-          status: 'published',
-          filters: { user: { id: numericUserId } },
-          populate: ['user', 'course', 'course.course_category'],
-          limit: 500,
-          start: 0,
-        });
-        if (Array.isArray(filtered) && filtered.length > 0) progresses = filtered;
-      } catch (e2) {
-        strapi.log.warn('Learning personal: document findMany (with user filter) failed:', e2?.message || String(e2));
+      const merged = [];
+      for (const status of ['published', 'draft']) {
+        try {
+          const filtered = await strapi.documents('api::user-progress.user-progress').findMany({
+            status,
+            filters: { user: { id: numericUserId } },
+            populate: ['user', 'course', 'course.course_category'],
+            limit: 500,
+            start: 0,
+          });
+          if (Array.isArray(filtered) && filtered.length > 0) merged.push(...filtered);
+        } catch (e2) {
+          strapi.log.warn('Learning personal: document findMany (with user filter, status=' + status + ') failed:', e2?.message || String(e2));
+        }
       }
+      if (merged.length > 0) progresses = merged;
     }
-    // 1b) Fallback: fetch all published and filter in memory (if filtered call failed or returned 0)
+    // 1b) Fallback: fetch all published+draft and filter in memory (if filtered call failed or returned 0)
     if (progresses.length === 0) {
       try {
-        let allProgress = await strapi.documents('api::user-progress.user-progress').findMany({
-          status: 'published',
-          populate: ['user', 'course', 'course.course_category'],
-          limit: 5000,
-          start: 0,
-        });
+        let allProgress = [];
+        for (const status of ['published', 'draft']) {
+          const rows = await strapi.documents('api::user-progress.user-progress').findMany({
+            status,
+            populate: ['user', 'course', 'course.course_category'],
+            limit: 5000,
+            start: 0,
+          });
+          if (Array.isArray(rows) && rows.length > 0) allProgress.push(...rows);
+        }
         if (!Array.isArray(allProgress)) allProgress = [];
         progresses = allProgress.filter((p) => {
           const u = p.user;
@@ -1420,9 +1428,15 @@ module.exports = ({ strapi }) => {
       const existing = byCourseAll.get(key);
       const pStatus = statusOrder[p.progress_status] ?? 4;
       const existingStatus = existing ? (statusOrder[existing.progress_status] ?? 4) : 4;
+      const pPct = Number(p.progress_percentage ?? p.progressPercentage ?? 0);
+      const existingPct = Number(existing?.progress_percentage ?? existing?.progressPercentage ?? 0);
       const pAt = p.last_accessed_at ? new Date(p.last_accessed_at).getTime() : 0;
       const existingAt = existing && existing.last_accessed_at ? new Date(existing.last_accessed_at).getTime() : 0;
-      if (!existing || pStatus < existingStatus || (pStatus === existingStatus && pAt >= existingAt)) {
+      if (
+        !existing ||
+        pStatus < existingStatus ||
+        (pStatus === existingStatus && (pPct > existingPct || (pPct === existingPct && pAt >= existingAt)))
+      ) {
         byCourseAll.set(key, p);
       }
     });
@@ -1471,9 +1485,15 @@ module.exports = ({ strapi }) => {
       const existing = byCourse.get(key);
       const pStatus = statusOrder[p.progress_status] ?? 4;
       const existingStatus = existing ? (statusOrder[existing.progress_status] ?? 4) : 4;
+      const pPct = Number(p.progress_percentage ?? p.progressPercentage ?? 0);
+      const existingPct = Number(existing?.progress_percentage ?? existing?.progressPercentage ?? 0);
       const pAt = p.last_accessed_at ? new Date(p.last_accessed_at).getTime() : 0;
       const existingAt = existing && existing.last_accessed_at ? new Date(existing.last_accessed_at).getTime() : 0;
-      if (!existing || pStatus < existingStatus || (pStatus === existingStatus && pAt >= existingAt)) {
+      if (
+        !existing ||
+        pStatus < existingStatus ||
+        (pStatus === existingStatus && (pPct > existingPct || (pPct === existingPct && pAt >= existingAt)))
+      ) {
         byCourse.set(key, p);
       }
     });
@@ -1584,6 +1604,9 @@ module.exports = ({ strapi }) => {
         courseCategory: catNamePersonal,
         status: p.progress_status,
         percentage: p.progress_percentage ?? 0,
+        completedModules: Array.isArray(p.completed_modules)
+          ? p.completed_modules.map((m) => String(m))
+          : (Array.isArray(p.completedModules) ? p.completedModules.map((m) => String(m)) : []),
         timeSpentMinutes: moduleTimeMinutes,
         moduleTimeMinutes,
         quizTimeMinutes: 0,
@@ -1821,8 +1844,9 @@ module.exports = ({ strapi }) => {
       }
     }
 
-    // 1) Document Service with user filter (try published first, then draft so draft entries show)
+    // 1) Document Service with user filter (merge published + draft to avoid stale rows)
     if (records.length === 0 && numericUserId != null) {
+      const merged = [];
       for (const status of ['published', 'draft']) {
         try {
           const filters = { user: { id: numericUserId } };
@@ -1838,14 +1862,12 @@ module.exports = ({ strapi }) => {
             limit: 1000,
             start: 0,
           });
-          if (Array.isArray(docRecords) && docRecords.length > 0) {
-            records = docRecords;
-            break;
-          }
+          if (Array.isArray(docRecords) && docRecords.length > 0) merged.push(...docRecords);
         } catch (e2) {
-          strapi.log.warn('Module video progress document findMany failed:', e2?.message || String(e2));
+          strapi.log.warn('Module video progress document findMany failed (status=' + status + '):', e2?.message || String(e2));
         }
       }
+      if (merged.length > 0) records = merged;
     }
     // 2) Fallback: db.query (try user_id then user relation with $eq) with course populated
     if (records.length === 0 && numericUserId != null) {
@@ -1964,6 +1986,42 @@ module.exports = ({ strapi }) => {
       });
     }
 
+    // Deduplicate per course+module after merging draft/published rows.
+    // Prefer rows with higher watched minutes; tie-break with stronger completion type.
+    const typeRank = { not_started: 0, in_progress: 1, skipped_to_end: 2, full_watch: 3 };
+    const dedupByModule = new Map();
+    (Array.isArray(filteredRecords) ? filteredRecords : []).forEach((r) => {
+      const cid = r.course?.documentId ?? r.course?.document_id ?? r.course?.id ?? r.course_id ?? r.courseId ?? '';
+      const mIdx = r.module_index ?? r.moduleIndex;
+      const mTitle = (r.module_title ?? r.moduleTitle ?? '').trim().toLowerCase();
+      const key = `${String(cid)}::${mIdx != null ? String(mIdx) : mTitle}`;
+      const watchedMinutes = Number(
+        r.time_watched_min ??
+        r.timeWatchedMinutes ??
+        ((r.time_watched_seconds ?? r.timeWatchedSeconds) != null
+          ? (Number(r.time_watched_seconds ?? r.timeWatchedSeconds) / 60)
+          : 0)
+      ) || 0;
+      const ctype = String(r.video_completion_type ?? r.videoCompletionType ?? 'not_started');
+      const existing = dedupByModule.get(key);
+      if (!existing) {
+        dedupByModule.set(key, r);
+        return;
+      }
+      const existingWatched = Number(
+        existing.time_watched_min ??
+        existing.timeWatchedMinutes ??
+        ((existing.time_watched_seconds ?? existing.timeWatchedSeconds) != null
+          ? (Number(existing.time_watched_seconds ?? existing.timeWatchedSeconds) / 60)
+          : 0)
+      ) || 0;
+      const existingType = String(existing.video_completion_type ?? existing.videoCompletionType ?? 'not_started');
+      if (watchedMinutes > existingWatched || (watchedMinutes === existingWatched && (typeRank[ctype] ?? 0) >= (typeRank[existingType] ?? 0))) {
+        dedupByModule.set(key, r);
+      }
+    });
+    filteredRecords = Array.from(dedupByModule.values());
+
     const kpis = { watchedFully: 0, skippedToEnd: 0, inProgress: 0, notStarted: 0 };
     const typeToKpi = { full_watch: 'watchedFully', skipped_to_end: 'skippedToEnd', in_progress: 'inProgress', not_started: 'notStarted' };
     // When filtering by course, use params.courseId so frontend row and module video progress match (same id format)
@@ -1976,8 +2034,18 @@ module.exports = ({ strapi }) => {
       const courseId = canonicalCourseId != null ? canonicalCourseId : (courseIdRaw != null ? String(courseIdRaw) : null);
       const courseTitle = r.course?.title ?? 'Unknown';
       const moduleTitle = r.module_title ?? r.moduleTitle ?? (r.module_index != null ? `Module ${(r.module_index ?? r.moduleIndex) + 1}` : 'Unknown');
-      const timeWat = r.time_watched_min ?? 0;
-      const duration = r.video_duration_min;
+      const timeWat = Number(
+        r.time_watched_min ??
+        r.timeWatchedMinutes ??
+        ((r.time_watched_seconds ?? r.timeWatchedSeconds) != null
+          ? (Number(r.time_watched_seconds ?? r.timeWatchedSeconds) / 60)
+          : 0)
+      ) || 0;
+      const duration = (r.video_duration_min ?? r.videoDurationMinutes) != null
+        ? Number(r.video_duration_min ?? r.videoDurationMinutes)
+        : ((r.video_duration_seconds ?? r.videoDurationSeconds) != null
+          ? (Number(r.video_duration_seconds ?? r.videoDurationSeconds) / 60)
+          : null);
       const moduleIdx = r.module_index ?? r.moduleIndex ?? null;
       return {
         courseId,

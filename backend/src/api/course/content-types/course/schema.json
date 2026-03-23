@@ -4,7 +4,8 @@
   "info": {
     "singularName": "course",
     "pluralName": "courses",
-    "displayName": "Courses"
+    "displayName": "Courses",
+    "mainField": "title"
   },
   "options": {
     "draftAndPublish": true
