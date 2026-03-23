@@ -129,22 +129,7 @@ module.exports = createCoreController("api::feedback-submission.feedback-submiss
           answer: String(value ?? ''),
         }));
 
-        console.log('answer length', answers.length);
-
     if (!answers.length) return ctx.badRequest("At least one answer required");
-
-    // ADDED: fetch course title so we can store it on feedback-submission
-    let courseTitle = null;
-    try {
-      const courseEntity = await strapi.entityService.findOne(
-        "api::course.course",
-        Number(courseId),
-        { fields: ["title"] }
-      );
-      courseTitle = courseEntity?.title || null;
-    } catch (err) {
-      strapi.log.warn('Could not fetch course title for feedback-submission:', err);
-    }
 
     let entry;
     try {
@@ -155,7 +140,6 @@ module.exports = createCoreController("api::feedback-submission.feedback-submiss
           data: /** @type {any} */ ({
             answers,
             course: Number(courseId),
-            course_name: courseTitle,
             users_permissions_user: Number(userId),
             publishedAt: new Date(),
           }),
@@ -166,48 +150,37 @@ module.exports = createCoreController("api::feedback-submission.feedback-submiss
       return ctx.internalServerError('Failed to create feedback submission: ' + err.message);
     }
 
-    // Fetch the entry with course relation populated
-    let populatedEntry = null;
-    try {
-      populatedEntry = await strapi.entityService.findOne(
-        "api::feedback-submission.feedback-submission",
-        entry.id,
-        { populate: { course: true } }
-      );
-    } catch (err) {
-      strapi.log.warn('Could not populate course relation for feedback-submission:', err);
-      populatedEntry = entry;
-    }
-
-    try {
-      await strapi
-        .controller("api::user-progress.user-progress")
-        .finalizeCourse(courseId, userId, entry?.id);
-    } catch (err) {
-      strapi.log.error('Finalize course error:', err);
-    }
-
-    try {
-      const meta = { courseId, userId };
-      const notifUtil = strapi.utils?.notification;
-      if (notifUtil) {
-        await notifUtil.sendNotification(
-          'feedback_submitted',
-          'Course Feedback Submitted',
-          'A user submitted course feedback.',
-          [],
-          meta,
-          ['admin', 'LMadmin'],
-          { sendEmail: true, sendSocket: true }
-        );
+    setImmediate(async () => {
+      try {
+        await strapi
+          .controller("api::user-progress.user-progress")
+          .finalizeCourse(courseId, userId, entry?.id);
+      } catch (err) {
+        strapi.log.error('Finalize course error:', err);
       }
-    } catch (err) {
-      strapi.log.error('Notification error:', err);
-    }
+
+      try {
+        const meta = { courseId, userId };
+        const notifUtil = strapi.utils?.notification;
+        if (notifUtil) {
+          await notifUtil.sendNotification(
+            'feedback_submitted',
+            'Course Feedback Submitted',
+            'A user submitted course feedback.',
+            [],
+            meta,
+            ['admin', 'LMadmin'],
+            { sendEmail: true, sendSocket: true }
+          );
+        }
+      } catch (err) {
+        strapi.log.error('Notification error:', err);
+      }
+    });
 
     return ctx.send({
       message: "Feedback submitted successfully & course completed",
-      submission: populatedEntry,
+      submission: entry,
     });
   },
 
