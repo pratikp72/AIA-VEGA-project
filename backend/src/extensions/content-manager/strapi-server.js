@@ -10,6 +10,62 @@ const USER_UID = 'plugin::users-permissions.user';
 const COMPANY_UID = 'api::company.company';
 const EVENT_UID = 'api::event.event';
 const HOLIDAY_UID = 'api::holiday.holiday';
+const MODULE_VIDEO_PROGRESS_UID = 'api::module-video-progress.module-video-progress';
+const QUIZ_SUBMISSION_UID = 'api::quiz-submission.quiz-submission';
+const FEEDBACK_SUBMISSION_UID = 'api::feedback-submission.feedback-submission';
+const QUIZ_REATTEMPT_REQUEST_UID = 'api::quiz-reattempt-request.quiz-reattempt-request';
+const USER_PROGRESS_UID = 'api::user-progress.user-progress';
+
+const CM_RELATION_HYDRATION_UIDS = new Set([
+  MODULE_VIDEO_PROGRESS_UID,
+  QUIZ_SUBMISSION_UID,
+  FEEDBACK_SUBMISSION_UID,
+  QUIZ_REATTEMPT_REQUEST_UID,
+  USER_PROGRESS_UID,
+]);
+
+const CM_RELATION_HYDRATE_CONFIG = {
+  [MODULE_VIDEO_PROGRESS_UID]: {
+    courseKey: 'course',
+    userKey: 'user',
+    populate: {
+      course: { select: ['id', 'documentId', 'title', 'publishedAt'] },
+      user: { select: ['id', 'documentId', 'username', 'email'] },
+    },
+  },
+  [QUIZ_SUBMISSION_UID]: {
+    courseKey: 'course',
+    userKey: 'submitted_by',
+    populate: {
+      course: { select: ['id', 'documentId', 'title', 'publishedAt'] },
+      submitted_by: { select: ['id', 'documentId', 'username', 'email'] },
+    },
+  },
+  [FEEDBACK_SUBMISSION_UID]: {
+    courseKey: 'course',
+    userKey: 'users_permissions_user',
+    populate: {
+      course: { select: ['id', 'documentId', 'title', 'publishedAt'] },
+      users_permissions_user: { select: ['id', 'documentId', 'username', 'email'] },
+    },
+  },
+  [QUIZ_REATTEMPT_REQUEST_UID]: {
+    courseKey: 'course',
+    userKey: 'users_permissions_user',
+    populate: {
+      course: { select: ['id', 'documentId', 'title', 'publishedAt'] },
+      users_permissions_user: { select: ['id', 'documentId', 'username', 'email'] },
+    },
+  },
+  [USER_PROGRESS_UID]: {
+    courseKey: 'course',
+    userKey: 'user',
+    populate: {
+      course: { select: ['id', 'documentId', 'title', 'publishedAt'] },
+      user: { select: ['id', 'documentId', 'username', 'email'] },
+    },
+  },
+};
 
 function mergeWithAnd(existing, filter) {
   if (!existing || Object.keys(existing).length === 0) return filter;
@@ -120,6 +176,63 @@ function mergeFilterIfPresent(baseFilter, nextFilter) {
   if (!nextFilter || typeof nextFilter !== 'object') return baseFilter;
   if (!baseFilter || typeof baseFilter !== 'object') return nextFilter;
   return mergeWithAnd(baseFilter, nextFilter);
+}
+
+async function hydrateRelationsForEntry(strapi, uid, entry) {
+  if (!entry || typeof entry !== 'object') return entry;
+
+  const config = CM_RELATION_HYDRATE_CONFIG[uid];
+  if (!config) return entry;
+
+  const hasCourse = !!entry?.[config.courseKey];
+  const hasUser = !!entry?.[config.userKey];
+  if (hasCourse && hasUser) return entry;
+
+  const where = Number.isFinite(Number(entry?.id))
+    ? { id: Number(entry.id) }
+    : entry?.documentId
+      ? { documentId: String(entry.documentId) }
+      : null;
+
+  if (!where) return entry;
+
+  const hydrated = await strapi.db.query(uid).findOne({
+    where,
+    populate: config.populate,
+  });
+
+  if (!hydrated) return entry;
+
+  return {
+    ...entry,
+    ...(entry?.[config.courseKey] ? {} : { [config.courseKey]: hydrated?.[config.courseKey] || null }),
+    ...(entry?.[config.userKey] ? {} : { [config.userKey]: hydrated?.[config.userKey] || null }),
+  };
+}
+
+async function hydrateRelationsInCmBody(strapi, uid, body) {
+  if (!CM_RELATION_HYDRATION_UIDS.has(uid) || !body || typeof body !== 'object') return body;
+
+  if (Array.isArray(body.results)) {
+    body.results = await Promise.all(body.results.map((entry) => hydrateRelationsForEntry(strapi, uid, entry)));
+    return body;
+  }
+
+  if (Array.isArray(body.data)) {
+    body.data = await Promise.all(body.data.map((entry) => hydrateRelationsForEntry(strapi, uid, entry)));
+    return body;
+  }
+
+  if (body.data && typeof body.data === 'object' && !Array.isArray(body.data)) {
+    body.data = await hydrateRelationsForEntry(strapi, uid, body.data);
+    return body;
+  }
+
+  if (body.results == null && body.data == null) {
+    return hydrateRelationsForEntry(strapi, uid, body);
+  }
+
+  return body;
 }
 
 async function getCompanyNamesFromRawId(strapi, rawCompanyId) {
@@ -264,6 +377,26 @@ module.exports = (plugin) => {
 
   const relationsController = plugin.controllers.relations;
   const defaultFindAvailable = relationsController.findAvailable.bind(relationsController);
+
+  const collectionTypesController = plugin.controllers['collection-types'];
+  const defaultCollectionFind = collectionTypesController?.find?.bind(collectionTypesController);
+  const defaultCollectionFindOne = collectionTypesController?.findOne?.bind(collectionTypesController);
+
+  if (defaultCollectionFind) {
+    collectionTypesController.find = async function find(ctx) {
+      await defaultCollectionFind(ctx);
+      const modelUid = ctx.params?.model;
+      await hydrateRelationsInCmBody(strapi, modelUid, ctx.body);
+    };
+  }
+
+  if (defaultCollectionFindOne) {
+    collectionTypesController.findOne = async function findOne(ctx) {
+      await defaultCollectionFindOne(ctx);
+      const modelUid = ctx.params?.model;
+      await hydrateRelationsInCmBody(strapi, modelUid, ctx.body);
+    };
+  }
 
   async function findAvailableFallback(ctx, targetUid, extraFilter = null) {
     const { _q = '', pageSize = 10, _limit, page = 1, _page } = ctx.request?.query ?? {};
