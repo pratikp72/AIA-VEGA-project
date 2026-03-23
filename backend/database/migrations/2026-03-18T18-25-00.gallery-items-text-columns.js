@@ -8,19 +8,21 @@
 
 module.exports = {
   async up(knex) {
-    const q = (sql) => knex.raw(sql);
+    const exists = await knex.schema.withSchema('public').hasTable('gallery_items');
+    if (!exists) return;
 
+    const q = (sql) => knex.raw(sql);
     await q('ALTER TABLE "public"."gallery_items" ALTER COLUMN "description" TYPE text');
     await q('ALTER TABLE "public"."gallery_items" ALTER COLUMN "location" TYPE text');
   },
 
   async down(knex) {
-    const q = (sql) => knex.raw(sql);
+    const exists = await knex.schema.withSchema('public').hasTable('gallery_items');
+    if (!exists) return;
 
-    // Truncate to fit varchar(255) if rollback is needed.
+    const q = (sql) => knex.raw(sql);
     await q('UPDATE "public"."gallery_items" SET "description" = LEFT(COALESCE("description", \'\'), 255)');
     await q('UPDATE "public"."gallery_items" SET "location" = LEFT(COALESCE("location", \'\'), 255)');
-
     await q('ALTER TABLE "public"."gallery_items" ALTER COLUMN "description" TYPE varchar(255)');
     await q('ALTER TABLE "public"."gallery_items" ALTER COLUMN "location" TYPE varchar(255)');
   },
