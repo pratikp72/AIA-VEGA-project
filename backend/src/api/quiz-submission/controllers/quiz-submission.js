@@ -16,9 +16,8 @@ const { createCoreController } = require("@strapi/strapi").factories;
  * @param {any[]} answers
  * @returns {Promise<number>}
  */
-async function calculateScore(strapi, courseId, answers) {
-      // 1. Fetch quiz questions from course
-      const course = await strapi.db.query("api::course.course").findOne({
+async function calculateScore(strapi, courseId, answers, preloadedCourse = null) {
+      const course = preloadedCourse || await strapi.db.query("api::course.course").findOne({
         where: { id: courseId },
         populate: {
           quiz: {
@@ -259,8 +258,6 @@ module.exports = createCoreController(
           ? submissionTypeRaw
           : 'Manual Submit';
 
-        console.log("[quiz submit] received body → userId:", userId, "courseId:", courseId, "type:", typeof courseId);
-
         if (!userId || !courseId) {
           return ctx.badRequest("userId and courseId required");
         }
@@ -269,17 +266,41 @@ module.exports = createCoreController(
         // 0. If admin rejected a reattempt within the last 24h → block assessment (after 24h user can request again)
         // ------------------------------------------------------
         const REJECTION_COOLDOWN_MS = 24 * 60 * 60 * 1000;
-        const rejectedList = await strapi.db
-          .query("api::quiz-reattempt-request.quiz-reattempt-request")
-          .findMany({
-            where: {
-              course: Number(courseId),
-              users_permissions_user: Number(userId),
-              request_status: "Rejected",
+        const [course, rejectedList, lastSubmission] = await Promise.all([
+          strapi.db.query("api::course.course").findOne({
+            where: { id: Number(courseId) },
+            populate: {
+              quiz: {
+                populate: {
+                  quiz_questions: {
+                    populate: {
+                      correct_multiSelect_answers: true,
+                      options: true,
+                    },
+                  },
+                },
+              },
             },
-            orderBy: { updatedAt: "desc" },
-            limit: 1,
-          });
+          }),
+          strapi.db
+            .query("api::quiz-reattempt-request.quiz-reattempt-request")
+            .findMany({
+              where: {
+                course: Number(courseId),
+                users_permissions_user: Number(userId),
+                request_status: "Rejected",
+              },
+              orderBy: { updatedAt: "desc" },
+              limit: 1,
+            }),
+          strapi.db
+            .query("api::quiz-submission.quiz-submission")
+            .findOne({
+              where: { submitted_by: userId, course: courseId },
+              orderBy: { attempt_number: "desc" }
+            }),
+        ]);
+
         const latestRejected = Array.isArray(rejectedList) && rejectedList.length > 0 ? rejectedList[0] : null;
         if (latestRejected && latestRejected.updatedAt) {
           const rejectedAt = new Date(latestRejected.updatedAt).getTime();
@@ -293,13 +314,6 @@ module.exports = createCoreController(
         // ------------------------------------------------------
         // 1. Fetch course (for passing score + attempt limit)
         // ------------------------------------------------------
-        const course = await strapi.db.query("api::course.course").findOne({
-          where: { id: Number(courseId) },
-          populate: { quiz: true }
-        });
-
-        console.log("[quiz submit] findOne result:", course ? `found id=${course.id}` : "NOT FOUND");
-
         if (!course) return ctx.badRequest(`Invalid course (id=${courseId})`);
 
         const minPassingScoreRaw = Number(course.min_passing_score);
@@ -307,23 +321,13 @@ module.exports = createCoreController(
         // quiz is a repeatable component → array
         const maxAttempt = course.quiz?.[0]?.max_attempt ?? 1;
 
-        // ------------------------------------------------------
-        // 2. Fetch user's last submission
-        // ------------------------------------------------------
-        const lastSubmission = await strapi.db
-          .query("api::quiz-submission.quiz-submission")
-          .findOne({
-            where: { submitted_by: userId, course: courseId },
-            orderBy: { attempt_number: "desc" }
-          });
-
         const lastAttempt = lastSubmission?.attempt_number || 0;
         const nextAttempt = lastAttempt + 1;
 
         // ------------------------------------------------------
         // 3. Calculate score securely (backend only)
         // ------------------------------------------------------
-        const scoreRaw = await calculateScore(strapi, courseId, answers);
+        const scoreRaw = await calculateScore(strapi, courseId, answers, course);
         const score = Number.isFinite(Number(scoreRaw)) ? Number(scoreRaw) : 0;
         const passed = score >= minPassingScore;
 
@@ -392,53 +396,68 @@ module.exports = createCoreController(
           }
         );
   
-        // ------------------------------------------------------
-        // 7. Update user progress
-        // ------------------------------------------------------
-        /** @type {any} */
-      const userProgressController = strapi.controller(
-        "api::user-progress.user-progress"
-      );
-
-      await userProgressController.updateAfterQuiz(courseId, userId, passed);
-
-        // ------------------------------------------------------
-        // 8. Notification + email: Admin and LM Admin
-        // ------------------------------------------------------
-        /** @type {any} */
-        const strapiAny = strapi;
-        const notifUtil = strapiAny?.utils?.notification;
-        if (notifUtil) {
-          // Resolve names for descriptive admin email
-          let courseTitle = null;
-          let userName = null;
-          try {
-            const [courseRow, userRow] = await Promise.all([
-              strapi.db.query('api::course.course').findOne({ where: { id: Number(courseId) }, select: ['title'] }),
-              strapi.db.query('plugin::users-permissions.user').findOne({ where: { id: Number(userId) }, select: ['username', 'email'] }),
-            ]);
-            courseTitle = courseRow?.title || null;
-            userName = userRow?.username || userRow?.email || null;
-          } catch { /* keep null */ }
-
-          const meta = { courseId, userId, score, passed, courseTitle, userName };
-          await notifUtil.sendNotification(
-            'quiz_submitted',
-            'Quiz Submitted',
-            `${userName || `User #${userId}`} has submitted the quiz${courseTitle ? ` for "${courseTitle}"` : ''}. Score: ${score}% — ${passed ? 'PASSED ✓' : 'FAILED ✗'}. Please review the result in the admin panel.`,
-            [],
-            meta,
-            ['admin', 'LMadmin'],
-            { sendEmail: true, sendSocket: true }
-          );
-        }
-
         // When user failed and this attempt used all allowed attempts → show re-attempt (e.g. max_attempt=1, failed 1st time)
         const reattemptRequired = !passed && nextAttempt >= maxAttempt;
+
+        let hasPendingReattempt = false;
+        if (reattemptRequired) {
+          const pendingRequest = await strapi.db
+            .query("api::quiz-reattempt-request.quiz-reattempt-request")
+            .findOne({
+              where: {
+                course: Number(courseId),
+                users_permissions_user: Number(userId),
+                request_status: "Pending",
+              },
+            });
+          hasPendingReattempt = Boolean(pendingRequest);
+        }
+
+        // Non-blocking post-submit tasks to keep API latency low under load.
+        setImmediate(async () => {
+          try {
+            /** @type {any} */
+            const userProgressController = strapi.controller("api::user-progress.user-progress");
+            await userProgressController.updateAfterQuiz(courseId, userId, passed);
+          } catch (err) {
+            strapi.log.error("updateAfterQuiz error:", err);
+          }
+
+          try {
+            /** @type {any} */
+            const strapiAny = strapi;
+            const notifUtil = strapiAny?.utils?.notification;
+            if (!notifUtil) return;
+
+            let userName = null;
+            try {
+              const userRow = await strapi.db
+                .query("plugin::users-permissions.user")
+                .findOne({ where: { id: Number(userId) }, select: ["username", "email"] });
+              userName = userRow?.username || userRow?.email || null;
+            } catch {}
+
+            const courseTitle = course?.title || null;
+            const meta = { courseId, userId, score, passed, courseTitle, userName };
+            await notifUtil.sendNotification(
+              "quiz_submitted",
+              "Quiz Submitted",
+              `${userName || `User #${userId}`} has submitted the quiz${courseTitle ? ` for \"${courseTitle}\"` : ""}. Score: ${score}% - ${passed ? "PASSED" : "FAILED"}. Please review the result in the admin panel.`,
+              [],
+              meta,
+              ["admin", "LMadmin"],
+              { sendEmail: true, sendSocket: true }
+            );
+          } catch (err) {
+            strapi.log.error("quiz notification error:", err);
+          }
+        });
 
       return ctx.send({
         message: "Quiz submitted successfully",
         submission: entry,
+        maxAttempt,
+        has_pending_reattempt: hasPendingReattempt,
         ...(reattemptRequired && { reattempt_required: true }),
       });
 
