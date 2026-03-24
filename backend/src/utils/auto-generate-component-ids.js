@@ -11,8 +11,8 @@ const COMPONENT_ID_CONFIG = {
   'quiz.quiz': { idKey: 'quiz_id', prefix: 'quiz' },
   'quiz.question': { idKey: 'question_id', prefix: 'q' },
   'feedback-form.question': { idKey: 'question_id', prefix: 'fb' },
-  'routes.bus-route': { idKey: 'unit_id', prefix: 'unit' },
-  'routes.bus-stop': { idKey: 'route_id', prefix: 'stop' },
+  'routes.bus-route': { idKey: 'route_id', prefix: 'route' },
+  'routes.bus-stop': { idKey: 'stop_id', prefix: 'stop' },
 };
 
 function generateId(prefix) {

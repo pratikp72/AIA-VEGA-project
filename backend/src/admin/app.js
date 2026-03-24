@@ -229,7 +229,7 @@ export default {
         name: 'CourseLanguageSyncOnSelect',
         Component: CourseLanguageSyncOnSelect,
       });
-      // Fill component id fields (module_id, quiz_id, question_id, route_id, bus_stop_id) before save
+      // Fill component id fields (module_id, quiz_id, question_id, route_id, stop_id) before save
       contentManager.injectComponent('editView', 'right-links', {
         name: 'AutoFillComponentIds',
         Component: AutoFillComponentIds,
