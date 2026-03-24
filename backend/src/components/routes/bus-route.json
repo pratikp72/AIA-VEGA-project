@@ -5,26 +5,26 @@
   },
   "options": {},
   "attributes": {
-    "unit_id": {
+    "route_id": {
       "type": "string",
       "required": true,
       "unique": true
     },
-    "unit_name": {
+    "route_name": {
       "type": "string",
       "maxLength": 100,
       "required": true
     },
-    "routes": {
+    "bus_stops": {
       "type": "component",
       "component": "routes.bus-stop",
       "repeatable": true
     },
-    "map_link": {
+    "route_map_link": {
       "type": "string",
-      "required": true
+      "required": false
     },
-    "unit_img": {
+    "route_img": {
       "type": "media",
       "multiple": false,
       "required": true,
