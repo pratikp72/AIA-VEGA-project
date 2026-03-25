@@ -20,6 +20,7 @@ import { PLUGIN_ID } from './pluginId';
 // Icon components must be React components (NOT strings).
 // Use an available icon from @strapi/icons (Refresh may not exist in all versions)
 import { PuzzlePiece, Question, Bell } from '@strapi/icons';
+import BellWithBadge from './components/BellWithBadge.jsx';
 
 const name = pluginPkg.strapi.name;
 
@@ -1255,7 +1256,7 @@ if (typeof window !== 'undefined') {
         const isInMainContent = el.closest('[class*="Layouts-Root"] > *:not(:first-child)');
         const isInAllModules = el.closest('[class*="AllModules"]') || 
                                el.closest('[data-modules-sidebar]') ||
-                               window.location.pathname.includes('/plugins/modules-sidebar');
+                               window.location.pathname.includes('/plugins/modules-sidebar/all-modules');
         
         if ((isMainCMLink || isHomeLink || isDeployLink || isSettingsLink) && (isInLeftSidebar || isInMobileMenu) && !isInMainContent && !isInAllModules) {
           // Hide for HR/LM Admin - be very aggressive
@@ -1342,14 +1343,14 @@ if (typeof window !== 'undefined') {
             const headerActions = referenceElement.parentElement || header;
             
             // Find or create "All Modules" link in header
-            let allModulesLink = header.querySelector('a[href*="plugins/modules-sidebar"]') ||
-                                header.querySelector('a[href*="modules-sidebar"]');
+            let allModulesLink = header.querySelector('a[href*="plugins/modules-sidebar/all-modules"]') ||
+                                header.querySelector('a[href*="/modules-sidebar/all-modules"]');
             
             if (!allModulesLink) {
               // Find "All Modules" link in sidebar
-              const sidebarAllModules = document.querySelector('nav a[href*="plugins/modules-sidebar"]') ||
-                                       document.querySelector('aside a[href*="plugins/modules-sidebar"]') ||
-                                       document.querySelector('a[href*="plugins/modules-sidebar"]');
+              const sidebarAllModules = document.querySelector('nav a[href*="plugins/modules-sidebar/all-modules"]') ||
+                                       document.querySelector('aside a[href*="plugins/modules-sidebar/all-modules"]') ||
+                                       document.querySelector('a[href*="plugins/modules-sidebar/all-modules"]');
               if (sidebarAllModules) {
                 // Clone the link
                 allModulesLink = sidebarAllModules.cloneNode(true);
@@ -2479,7 +2480,7 @@ if (typeof window !== 'undefined') {
       
       // If HR/LM/Admin on home page, redirect to All Modules
       if (isHRorLMorAdmin) {
-        const allModulesPath = '/admin/plugins/modules-sidebar';
+        const allModulesPath = '/admin/plugins/modules-sidebar/all-modules';
         if (window.location.pathname !== allModulesPath) {
           if (process.env.NODE_ENV === 'development') {
             console.log('[CM Hide] Redirecting HR/LM/Admin from home page to All Modules');
@@ -2997,7 +2998,7 @@ export default {
     app.addMenuLink({
       // IMPORTANT: Strapi expects a relative path like `plugins/<pluginId>` (no leading slash)
       // See @strapi/plugin-cloud implementation in node_modules.
-      to: `plugins/${PLUGIN_ID}`,
+      to: `plugins/${PLUGIN_ID}/all-modules`,
       icon: PuzzlePiece,
       intlLabel: {
         id: `${PLUGIN_ID}.menu.all-modules`,
@@ -3020,7 +3021,7 @@ export default {
 
     app.addMenuLink({
       to: `plugins/${PLUGIN_ID}/notifications`,
-      icon: Bell,
+      icon: BellWithBadge,
       intlLabel: {
         id: `${PLUGIN_ID}.menu.my-notifications`,
         defaultMessage: 'My Notifications',

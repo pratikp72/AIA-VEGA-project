@@ -381,19 +381,11 @@ module.exports = createCoreController(
         const passed = score >= minPassingScore;
 
         // ------------------------------------------------------
-        // 4. If FAILED + would exceed max_attempt → block (do not save)
-        // Show re-attempt when current attempt === max_attempt, not only when trying attempt > max.
-        // So block when they already used all attempts and are trying to submit again.
-        // ------------------------------------------------------
-        if (!passed && nextAttempt > maxAttempt) {
-          return ctx.send({
-            message: `Max attempts reached (${maxAttempt}). Request reattempt.`,
-            reattempt_required: true
-          });
-        }
-
-        // ------------------------------------------------------
-        // 5. If admin approved reattempt → allow + mark as used
+        // 4+5. Check for admin-approved reattempt FIRST, then enforce max_attempt.
+        // The approved check MUST come before the max_attempt block, otherwise the
+        // early return would prevent the approved request from ever being used,
+        // keeping lastSubmission.attempt_number frozen and causing
+        // requested_for_attempt to repeat the same value on every new request.
         // ------------------------------------------------------
         const approvedRequest = await strapi.db
           .query("api::quiz-reattempt-request.quiz-reattempt-request")
@@ -406,12 +398,19 @@ module.exports = createCoreController(
           });
 
         if (approvedRequest) {
+          // Mark approved request as used so the slot is consumed
           await strapi.db
             .query("api::quiz-reattempt-request.quiz-reattempt-request")
             .update({
               where: { id: approvedRequest.id },
               data: { request_status: "Used" }
             });
+        } else if (!passed && nextAttempt > maxAttempt) {
+          // No approved reattempt exists — block the submission
+          return ctx.send({
+            message: `Max attempts reached (${maxAttempt}). Request reattempt.`,
+            reattempt_required: true
+          });
         }
 
         // ------------------------------------------------------

@@ -238,6 +238,61 @@ module.exports = {
         },
         config: { auth: false, policies: [] },
       },
+      {
+        method: 'GET',
+        path: '/modules-sidebar/admin-notifications/count',
+        handler: async (ctx) => {
+          try {
+            let adminUser = ctx.state?.user || ctx.state?.admin;
+            if (!adminUser) {
+              adminUser = await getAdminUserFromToken(ctx, strapi);
+              if (adminUser) ctx.state.admin = adminUser;
+            }
+            if (!adminUser) return ctx.unauthorized('Authentication required');
+
+            // `since` is an ISO timestamp from the client's localStorage (last visit time).
+            // Count only notifications for this admin created after that timestamp.
+            const since = ctx.query?.since ? new Date(ctx.query.since) : null;
+            const where = { admin_user: adminUser.id };
+            if (since && !isNaN(since.getTime())) {
+              where.createdAt = { $gt: since };
+            }
+
+            const count = await strapi.db.query('api::notification.notification').count({ where });
+
+            ctx.body = { count: count || 0 };
+          } catch (error) {
+            strapi.log.error('modules-sidebar admin-notifications/count error:', error);
+            ctx.throw(500, error.message);
+          }
+        },
+        config: { auth: false, policies: [] },
+      },
+      {
+        method: 'POST',
+        path: '/modules-sidebar/admin-notifications/mark-all-read',
+        handler: async (ctx) => {
+          try {
+            let adminUser = ctx.state?.user || ctx.state?.admin;
+            if (!adminUser) {
+              adminUser = await getAdminUserFromToken(ctx, strapi);
+              if (adminUser) ctx.state.admin = adminUser;
+            }
+            if (!adminUser) return ctx.unauthorized('Authentication required');
+
+            await strapi.db.query('api::notification.notification').updateMany({
+              where: { admin_user: adminUser.id, is_read: false },
+              data: { is_read: true },
+            });
+
+            ctx.body = { success: true };
+          } catch (error) {
+            strapi.log.error('modules-sidebar admin-notifications/mark-all-read error:', error);
+            ctx.throw(500, error.message);
+          }
+        },
+        config: { auth: false, policies: [] },
+      },
     ]);
   },
 };

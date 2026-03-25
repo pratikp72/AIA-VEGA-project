@@ -39,7 +39,8 @@ module.exports = createCoreController(
         return ctx.badRequest("userId and courseId required");
       }
 
-      // Check if pending request already exists
+      // Block duplicate in-flight requests only (Pending).
+      // Approved entries can coexist so admins may pre-approve upcoming retries.
       const existing = await strapi.db
         .query("api::quiz-reattempt-request.quiz-reattempt-request")
         .findOne({
@@ -95,7 +96,7 @@ module.exports = createCoreController(
       }
 
       // Notification + email: Admin and LM Admin (run in background so response returns quickly)
-      const notifUtil = strapi.utils?.notification;
+      const notifUtil = /** @type {any} */ (strapi).utils?.notification;
       if (notifUtil) {
         // Resolve names for descriptive admin email
         let courseTitle = null;
