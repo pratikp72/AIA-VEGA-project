@@ -45,7 +45,7 @@ if (typeof window !== 'undefined') {
         
         // STEP 1: Check Redux FIRST (most up-to-date, especially after login)
         try {
-          const state = window.strapi?.store?.getState?.() || {};
+          const state = window.strapi && window.strapi.store && typeof window.strapi.store.getState === 'function' ? window.strapi.store.getState() : {};
           const adminUser = state?.admin_app?.user;
           const authUser = state?.auth?.user || state?.auth?.userInfo;
           const reduxRoles = adminUser?.roles || authUser?.roles || [];
@@ -155,11 +155,7 @@ if (typeof window !== 'undefined') {
       body[data-hide-cm-sidebar="true"] [class*="Sidebar"] a[href="/admin/content-manager"],
       body[data-hide-cm-sidebar="true"] [class*="Sidebar"] a[href="/content-manager"],
       /* Hide Home link for HR/LM Admin */
-      body[data-hide-cm-sidebar="true"] nav a[href="/admin"],
-      body[data-hide-cm-sidebar="true"] nav a[href="/admin/home"],
-      body[data-hide-cm-sidebar="true"] nav a[href^="/admin"][href$="/admin"],
-      body[data-hide-cm-sidebar="true"] aside a[href="/admin"],
-      body[data-hide-cm-sidebar="true"] aside a[href="/admin/home"],
+      /* Home icon is now always visible for all roles */
       /* Hide Deploy/Cloud link for HR/LM Admin */
       body[data-hide-cm-sidebar="true"] nav a[href*="/plugins/cloud"],
       body[data-hide-cm-sidebar="true"] nav a[href*="/admin/plugins/cloud"],
@@ -223,27 +219,23 @@ if (typeof window !== 'undefined') {
       /* Hide in mobile/hamburger menu (dropdown, popover, etc.) */
       body[data-hide-cm-sidebar="true"] [role="menu"] a[href="/admin/content-manager"],
       body[data-hide-cm-sidebar="true"] [role="menu"] a[href="/content-manager"],
-      body[data-hide-cm-sidebar="true"] [role="menu"] a[href="/admin"],
-      body[data-hide-cm-sidebar="true"] [role="menu"] a[href="/admin/home"],
+      /* Home icon is now always visible for all roles in menu */
       body[data-hide-cm-sidebar="true"] [role="menu"] a[href*="/plugins/cloud"],
       body[data-hide-cm-sidebar="true"] [role="menu"] a[href*="/deploy"],
       body[data-hide-cm-sidebar="true"] [role="menuitem"] a[href="/admin/content-manager"],
       body[data-hide-cm-sidebar="true"] [role="menuitem"] a[href="/content-manager"],
-      body[data-hide-cm-sidebar="true"] [role="menuitem"] a[href="/admin"],
-      body[data-hide-cm-sidebar="true"] [role="menuitem"] a[href="/admin/home"],
+      /* Home icon is now always visible for all roles in menuitem */
       body[data-hide-cm-sidebar="true"] [role="menuitem"] a[href*="/plugins/cloud"],
       body[data-hide-cm-sidebar="true"] [role="menuitem"] a[href*="/deploy"],
       body[data-hide-cm-sidebar="true"] [class*="Popover"] a[href="/admin/content-manager"],
       body[data-hide-cm-sidebar="true"] [class*="Popover"] a[href="/content-manager"],
-      body[data-hide-cm-sidebar="true"] [class*="Popover"] a[href="/admin"],
-      body[data-hide-cm-sidebar="true"] [class*="Popover"] a[href="/admin/home"],
+      /* Home icon is now always visible for all roles in popover */
       body[data-hide-cm-sidebar="true"] [class*="Popover"] a[href*="/plugins/cloud"],
       body[data-hide-cm-sidebar="true"] [class*="Popover"] a[href*="/deploy"],
       body[data-hide-cm-sidebar="true"] [class*="Popover"] a[href*="/settings"],
       body[data-hide-cm-sidebar="true"] [class*="Dropdown"] a[href="/admin/content-manager"],
       body[data-hide-cm-sidebar="true"] [class*="Dropdown"] a[href="/content-manager"],
-      body[data-hide-cm-sidebar="true"] [class*="Dropdown"] a[href="/admin"],
-      body[data-hide-cm-sidebar="true"] [class*="Dropdown"] a[href="/admin/home"],
+      /* Home icon is now always visible for all roles in dropdown */
       body[data-hide-cm-sidebar="true"] [class*="Dropdown"] a[href*="/plugins/cloud"],
       body[data-hide-cm-sidebar="true"] [class*="Dropdown"] a[href*="/deploy"],
       body[data-hide-cm-sidebar="true"] [class*="Dropdown"] a[href*="/settings"],
@@ -379,7 +371,7 @@ if (typeof window !== 'undefined') {
             try {
               sessionStorage.setItem('__modules_sidebar_roles__', JSON.stringify(reduxRoles));
               sessionStorage.setItem('__is_super_admin__', isSuper ? 'true' : 'false');
-              window.__MODULES_SIDEBAR_ROLES__ = reduxRoles;
+              window['__MODULES_SIDEBAR_ROLES__'] = reduxRoles;
             } catch (e) {}
             
             return; // Don't clear cache - we have roles
@@ -395,10 +387,10 @@ if (typeof window !== 'undefined') {
         cachedRoles = null;
         roleFlagsCache = null;
         rolesFetchPromise = null;
-        delete window.__MODULES_SIDEBAR_ROLES__;
-        delete window.__lastRoleLogKey;
-        delete window.__lastShouldHide;
-        delete window.__lastSidebarLogKey;
+        delete window['__MODULES_SIDEBAR_ROLES__'];
+        delete window['__lastRoleLogKey'];
+        delete window['__lastShouldHide'];
+        delete window['__lastSidebarLogKey'];
         try {
           sessionStorage.removeItem('__modules_sidebar_roles__');
         } catch (e) {
@@ -480,8 +472,8 @@ if (typeof window !== 'undefined') {
   const getRolesFromWindow = () => {
     try {
       // Check if AllModules page has set roles in window
-      if (window.__MODULES_SIDEBAR_ROLES__) {
-        return window.__MODULES_SIDEBAR_ROLES__;
+      if (window['__MODULES_SIDEBAR_ROLES__']) {
+        return window['__MODULES_SIDEBAR_ROLES__'];
       }
       // Check if roles are in sessionStorage (set by AllModules)
       const stored = sessionStorage.getItem('__modules_sidebar_roles__');
@@ -504,7 +496,7 @@ if (typeof window !== 'undefined') {
     if (isInitialLoad) {
       // Check Redux store immediately - roles might already be there after login
       try {
-        const state = window.strapi?.store?.getState?.() || {};
+        const state = window.strapi && window.strapi.store && typeof window.strapi.store.getState === 'function' ? window.strapi.store.getState() : {};
         const adminUser = state?.admin_app?.user;
         const authUser = state?.auth?.user || state?.auth?.userInfo;
         const reduxRoles = adminUser?.roles || authUser?.roles || [];
@@ -517,7 +509,7 @@ if (typeof window !== 'undefined') {
           // Cache immediately
           try {
             sessionStorage.setItem('__modules_sidebar_roles__', JSON.stringify(reduxRoles));
-            window.__MODULES_SIDEBAR_ROLES__ = reduxRoles;
+            window['__MODULES_SIDEBAR_ROLES__'] = reduxRoles;
             
             // Check if Super Admin and set body flag immediately
             const isSuper = reduxRoles.some(r => {
@@ -572,7 +564,7 @@ if (typeof window !== 'undefined') {
       }
       
       // Clear any stale window/sessionStorage roles on initial load (only if Redux didn't have roles)
-      delete window.__MODULES_SIDEBAR_ROLES__;
+      delete window['__MODULES_SIDEBAR_ROLES__'];
       try {
         sessionStorage.removeItem('__modules_sidebar_roles__');
       } catch (e) {
@@ -582,7 +574,7 @@ if (typeof window !== 'undefined') {
     } else {
       // Not initial load - check if we have valid cached roles
       // But verify they match the current user by checking token/user ID
-      const state = window.strapi?.store?.getState?.() || {};
+      const state = window.strapi && window.strapi.store && typeof window.strapi.store.getState === 'function' ? window.strapi.store.getState() : {};
       const currentToken = state?.admin_app?.token;
       const currentUserId = state?.admin_app?.user?.id || state?.auth?.user?.id || null;
       
@@ -620,16 +612,16 @@ if (typeof window !== 'undefined') {
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
         const state =
-          window.strapi?.store?.getState?.() ||
-          window?.__STRAPI_ADMIN_STATE__ ||
+          (window.strapi && window.strapi.store && typeof window.strapi.store.getState === 'function' ? window.strapi.store.getState() : {}) ||
+          window['__STRAPI_ADMIN_STATE__'] ||
           {};
         const adminUser = state?.admin_app?.user;
         const authUser = state?.auth?.user || state?.auth?.userInfo;
         const reduxRoles = 
           adminUser?.roles ||
           authUser?.roles ||
-          window?.strapi?.user?.roles ||
-          window?.strapi?.currentUser?.roles;
+          (window.strapi && window.strapi.user && window.strapi.user.roles) ||
+          (window.strapi && window.strapi.currentUser && window.strapi.currentUser.roles);
         
         if (reduxRoles && reduxRoles.length > 0) {
           // Use Redux roles immediately (even on initial load if we got here)
@@ -651,7 +643,7 @@ if (typeof window !== 'undefined') {
           try {
             sessionStorage.setItem('__modules_sidebar_roles__', JSON.stringify(reduxRoles));
             sessionStorage.setItem('__is_super_admin__', isSuper ? 'true' : 'false');
-            window.__MODULES_SIDEBAR_ROLES__ = reduxRoles;
+            window['__MODULES_SIDEBAR_ROLES__'] = reduxRoles;
           } catch (e) {}
           
           isInitialLoad = false;
@@ -678,7 +670,7 @@ if (typeof window !== 'undefined') {
         let token = null;
         
         while (attempts < 10 && !token) {
-          state = window.strapi?.store?.getState?.() || window?.__STRAPI_ADMIN_STATE__ || {};
+          state = (window.strapi && window.strapi.store && typeof window.strapi.store.getState === 'function' ? window.strapi.store.getState() : {}) || window['__STRAPI_ADMIN_STATE__'] || {};
           token = state?.admin_app?.token;
           if (!token) {
             await new Promise(resolve => setTimeout(resolve, 100));
@@ -691,7 +683,7 @@ if (typeof window !== 'undefined') {
           return [];
         }
         
-        const baseURL = window.strapi?.backendURL || 'http://localhost:1337';
+        const baseURL = (window.strapi && window.strapi.backendURL) || 'http://localhost:1337';
         const response = await fetch(`${baseURL}/admin/users/me?populate=roles`, {
           method: 'GET',
           headers: {
@@ -716,7 +708,7 @@ if (typeof window !== 'undefined') {
           } else {
             // API returned empty roles - try Redux as fallback
             if (isInitialLoad) {
-              const state = window.strapi?.store?.getState?.() || {};
+              const state = window.strapi && window.strapi.store && typeof window.strapi.store.getState === 'function' ? window.strapi.store.getState() : {};
               const adminUser = state?.admin_app?.user;
               const authUser = state?.auth?.user || state?.auth?.userInfo;
               const reduxRoles = adminUser?.roles || authUser?.roles;
@@ -738,7 +730,7 @@ if (typeof window !== 'undefined') {
         // On error, try Redux as fallback if initial load
         if (isInitialLoad) {
           try {
-            const state = window.strapi?.store?.getState?.() || {};
+            const state = window.strapi && window.strapi.store && typeof window.strapi.store.getState === 'function' ? window.strapi.store.getState() : {};
             const adminUser = state?.admin_app?.user;
             const authUser = state?.auth?.user || state?.auth?.userInfo;
             const reduxRoles = adminUser?.roles || authUser?.roles;

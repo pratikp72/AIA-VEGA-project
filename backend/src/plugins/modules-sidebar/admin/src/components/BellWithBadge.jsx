@@ -68,7 +68,7 @@ export default function BellWithBadge() {
 
   return (
     <span style={wrapperStyle}>
-      <Bell />
+      <Bell width={21} height={21} />
       {count > 0 && (
         <span style={badgeStyle}>{count > 99 ? '99+' : count}</span>
       )}

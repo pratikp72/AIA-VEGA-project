@@ -519,8 +519,19 @@ export default {
     },
     // Head configuration for page title
     head: {
-      favicon: '/favicon.png',
+  link: [
+    {
+      rel: 'icon',
+      type: 'image/png',
+      href: '/favicon.png',
     },
+    {
+      rel: 'shortcut icon',
+      type: 'image/x-icon',
+      href: '/favicon.ico',
+    },
+  ],
+},
     // Tutorial configuration
     tutorials: false,
     // Notification configuration

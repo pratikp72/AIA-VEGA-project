@@ -53,7 +53,7 @@ const AdminLink = ({ to, label }) => {
           let isSuperAdmin = false;
           
           // Check window roles (set by AllModules page)
-          const windowRoles = window.__MODULES_SIDEBAR_ROLES__ || [];
+          const windowRoles = window['__MODULES_SIDEBAR_ROLES__'] || [];
           isSuperAdmin = windowRoles.some(r => {
             const name = (r?.name || '').toLowerCase();
             return name === 'super admin' || name.includes('super admin');
@@ -62,7 +62,7 @@ const AdminLink = ({ to, label }) => {
           // If not found, check Redux store
           if (!isSuperAdmin) {
             try {
-              const state = window.strapi?.store?.getState?.() || {};
+              const state = window.strapi && window.strapi.store && typeof window.strapi.store.getState === 'function' ? window.strapi.store.getState() : {};
               const adminUser = state?.admin_app?.user;
               const reduxRoles = adminUser?.roles || [];
               isSuperAdmin = reduxRoles.some(r => {
@@ -90,7 +90,7 @@ const AdminLink = ({ to, label }) => {
           e.currentTarget.style.backgroundColor = 'var(--strapi-neutral-100)';
           const labelEl = e.currentTarget.querySelector('[data-role="module-link-label"]');
           if (labelEl) {
-            labelEl.style.color = '#4945ff';
+            if (labelEl && labelEl.style) labelEl.style.color = '#4945ff';
           }
         }
       }}
@@ -99,7 +99,7 @@ const AdminLink = ({ to, label }) => {
           e.currentTarget.style.backgroundColor = 'transparent';
           const labelEl = e.currentTarget.querySelector('[data-role="module-link-label"]');
           if (labelEl) {
-            labelEl.style.color = '#212134';
+            if (labelEl && labelEl.style) labelEl.style.color = '#212134';
           }
         }
       }}
@@ -244,7 +244,7 @@ const useHideContentManagerSidebar = () => {
             // Check if it's actually a sidebar (has links to content types)
             if (el.querySelector('a[href*="/content-manager/collection-types"]') || 
                 el.querySelector('a[href*="/content-manager/single-types"]')) {
-              el.style.display = 'none';
+              if (el && el.style) el.style.display = 'none';
               // Also hide parent if it's a container
               const parent = el.parentElement;
               if (parent && parent.classList.toString().includes('Layouts-Root')) {
@@ -253,9 +253,11 @@ const useHideContentManagerSidebar = () => {
                   (child) => child !== el && !child.classList.toString().includes('DragLayer')
                 );
                 if (mainContent) {
-                  mainContent.style.width = '100%';
-                  mainContent.style.maxWidth = '100%';
-                  mainContent.style.flex = '1 1 100%';
+                  if (mainContent && mainContent.style) {
+                    mainContent.style.width = '100%';
+                    mainContent.style.maxWidth = '100%';
+                    mainContent.style.flex = '1 1 100%';
+                  }
                 }
               }
             }
@@ -293,9 +295,11 @@ const AllModulesPage = () => {
   const [sectionConfig, setSectionConfig] = useState(null);
   const [collectionTypes, setCollectionTypes] = useState([]);
   const [showConfigModal, setShowConfigModal] = useState(false);
+  // Loading state for permissions
+  const [loadingPermissions, setLoadingPermissions] = useState(true);
 
   // Get token from Redux store
-  const token = useSelector((state) => state?.admin_app?.token);
+  const token = useSelector((state) => (state && state.admin_app && state.admin_app.token) ? state.admin_app.token : undefined);
 
   // Fetch current user from API as fallback
   useEffect(() => {
@@ -309,7 +313,7 @@ const AllModulesPage = () => {
     const fetchUserRoles = async () => {
       try {
         // Try Strapi admin API endpoint with roles populated
-        const baseURL = window.strapi?.backendURL || 'http://localhost:1337';
+        const baseURL = (window.strapi && window.strapi.backendURL) || 'http://localhost:1337';
         const response = await fetch(`${baseURL}/admin/users/me?populate=roles`, {
           method: 'GET',
           headers: {
@@ -344,7 +348,7 @@ const AllModulesPage = () => {
             // CRITICAL: Store roles IMMEDIATELY in window and sessionStorage
             // This allows the global script to access them right away
             try {
-              window.__MODULES_SIDEBAR_ROLES__ = roles;
+              window['__MODULES_SIDEBAR_ROLES__'] = roles;
               sessionStorage.setItem('__modules_sidebar_roles__', JSON.stringify(roles));
               // Trigger a custom event to notify global script immediately
               window.dispatchEvent(new CustomEvent('modules-sidebar-roles-updated', { detail: roles }));
@@ -362,7 +366,7 @@ const AllModulesPage = () => {
             
             // CRITICAL: Store roles IMMEDIATELY in window and sessionStorage
             try {
-              window.__MODULES_SIDEBAR_ROLES__ = roles;
+              window['__MODULES_SIDEBAR_ROLES__'] = roles;
               sessionStorage.setItem('__modules_sidebar_roles__', JSON.stringify(roles));
               // Trigger a custom event to notify global script immediately
               window.dispatchEvent(new CustomEvent('modules-sidebar-roles-updated', { detail: roles }));
@@ -401,7 +405,7 @@ const AllModulesPage = () => {
               
               // CRITICAL: Store roles IMMEDIATELY
               try {
-                window.__MODULES_SIDEBAR_ROLES__ = roles;
+                window['__MODULES_SIDEBAR_ROLES__'] = roles;
                 sessionStorage.setItem('__modules_sidebar_roles__', JSON.stringify(roles));
                 window.dispatchEvent(new CustomEvent('modules-sidebar-roles-updated', { detail: roles }));
               } catch (e) {
@@ -413,7 +417,7 @@ const AllModulesPage = () => {
               
               // CRITICAL: Store roles IMMEDIATELY
               try {
-                window.__MODULES_SIDEBAR_ROLES__ = roles;
+                window['__MODULES_SIDEBAR_ROLES__'] = roles;
                 sessionStorage.setItem('__modules_sidebar_roles__', JSON.stringify(roles));
                 window.dispatchEvent(new CustomEvent('modules-sidebar-roles-updated', { detail: roles }));
               } catch (e) {
@@ -455,11 +459,11 @@ const AllModulesPage = () => {
       (authUser?.role ? [authUser.role] : null) ||
       (adminApi?.user?.role ? [adminApi.user.role] : null) ||
       // Try window.strapi
-      window?.strapi?.user?.roles ||
-      window?.strapi?.currentUser?.roles ||
-      window?.strapi?.admin?.user?.roles ||
-      (window?.strapi?.user?.role ? [window.strapi.user.role] : null) ||
-      (window?.strapi?.currentUser?.role ? [window.strapi.currentUser.role] : null) ||
+      (window.strapi && window.strapi.user && window.strapi.user.roles) ||
+      (window.strapi && window.strapi.currentUser && window.strapi.currentUser.roles) ||
+      (window.strapi && window.strapi.admin && window.strapi.admin.user && window.strapi.admin.user.roles) ||
+      (window.strapi && window.strapi.user && window.strapi.user.role ? [window.strapi.user.role] : null) ||
+      (window.strapi && window.strapi.currentUser && window.strapi.currentUser.role ? [window.strapi.currentUser.role] : null) ||
       [];
     
     // If roles is an array of role objects, return as is
@@ -512,7 +516,7 @@ const AllModulesPage = () => {
     // Store Redux roles immediately if available
     if (reduxRoles && reduxRoles.length > 0) {
       try {
-        window.__MODULES_SIDEBAR_ROLES__ = reduxRoles;
+        window['__MODULES_SIDEBAR_ROLES__'] = reduxRoles;
         sessionStorage.setItem('__modules_sidebar_roles__', JSON.stringify(reduxRoles));
         // Trigger a custom event to notify global script
         window.dispatchEvent(new CustomEvent('modules-sidebar-roles-updated', { detail: reduxRoles }));
@@ -524,7 +528,7 @@ const AllModulesPage = () => {
     // Store API roles when they arrive (they take precedence)
     if (apiRoles && apiRoles.length > 0) {
       try {
-        window.__MODULES_SIDEBAR_ROLES__ = apiRoles;
+        window['__MODULES_SIDEBAR_ROLES__'] = apiRoles;
         sessionStorage.setItem('__modules_sidebar_roles__', JSON.stringify(apiRoles));
         // Trigger a custom event to notify global script
         window.dispatchEvent(new CustomEvent('modules-sidebar-roles-updated', { detail: apiRoles }));
@@ -536,7 +540,7 @@ const AllModulesPage = () => {
     // Store combined roles
     if (roles && roles.length > 0) {
       try {
-        window.__MODULES_SIDEBAR_ROLES__ = roles;
+        window['__MODULES_SIDEBAR_ROLES__'] = roles;
         sessionStorage.setItem('__modules_sidebar_roles__', JSON.stringify(roles));
         // Trigger a custom event to notify global script
         window.dispatchEvent(new CustomEvent('modules-sidebar-roles-updated', { detail: roles }));
@@ -623,12 +627,13 @@ const AllModulesPage = () => {
       if (process.env.NODE_ENV === 'development') {
         console.log('[AllModules] No token found, skipping permissions fetch');
       }
+      setLoadingPermissions(false);
       return;
     }
 
     const fetchPermissions = async () => {
       try {
-        const baseURL = window.strapi?.backendURL || 'http://localhost:1337';
+        const baseURL = (window.strapi && window.strapi.backendURL) || 'http://localhost:1337';
         const response = await fetch(`${baseURL}/admin/users/me/permissions`, {
           method: 'GET',
           headers: {
@@ -642,6 +647,7 @@ const AllModulesPage = () => {
           if (process.env.NODE_ENV === 'development') {
             console.log('[AllModules] Permissions API error:', response.status, response.statusText);
           }
+          setLoadingPermissions(false);
           return;
         }
 
@@ -678,6 +684,8 @@ const AllModulesPage = () => {
         if (process.env.NODE_ENV === 'development') {
           console.log('[AllModules] Failed to fetch permissions:', error);
         }
+      } finally {
+        setLoadingPermissions(false);
       }
     };
 
@@ -686,7 +694,7 @@ const AllModulesPage = () => {
 
   useEffect(() => {
     if (!token) return;
-    const baseURL = window.strapi?.backendURL || 'http://localhost:1337';
+    const baseURL = (window.strapi && window.strapi.backendURL) || 'http://localhost:1337';
     const fetchConfig = async () => {
       try {
         const [configRes, ctRes] = await Promise.all([
@@ -812,7 +820,13 @@ const AllModulesPage = () => {
               </Button>
             </Flex>
           )}
-          {canSeeAllModules ? (
+          {loadingPermissions ? (
+            <Box paddingLeft={6} paddingRight={6} paddingTop={6} paddingBottom={6} display="flex" justifyContent="center" alignItems="center">
+              <Typography variant="omega" textColor="neutral600">
+                Loading permissions...
+              </Typography>
+            </Box>
+          ) : canSeeAllModules ? (
             <Box
               paddingLeft={8}
               paddingRight={8}
