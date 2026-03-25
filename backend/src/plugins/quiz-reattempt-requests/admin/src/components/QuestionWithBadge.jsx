@@ -65,7 +65,7 @@ export default function QuestionWithBadge() {
 
   return (
     <span style={wrapperStyle}>
-      <Question />
+      <Question  width={21} height={21} />
       {count > 0 && (
         <span style={badgeStyle}>{count > 99 ? '99+' : count}</span>
       )}
