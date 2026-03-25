@@ -6,7 +6,7 @@
 
 import pluginPkg from '../../package.json';
 import { PLUGIN_ID } from './pluginId';
-import { Question } from '@strapi/icons';
+import QuestionWithBadge from './components/QuestionWithBadge.jsx';
 
 const name = pluginPkg.strapi.name;
 
@@ -20,7 +20,7 @@ export default {
     // Quiz Reattempt Requests - sidebar link
     app.addMenuLink({
       to: `plugins/${PLUGIN_ID}`,
-      icon: Question,
+      icon: QuestionWithBadge,
       intlLabel: {
         id: `${PLUGIN_ID}.menu.main`,
         defaultMessage: 'Quiz Reattempt Requests',

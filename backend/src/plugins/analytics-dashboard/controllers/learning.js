@@ -250,8 +250,17 @@ module.exports = ({ strapi }) => {
       try {
         const departmentId = ctx.query.departmentId || ctx.query.department_id;
         const company = ctx.query.company || ctx.query.companyId;
+        const search = ctx.query.search;
+        const userId = ctx.query.userId || ctx.query.user_id;
+        const location = ctx.query.location;
+        const unitLocation = ctx.query.unitLocation || ctx.query.unit_location;
         const service = getAnalyticsService();
-        const data = await service.getCoursesByDepartment(departmentId, company);
+        const data = await service.getCoursesByDepartment(departmentId, company, {
+          search,
+          userId,
+          location,
+          unitLocation,
+        });
         ctx.body = data || [];
       } catch (error) {
         strapi.log.error('Learning coursesByDepartment error:', error?.message || error);

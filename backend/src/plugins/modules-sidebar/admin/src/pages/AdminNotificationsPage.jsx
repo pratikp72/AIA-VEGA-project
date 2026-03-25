@@ -34,6 +34,17 @@ function getTypeBadgeVariant(type) {
   return "neutral";
 }
 
+const quizResultStyle = (passed) => /** @type {React.CSSProperties} */ ({
+  display: "inline-block",
+  padding: "2px 8px",
+  borderRadius: "4px",
+  fontSize: "11px",
+  fontWeight: 700,
+  background: passed ? "#c6f0c2" : "#fce4e4",
+  color: passed ? "#1c6118" : "#b72b1a",
+  marginLeft: "4px",
+});
+
 export default function AdminNotificationsPage() {
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -46,6 +57,10 @@ export default function AdminNotificationsPage() {
     let cancelled = false;
     setLoading(true);
     setError(null);
+    // Record the visit timestamp BEFORE fetching so any notification that arrives
+    // during this page view is still counted on the next badge poll.
+    localStorage.setItem('aia_notif_last_visit', new Date().toISOString());
+
     const { get } = getFetchClient();
     get("/modules-sidebar/admin-notifications?limit=100")
       .then(({ data }) => {
@@ -116,6 +131,9 @@ export default function AdminNotificationsPage() {
             >
               {notifications.map((n) => {
                 const clickable = isQuizReattempt(n);
+                const isQuizSubmit = n.type === "quiz_submitted";
+                const hasPassed = n.meta?.passed;
+                const score = n.meta?.score;
                 return (
                   <Box
                     key={n.id ?? n.documentId ?? n.createdAt + n.title}
@@ -130,8 +148,6 @@ export default function AdminNotificationsPage() {
                       cursor: clickable ? "pointer" : "default",
                     }}
                     onClick={() => clickable && handleNotificationClick(n)}
-                    as={clickable ? "button" : "div"}
-                    type={clickable ? "button" : undefined}
                     textAlign="left"
                     background={clickable ? "neutral50" : undefined}
                     hasRadius={false}
@@ -145,6 +161,11 @@ export default function AdminNotificationsPage() {
                       <Badge variant={getTypeBadgeVariant(n.type)}>
                         {n.type || "custom"}
                       </Badge>
+                      {isQuizSubmit && score != null && (
+                        <span style={quizResultStyle(hasPassed)}>
+                          {hasPassed ? "PASSED" : "FAILED"} — {score}%
+                        </span>
+                      )}
                       <Typography variant="sigma" textColor="neutral700">
                         {formatDate(n.createdAt)}
                       </Typography>

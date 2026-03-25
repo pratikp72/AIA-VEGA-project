@@ -149,6 +149,170 @@ module.exports = ({ strapi }) => {
     });
   },
 
+  _dedupeCourseOptions(list = []) {
+    const deduped = new Map();
+    (list || []).forEach((course) => {
+      const id = course?.id ?? course?.documentId ?? null;
+      const documentId = course?.documentId ? String(course.documentId).trim() : '';
+      const title = String(course?.title ?? '').trim();
+      const key = documentId || (title ? `title:${title.toLowerCase()}` : (id != null ? `id:${String(id)}` : ''));
+      if (!key) return;
+      if (!deduped.has(key)) {
+        deduped.set(key, {
+          id,
+          documentId: documentId || null,
+          title: title || `Course ${id}`,
+        });
+        return;
+      }
+      const existing = deduped.get(key);
+      if ((existing?.documentId == null || existing.documentId === '') && documentId) {
+        deduped.set(key, {
+          id,
+          documentId,
+          title: title || existing?.title || `Course ${id}`,
+        });
+      }
+    });
+    return [...deduped.values()].sort((a, b) => String(a.title).localeCompare(String(b.title)));
+  },
+
+  _courseOptionKey(course = {}) {
+    const documentId = course?.documentId ? String(course.documentId).trim() : '';
+    const title = String(course?.title ?? '').trim();
+    const id = course?.id != null ? String(course.id).trim() : '';
+    return documentId || (title ? `title:${title.toLowerCase()}` : (id ? `id:${id}` : ''));
+  },
+
+  _intersectCourseOptions(primary = [], secondary = []) {
+    if (!Array.isArray(primary) || primary.length === 0) return [];
+    if (!Array.isArray(secondary) || secondary.length === 0) return [];
+    const secondaryKeys = new Set(secondary.map((course) => this._courseOptionKey(course)).filter(Boolean));
+    return this._dedupeCourseOptions(primary.filter((course) => secondaryKeys.has(this._courseOptionKey(course))));
+  },
+
+  async _extractCoursesFromAssignments(assignments = []) {
+    const inlineCourses = [];
+    const numericCourseIds = new Set();
+    const documentCourseIds = new Set();
+
+    (assignments || []).forEach((assignment) => {
+      const linkedCourses = Array.isArray(assignment?.courses)
+        ? assignment.courses
+        : (assignment?.course ? [assignment.course] : []);
+
+      if (linkedCourses.length > 0) {
+        linkedCourses.forEach((course) => {
+          if (!course) return;
+          const courseId = course.id ?? course.documentId ?? course.document_id ?? null;
+          const courseDocId = course.documentId ?? course.document_id ?? null;
+          const title = course.title ?? course.attributes?.title ?? null;
+          if (title || courseDocId || courseId != null) {
+            inlineCourses.push({
+              id: courseId,
+              documentId: courseDocId ?? null,
+              title: title ?? `Course ${courseId ?? courseDocId}`,
+            });
+          }
+          if (courseId != null && /^\d+$/.test(String(courseId))) numericCourseIds.add(Number(courseId));
+          if (courseDocId != null && String(courseDocId).trim()) documentCourseIds.add(String(courseDocId).trim());
+        });
+        return;
+      }
+
+      const rawIds = [assignment?.course_id, assignment?.courseId, assignment?.course].filter((value) => value != null && typeof value !== 'object');
+      rawIds.forEach((value) => {
+        const asStr = String(value).trim();
+        if (!asStr) return;
+        if (/^\d+$/.test(asStr)) numericCourseIds.add(Number(asStr));
+        else documentCourseIds.add(asStr);
+      });
+    });
+
+    const [coursesById, coursesByDoc] = await Promise.all([
+      numericCourseIds.size > 0
+        ? strapi.db.query('api::course.course').findMany({
+            where: { id: { $in: [...numericCourseIds] } },
+            select: ['id', 'documentId', 'title'],
+            limit: 1000,
+          })
+        : [],
+      documentCourseIds.size > 0
+        ? strapi.db.query('api::course.course').findMany({
+            where: { documentId: { $in: [...documentCourseIds] } },
+            select: ['id', 'documentId', 'title'],
+            limit: 1000,
+          })
+        : [],
+    ]);
+
+    return this._dedupeCourseOptions([
+      ...inlineCourses,
+      ...(coursesById || []).map((course) => ({ id: course.id, documentId: course.documentId ?? null, title: course.title ?? `Course ${course.id}` })),
+      ...(coursesByDoc || []).map((course) => ({ id: course.id ?? course.documentId, documentId: course.documentId ?? null, title: course.title ?? `Course ${course.id ?? course.documentId}` })),
+    ]);
+  },
+
+  async _getDepartmentAssignedCourses(departmentId) {
+    if (departmentId == null || departmentId === '') return [];
+    let assignments = [];
+    let numericDept = typeof departmentId === 'number' ? departmentId : parseInt(String(departmentId), 10);
+    const isDocId = typeof departmentId === 'string' && departmentId.length > 10;
+    if (Number.isNaN(numericDept) && isDocId) {
+      const deptRow = await strapi.db.query('api::department.department').findOne({
+        where: { documentId: departmentId },
+        select: ['id'],
+      });
+      if (deptRow?.id != null) numericDept = Number(deptRow.id);
+    }
+    if (!Number.isNaN(numericDept)) {
+      assignments = await strapi.db.query('api::course-assignment.course-assignment').findMany({
+        where: { assignment_target_type: 'Department', departments: { id: numericDept } },
+        populate: ['courses'],
+        limit: 500,
+      }) || [];
+    }
+    if (assignments.length === 0 && isDocId) {
+      assignments = await strapi.db.query('api::course-assignment.course-assignment').findMany({
+        where: { assignment_target_type: 'Department', departments: { documentId: departmentId } },
+        populate: ['courses'],
+        limit: 500,
+      }) || [];
+    }
+    if (assignments.length === 0) return [];
+    return this._extractCoursesFromAssignments(assignments);
+  },
+
+  async _getLocationAssignedCourses(locationId) {
+    if (locationId == null || locationId === '') return [];
+    let assignments = [];
+    let numericLocation = typeof locationId === 'number' ? locationId : parseInt(String(locationId), 10);
+    const isDocId = typeof locationId === 'string' && locationId.length > 10;
+    if (Number.isNaN(numericLocation) && isDocId) {
+      const locationRow = await strapi.db.query('api::work-location.work-location').findOne({
+        where: { documentId: String(locationId) },
+        select: ['id'],
+      });
+      if (locationRow?.id != null) numericLocation = Number(locationRow.id);
+    }
+    if (!Number.isNaN(numericLocation)) {
+      assignments = await strapi.db.query('api::course-assignment.course-assignment').findMany({
+        where: { assignment_target_type: 'Location', work_locations: { id: numericLocation } },
+        populate: ['courses'],
+        limit: 500,
+      }) || [];
+    }
+    if (assignments.length === 0 && isDocId) {
+      assignments = await strapi.db.query('api::course-assignment.course-assignment').findMany({
+        where: { assignment_target_type: 'Location', work_locations: { documentId: String(locationId) } },
+        populate: ['courses'],
+        limit: 500,
+      }) || [];
+    }
+    if (assignments.length === 0) return [];
+    return this._extractCoursesFromAssignments(assignments);
+  },
+
   /**
    * LEARNING ANALYTICS - Global (all employees)
    */
@@ -280,14 +444,23 @@ module.exports = ({ strapi }) => {
     const wantQuizStatus = params.quizStatus && String(params.quizStatus).trim().toLowerCase();
     const wantFeedbackGiven = params.feedbackGiven && String(params.feedbackGiven).trim().toLowerCase();
 
-    // Resolve unit location id/documentId to name for filtering by user.working_location (if applicable)
+    // Resolve selected location id/documentId to a location name.
+    // Learning filters now use work-location records, but keep a fallback for legacy unit-location ids.
     let unitLocationName = wantUnitLocation ? String(params.unitLocation) : null;
     if (wantUnitLocation) {
       try {
         const isNumeric = typeof params.unitLocation === 'number' || /^\d+$/.test(String(params.unitLocation));
-        const loc = isNumeric
-          ? await strapi.db.query('api::unit-location.unit-location').findOne({ where: { id: Number(params.unitLocation) } })
-          : await strapi.db.query('api::unit-location.unit-location').findOne({ where: { documentId: String(params.unitLocation) } });
+        let loc = null;
+        try {
+          loc = isNumeric
+            ? await strapi.db.query('api::work-location.work-location').findOne({ where: { id: Number(params.unitLocation) }, select: ['name'] })
+            : await strapi.db.query('api::work-location.work-location').findOne({ where: { documentId: String(params.unitLocation) }, select: ['name'] });
+        } catch (_) {}
+        if (!loc) {
+          loc = isNumeric
+            ? await strapi.db.query('api::unit-location.unit-location').findOne({ where: { id: Number(params.unitLocation) }, select: ['name'] })
+            : await strapi.db.query('api::unit-location.unit-location').findOne({ where: { documentId: String(params.unitLocation) }, select: ['name'] });
+        }
         if (loc?.name) unitLocationName = loc.name;
       } catch (e) {
         strapi.log.warn('Learning global: unit location resolve failed:', e?.message);
@@ -433,8 +606,15 @@ module.exports = ({ strapi }) => {
           if (String(cat) !== String(params.courseCategory)) return false;
         }
         if (wantUnitLocation && unitLocationName) {
-          const loc = p.user?.working_location ?? p.user?.unit_location ?? '';
-          if (!String(loc || '').toLowerCase().includes(String(unitLocationName || '').toLowerCase())) return false;
+          const locationCandidates = [
+            p.user?.working_location,
+            p.user?.branch,
+            p.user?.unit_location,
+          ];
+          const matchesLocation = locationCandidates
+            .filter((value) => value != null && String(value).trim() !== '')
+            .some((value) => String(value).toLowerCase().includes(String(unitLocationName || '').toLowerCase()));
+          if (!matchesLocation) return false;
         }
         if (wantCourseId && (wantQuizStatus === 'pass' || wantQuizStatus === 'fail')) {
           const uid = p.user?.id ?? p.user_id ?? p.userId;
@@ -2498,12 +2678,139 @@ module.exports = ({ strapi }) => {
    * Get courses for filter dropdown. Optional departmentId = courses from assignments to that dept. Optional company = courses that have that company (course.company relation).
    * Course schema has company (manyToMany) – when company selected, filter courses by course.company. When department selected, use course_assignments for that department.
    */
-  async getCoursesByDepartment(departmentId, company) {
+  async getCoursesByDepartment(departmentId, company, extraFilters = {}) {
     try {
       const companyId = company != null && company !== '' ? await this.resolveCompanyId(company) : null;
+      const search = extraFilters?.search && String(extraFilters.search).trim()
+        ? String(extraFilters.search).trim()
+        : '';
+      const requestedUserId = extraFilters?.userId != null && extraFilters.userId !== ''
+        ? String(extraFilters.userId).trim()
+        : '';
+      const selectedLocationId = extraFilters?.unitLocation ?? extraFilters?.location ?? '';
 
-      // No company and no department selected: return all courses for filter dropdown.
-      if ((departmentId == null || departmentId === '') && companyId == null) {
+      // Employee-view behavior: when a specific user/search is provided, return only courses
+      // where matched user(s) are enrolled. Without search/userId, existing global dropdown behavior remains.
+      if (search || requestedUserId) {
+        const userWhere = {
+          blocked: { $ne: true },
+          active: { $ne: false },
+        };
+
+        if (companyId != null) {
+          const companyRows = await strapi.db.query('api::company.company').findMany({
+            where: { id: companyId },
+            select: ['name'],
+            limit: 1,
+          });
+          const companyName = companyRows?.[0]?.name;
+          if (companyName) userWhere.company = companyName;
+        }
+
+        if (requestedUserId) {
+          if (/^\d+$/.test(requestedUserId)) {
+            userWhere.id = Number(requestedUserId);
+          } else {
+            userWhere.documentId = requestedUserId;
+          }
+        }
+
+        if (search) {
+          const numericSearch = /^\d+$/.test(search) ? Number(search) : null;
+          userWhere.$or = numericSearch != null
+            ? [
+                { id: numericSearch },
+                { emp_code: search },
+                { emp_id: search },
+              ]
+            : [
+                { username: { $containsi: search } },
+                { email: { $containsi: search } },
+                { emp_code: { $containsi: search } },
+                { emp_id: { $containsi: search } },
+              ];
+        }
+
+        const users = await strapi.db.query('plugin::users-permissions.user').findMany({
+          where: userWhere,
+          select: ['id'],
+          limit: 200,
+        });
+        const userIds = (users || []).map((u) => u.id).filter((id) => id != null);
+        if (userIds.length === 0) return [];
+
+        let progressList = [];
+        try {
+          progressList = await strapi.documents('api::user-progress.user-progress').findMany({
+            status: 'published',
+            filters: { user: { id: { $in: userIds } } },
+            fields: ['id'],
+            populate: {
+              course: {
+                fields: ['id', 'documentId'],
+              },
+            },
+            pagination: { limit: 10000 },
+          });
+          progressList = Array.isArray(progressList) ? progressList : [];
+        } catch (_) {
+          progressList = [];
+        }
+
+        if (progressList.length === 0) {
+          progressList = await strapi.db.query('api::user-progress.user-progress').findMany({
+            where: { user_id: { $in: userIds } },
+            select: ['course_id'],
+            limit: 10000,
+          }) || [];
+        }
+
+        const numericCourseIds = new Set();
+        const documentCourseIds = new Set();
+        (progressList || []).forEach((p) => {
+          const rawCourse = p.course?.id ?? p.course_id ?? p.courseId ?? p.course;
+          const rawDoc = p.course?.documentId ?? p.course?.document_id;
+          if (rawCourse != null) {
+            const asStr = String(rawCourse).trim();
+            if (/^\d+$/.test(asStr)) numericCourseIds.add(Number(asStr));
+            else documentCourseIds.add(asStr);
+          }
+          if (rawDoc != null && String(rawDoc).trim()) documentCourseIds.add(String(rawDoc).trim());
+        });
+
+        if (numericCourseIds.size === 0 && documentCourseIds.size === 0) return [];
+
+        const [coursesById, coursesByDoc] = await Promise.all([
+          numericCourseIds.size > 0
+            ? strapi.db.query('api::course.course').findMany({
+                where: { id: { $in: [...numericCourseIds] } },
+                select: ['id', 'documentId', 'title'],
+                limit: 1000,
+              })
+            : [],
+          documentCourseIds.size > 0
+            ? strapi.db.query('api::course.course').findMany({
+                where: { documentId: { $in: [...documentCourseIds] } },
+                select: ['id', 'documentId', 'title'],
+                limit: 1000,
+              })
+            : [],
+        ]);
+
+        return this._dedupeCourseOptions(
+          [...(coursesById || []), ...(coursesByDoc || [])].map((c) => ({
+            id: c.id ?? c.documentId,
+            documentId: c.documentId ?? null,
+            title: c.title ?? `Course ${c.id ?? c.documentId}`,
+          }))
+        );
+      }
+
+      const hasDepartmentFilter = departmentId != null && departmentId !== '';
+      const hasLocationFilter = selectedLocationId != null && String(selectedLocationId).trim() !== '';
+
+      // No filters at all: return all courses.
+      if (!hasDepartmentFilter && !hasLocationFilter && companyId == null) {
         let list = [];
         try {
           const docList = await strapi.documents('api::course.course').findMany({
@@ -2525,78 +2832,32 @@ module.exports = ({ strapi }) => {
           } catch (_) {}
         }
 
-        return (list || [])
+        return this._dedupeCourseOptions((list || [])
           .map((c) => ({
             id: c.id ?? c.documentId,
+            documentId: c.documentId ?? null,
             title: c.title ?? c.attributes?.title ?? `Course ${c.id ?? c.documentId}`,
-          }))
-          .filter((c, i, arr) => c.id != null && arr.findIndex((x) => String(x.id) === String(c.id)) === i)
-          .sort((a, b) => String(a.title).localeCompare(String(b.title)));
+          })));
       }
 
-      // Company selected, no department: get courses directly from course table where course.company contains this company
-      if ((departmentId == null || departmentId === '') && companyId != null) {
-        const list = await this._getCoursesByCompanyId(companyId);
-        return list;
+      let filteredCourses = null;
+      if (hasDepartmentFilter) {
+        filteredCourses = await this._getDepartmentAssignedCourses(departmentId);
+      }
+      if (hasLocationFilter) {
+        const locationCourses = await this._getLocationAssignedCourses(selectedLocationId);
+        filteredCourses = filteredCourses == null
+          ? locationCourses
+          : this._intersectCourseOptions(filteredCourses, locationCourses);
+      }
+      if (companyId != null) {
+        const companyCourses = await this._getCoursesByCompanyId(companyId);
+        filteredCourses = filteredCourses == null
+          ? companyCourses
+          : this._intersectCourseOptions(filteredCourses, companyCourses);
       }
 
-      // Department selected: get courses from course_assignments where target is Department and this dept is linked
-      let assignments = [];
-      if (departmentId != null && departmentId !== '') {
-        let numericDept = typeof departmentId === 'number' ? departmentId : parseInt(String(departmentId), 10);
-        const isDocId = typeof departmentId === 'string' && departmentId.length > 10;
-        if (Number.isNaN(numericDept) && isDocId) {
-          const deptRow = await strapi.db.query('api::department.department').findOne({
-            where: { documentId: departmentId },
-            select: ['id'],
-          });
-          if (deptRow && deptRow.id != null) numericDept = Number(deptRow.id);
-        }
-        // Only assignments with target Department have departments relation; filter by id and optionally by documentId
-        if (!Number.isNaN(numericDept)) {
-          const byDept = await strapi.db.query('api::course-assignment.course-assignment').findMany({
-            where: { assignment_target_type: 'Department', departments: { id: numericDept } },
-            populate: ['course'],
-            limit: 500,
-          });
-          assignments = byDept || [];
-        }
-        if (assignments.length === 0 && isDocId) {
-          const byDocId = await strapi.db.query('api::course-assignment.course-assignment').findMany({
-            where: { assignment_target_type: 'Department', departments: { documentId: departmentId } },
-            populate: ['course'],
-            limit: 500,
-          });
-          if (byDocId && byDocId.length > 0) assignments = byDocId;
-        }
-      }
-
-      if (assignments.length === 0) return [];
-      const courseIds = new Set();
-      const courses = [];
-      const numericCourseIds = [];
-      assignments.forEach((a) => {
-        const c = a.course;
-        let cid = c != null ? (c.id ?? c.documentId ?? c.document_id ?? (typeof c === 'object' ? null : c)) : null;
-        if (cid == null && a != null) cid = a.course_id ?? a.courseId ?? a.course;
-        if (cid != null && !courseIds.has(cid)) {
-          courseIds.add(cid);
-          if (typeof cid === 'number' || /^\d+$/.test(String(cid))) numericCourseIds.push(Number(cid));
-          const title = (c && typeof c === 'object' && (c.title != null || c.attributes?.title != null)) ? (c.title ?? c.attributes?.title) : null;
-          courses.push({ id: cid, title: title ?? `Course ${cid}` });
-        }
-      });
-      if (courses.some((x) => x.title === `Course ${x.id}`) && numericCourseIds.length > 0) {
-        const courseRows = await strapi.db.query('api::course.course').findMany({
-          where: { id: { $in: numericCourseIds } },
-          select: ['id', 'documentId', 'title'],
-        });
-        const byId = {};
-        (courseRows || []).forEach((row) => { byId[row.id] = row; if (row.documentId) byId[row.documentId] = row; });
-        courses.forEach((co) => { const row = byId[co.id]; if (row && row.title) co.title = row.title; });
-      }
-      courses.sort((a, b) => String(a.title).localeCompare(String(b.title)));
-      return courses;
+      return this._dedupeCourseOptions(filteredCourses || []);
     } catch (e) {
       strapi.log.error('getCoursesByDepartment error:', e?.message || e);
       return [];
@@ -2608,10 +2869,11 @@ module.exports = ({ strapi }) => {
    */
   async _getCoursesByCompanyId(companyId) {
     const companyIdStr = String(companyId);
-    const toResult = (list) => (list || []).map((c) => ({
+    const toResult = (list) => this._dedupeCourseOptions((list || []).map((c) => ({
       id: c.id ?? c.documentId,
+      documentId: c.documentId ?? null,
       title: c.title ?? c.attributes?.title ?? `Course ${c.id ?? c.documentId}`,
-    })).sort((a, b) => String(a.title).localeCompare(String(b.title)));
+    })));
 
     try {
       let list = [];

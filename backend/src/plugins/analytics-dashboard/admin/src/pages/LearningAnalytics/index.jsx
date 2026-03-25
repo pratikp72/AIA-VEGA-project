@@ -115,9 +115,9 @@ export default function LearningAnalyticsPage() {
   }, [viewMode, data?.courseProgress, filterCourse, personalEnrolledCourses]);
 
   // Fetch all courses (for dropdown when no department/company filter). Uses analytics endpoint for consistent auth/shape.
-  const fetchAllCourses = useCallback(async () => {
+  const fetchAllCourses = useCallback(async (extraParams = {}) => {
     try {
-      const list = await fetchCoursesByDepartment('', '');
+      const list = await fetchCoursesByDepartment('', '', extraParams);
       setCourses(Array.isArray(list) ? list : []);
     } catch (err) {
       setCourses([]);
@@ -137,14 +137,16 @@ export default function LearningAnalyticsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only when filterCourse changes
   }, [filterCourse]);
 
-  // Clear course filter when view mode, company, or department change (course list changes)
+  // Clear course filter when course-list context changes so stale selected course does not linger.
   useEffect(() => {
     setFilterCourse('');
-  }, [viewMode, company, department]);
+  }, [viewMode, company, department, unitLocation, searchDebounced]);
 
-  // Single effect: load courses when viewMode, company, or department change. Skip only if same key (avoid refetch loop).
+  // Single effect: load courses when filter context changes. Skip only if same key (avoid refetch loop).
   useEffect(() => {
-    const key = `${viewMode}-${company || ''}-${department || ''}`;
+    const searchKey = viewMode === 'table' ? (searchDebounced || '') : '';
+    const locationKey = viewMode === 'global' ? (unitLocation || '') : '';
+    const key = `${viewMode}-${company || ''}-${department || ''}-${locationKey}-${searchKey}`;
     if (coursesFetchKeyRef.current === key) return;
     coursesFetchKeyRef.current = key;
     coursesFetchInFlightRef.current = true;
@@ -154,10 +156,11 @@ export default function LearningAnalyticsPage() {
     };
 
     if (viewMode === 'global') {
+      const courseParams = unitLocation ? { unitLocation } : {};
       if (department) {
-        fetchCoursesByDepartment(department, company || '').then(setCourses).catch(() => setCourses([])).finally(done);
-      } else if (company) {
-        fetchCoursesByDepartment('', company).then(setCourses).catch(() => setCourses([])).finally(done);
+        fetchCoursesByDepartment(department, company || '', courseParams).then(setCourses).catch(() => setCourses([])).finally(done);
+      } else if (company || unitLocation) {
+        fetchCoursesByDepartment('', company || '', courseParams).then(setCourses).catch(() => setCourses([])).finally(done);
       } else {
         fetchAllCourses().finally(done);
       }
@@ -168,16 +171,17 @@ export default function LearningAnalyticsPage() {
         fetchAllCourses().finally(done);
       }
     } else if (viewMode === 'table') {
+      const courseParams = searchDebounced?.trim() ? { search: searchDebounced.trim() } : {};
       if (company) {
-        fetchCoursesByDepartment('', company).then(setCourses).catch(() => setCourses([])).finally(done);
+        fetchCoursesByDepartment('', company, courseParams).then(setCourses).catch(() => setCourses([])).finally(done);
       } else {
-        fetchAllCourses().finally(done);
+        fetchAllCourses(courseParams).finally(done);
       }
     } else {
       done();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- only re-run when viewMode/company/department change; fetchers from useAnalytics() would cause extra runs
-  }, [viewMode, company, department]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only re-run when filter context changes; fetchers from useAnalytics() would cause extra runs
+  }, [viewMode, company, department, unitLocation, searchDebounced]);
 
   const [filterStatus, setFilterStatus] = useState('');
   const [filterTimeMin, setFilterTimeMin] = useState('');
