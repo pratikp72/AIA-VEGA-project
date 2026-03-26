@@ -7,15 +7,14 @@
   "attributes": {
     "stop_id": {
       "type": "string",
-      "required": true,
-      "unique": true
+      "required": true
     },
     "stop_name": {
       "type": "string",
       "maxLength": 100,
       "required": true
     },
-    "bus_sifts": {
+    "bus_shifts": {
       "type": "component",
       "component": "routes.sift",
       "repeatable": true,
