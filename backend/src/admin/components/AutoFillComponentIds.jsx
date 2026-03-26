@@ -33,11 +33,26 @@ const CONTENT_TYPE_ID_CONFIG = {
     },
   },
   'api::unit-location.unit-location': {
-    routes: {
-      idKey: 'route_id',
-      prefix: 'route',
+    Units: {
+      // Each Unit is an object with routes array
       nested: {
-        bus_stops: { idKey: 'stop_id', prefix: 'stop', nested: {} },
+        routes: {
+          idKey: 'route_id',
+          prefix: 'route',
+          nested: {
+            bus_stops: {
+              idKey: 'stop_id',
+              prefix: 'stop',
+              nested: {
+                bus_shifts: {
+                  idKey: 'shift_id', // If shift_id is needed, otherwise remove
+                  prefix: 'shift',
+                  nested: {},
+                },
+              },
+            },
+          },
+        },
       },
     },
   },
