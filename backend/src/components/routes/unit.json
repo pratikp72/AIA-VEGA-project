@@ -1,0 +1,52 @@
+{
+  "collectionName": "components_routes_units",
+  "info": {
+    "displayName": "Unit"
+  },
+  "options": {},
+  "attributes": {
+    "unit_name": {
+      "type": "string",
+      "maxLength": 100,
+      "required": true
+    },
+    "routes": {
+      "type": "component",
+      "component": "routes.bus-route",
+      "repeatable": true,
+      "required": true
+    },
+    "unit_map_link": {
+      "type": "string"
+    },
+    "unit_img": {
+      "type": "media",
+      "multiple": false,
+      "required": true,
+      "allowedTypes": [
+        "images"
+      ]
+    },
+    "address": {
+      "type": "string",
+      "maxLength": 255,
+      "required": true
+    },
+    "site_manager": {
+      "type": "string",
+      "required": true
+    },
+    "hr_manager": {
+      "type": "string",
+      "required": true
+    },
+    "contact": {
+      "type": "string",
+      "required": true
+    },
+    "note": {
+      "type": "richtext"
+    }
+  },
+  "config": {}
+}

@@ -517,9 +517,9 @@ export default {
         'Settings.application.title': 'AIA-VEGA Settings',
       },
     },
-    // Head configuration for page title
+    
     head: {
-  link: [
+    link: [
     {
       rel: 'icon',
       type: 'image/png',

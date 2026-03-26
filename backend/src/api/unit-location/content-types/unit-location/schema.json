@@ -26,15 +26,11 @@
       "relation": "manyToMany",
       "target": "api::company.company"
     },
-    "routes": {
+    "Units": {
       "type": "component",
-      "component": "routes.bus-route",
+      "component": "routes.unit",
       "repeatable": true,
       "required": true
-    },
-    "note": {
-      "type": "richtext",
-      "required": false
     }
   }
 }
