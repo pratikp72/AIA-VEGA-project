@@ -20,5 +20,11 @@ module.exports = {
       handler: 'employee-sync.backfillOrgTaxonomy',
       config: { auth: false },
     },
+    {
+      method: 'POST',
+      path: '/employee-sync/trigger-vega',
+      handler: 'employee-sync.triggerVega',
+      config: { auth: false },
+    },
   ],
 };
