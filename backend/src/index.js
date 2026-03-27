@@ -5,6 +5,7 @@ const COURSE_UID = 'api::course.course';
 const { ensureDepartmentForUser } = require('./utils/ensure-department-for-user');
 const { syncCourseLanguageComponents } = require('./utils/sync-course-language-components');
 const { autoGenerateComponentIds } = require('./utils/auto-generate-component-ids');
+const { syncVegaEmployees } = require('./cron-tasks/sync-vega-employees');
 
 function isEmailEnabled() {
   const raw = String(process.env.EMAIL_ENABLED || 'false').trim().toLowerCase();
@@ -122,6 +123,14 @@ module.exports = {
 
   bootstrap({ strapi }) {
     suppressEmailServiceIfDisabled(strapi);
+
+    // ── Vega employee sync: run immediately on startup ───────────────────────
+    console.log('\n[vega-sync] 🚀 Bootstrap: triggering Vega employee sync on startup...');
+    syncVegaEmployees(strapi).catch((err) => {
+      console.error(`[vega-sync] ❌ Startup sync failed: ${err?.message || err}`);
+      strapi.log.error(`[vega-sync] Startup sync failed: ${err?.message || err}`);
+    });
+    // ─────────────────────────────────────────────────────────────────────────
 
     strapi.utils = strapi.utils || {};
     strapi.utils.notification = require('./utils/notification')(strapi);
