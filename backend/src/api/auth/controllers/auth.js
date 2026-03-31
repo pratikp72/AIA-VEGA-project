@@ -67,8 +67,34 @@ module.exports = {
 
       // Allow login by emp_code (AIA) or emp_id (Vega)
       let user =
-        (await userQuery.findOne({ where: { emp_code: idStr } })) ||
-        (await userQuery.findOne({ where: { emp_id: idStr } }));
+        (await userQuery.findOne({
+          where: { emp_code: idStr },
+          select: [
+            'id',
+            'email',
+            'username',
+            'emp_code',
+            'emp_id',
+            'is_first_login',   
+            'blocked',
+            'active',
+            'password',         
+          ],
+        })) ||
+        (await userQuery.findOne({
+          where: { emp_id: idStr },
+          select: [
+            'id',
+            'email',
+            'username',
+            'emp_code',
+            'emp_id',
+            'is_first_login',   
+            'blocked',
+            'active',
+            'password',
+          ],
+        }));
 
       if (!user) {
         return ctx.unauthorized('Invalid credentials');
@@ -222,4 +248,72 @@ module.exports = {
 </body>
 </html>`;
   },
+
+
+  // ================= CHANGE PASSWORD (FIRST LOGIN) =================
+    async changePassword(ctx) {
+      try {
+        const user = ctx.state.user;
+
+        if (!user) {
+          return ctx.unauthorized('You must be logged in');
+        }
+
+        const { newPassword, confirmPassword } = ctx.request.body;
+
+        if (!newPassword || !confirmPassword) {
+          return ctx.badRequest('Both fields are required');
+        }
+
+        if (newPassword.length < 6) {
+          return ctx.badRequest('Password must be at least 6 characters');
+        }
+
+        if (newPassword !== confirmPassword) {
+          return ctx.badRequest('Passwords do not match');
+        }
+
+       await strapi.entityService.update(
+        'plugin::users-permissions.user',
+        user.id,
+        {
+          data: {
+            password: newPassword,
+            is_first_login: false,
+          },
+          state: {
+            isResetFlow: true,
+          },
+        }
+      );
+          strapi.log.info(`User ${user.email} changed password successfully`);
+
+        return ctx.send({ message: 'Password changed successfully' });
+
+      } catch (err) {
+        strapi.log.error('Change password error:', err);
+        return ctx.badRequest('Something went wrong');
+      }
+    },
+
+    // src/api/auth/controllers/auth.js
+
+    async checkUser(ctx) {
+      const { identifier } = ctx.query;
+      if (!identifier) return ctx.badRequest('Identifier required');
+
+      const userQuery = strapi.db.query('plugin::users-permissions.user');
+
+      const user =
+        (await userQuery.findOne({ where: { emp_code: identifier } })) ||
+        (await userQuery.findOne({ where: { emp_id: identifier } }));
+
+      if (!user) return ctx.notFound('User not found');
+
+      return ctx.send({
+        exists: true,
+        is_first_login: user.is_first_login,
+      });
+    }
+
 };

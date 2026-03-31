@@ -42,5 +42,19 @@ module.exports = {
         middlewares: [],
       },
     },
+    {
+      method: 'POST',
+      path: '/auth/change-password',
+      handler: 'auth.changePassword',
+      config: {
+        policies: ['global::isAuthenticated'],
+      },
+    },
+     {
+      method: 'GET',
+      path: '/auth/check-user',
+      handler: 'auth.checkUser',
+      auth: false ,
+    },
   ],
 };
