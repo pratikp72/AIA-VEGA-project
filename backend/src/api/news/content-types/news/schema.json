@@ -71,6 +71,9 @@
         "preset": "defaultHtml"
       },
       "required": true
+    },
+    "author_name": {
+      "type": "string"
     }
   }
 }

@@ -132,32 +132,65 @@ module.exports = {
     });
     // ─────────────────────────────────────────────────────────────────────────
     //Force reset when admin changes password
- strapi.db.lifecycles.subscribe({
-  models: ['plugin::users-permissions.user'],
+    strapi.db.lifecycles.subscribe({
+      models: ['plugin::users-permissions.user'],
 
-  beforeUpdate(event) {
-    const { data } = event.params;
-    const ctx = strapi.requestContext.get(); // 🔥 important
+      async beforeUpdate(event) {
+        const { data, where } = event.params;
+        const ctx = strapi.requestContext.get();
+        const requestUrl = ctx?.request?.url || '';
+        const isFrontendChangePassword = requestUrl.includes('/change-password');
+        const isAdminContentManagerUpdate = requestUrl.includes('/content-manager/');
+        const hasPasswordInPayload = Object.prototype.hasOwnProperty.call(data || {}, 'password');
+        const nextPassword = typeof data?.password === 'string' ? data.password.trim() : '';
 
-    console.log("🔥 [User Lifecycle] beforeUpdate");
-    console.log("📦 Data:", data);
+        strapi.log.info(
+          `[user-password-lifecycle] beforeUpdate url=${requestUrl || 'n/a'} hasPasswordInPayload=${hasPasswordInPayload} passwordProvided=${Boolean(nextPassword)} isFrontendChangePassword=${isFrontendChangePassword} isAdminContentManagerUpdate=${isAdminContentManagerUpdate}`
+        );
 
-    if (data.password) {
-      // ✅ Detect frontend API call (your changePassword)
-      if (ctx?.request?.url?.includes('/change-password')) {
-        console.log("👤 Frontend reset detected → keep FALSE");
-        return;
-      }
+        if (!hasPasswordInPayload || !nextPassword || isFrontendChangePassword || !isAdminContentManagerUpdate) {
+          strapi.log.info('[user-password-lifecycle] skipped: update is not an admin Content Manager password change');
+          return;
+        }
 
-      // ✅ Otherwise it's admin panel
-      console.log("🔑 Admin password change detected");
+        const existingUser = await strapi.db.query(USER_UID).findOne({
+          where,
+          select: ['id', 'password'],
+        });
 
-      data.is_first_login = true;
+        strapi.log.info(
+          `[user-password-lifecycle] candidate userId=${existingUser?.id ?? 'unknown'} existingPasswordFound=${Boolean(existingUser?.password)}`
+        );
 
-      console.log("✅ is_first_login set to TRUE");
-    }
-  },
-});
+        if (!existingUser?.password) {
+          data.is_first_login = true;
+          strapi.log.info('[user-password-lifecycle] existing password not found, setting is_first_login=true');
+          return;
+        }
+
+        const userService =
+          strapi.plugins?.['users-permissions']?.services?.user ||
+          strapi.plugin?.('users-permissions')?.service?.('user');
+
+        if (!userService?.validatePassword) {
+          data.is_first_login = true;
+          strapi.log.warn('[user-password-lifecycle] validatePassword unavailable, setting is_first_login=true as fallback');
+          return;
+        }
+
+        const isSamePassword = await userService.validatePassword(nextPassword, existingUser.password);
+
+        strapi.log.info(`[user-password-lifecycle] password comparison result isSamePassword=${isSamePassword}`);
+
+        if (!isSamePassword) {
+          data.is_first_login = true;
+          strapi.log.info('[user-password-lifecycle] admin password changed, setting is_first_login=true');
+          return;
+        }
+
+        strapi.log.info('[user-password-lifecycle] password unchanged, leaving is_first_login as-is');
+      },
+    });
 
     strapi.utils = strapi.utils || {};
     strapi.utils.notification = require('./utils/notification')(strapi);
