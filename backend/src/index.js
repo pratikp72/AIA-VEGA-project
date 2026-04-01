@@ -131,6 +131,33 @@ module.exports = {
       strapi.log.error(`[vega-sync] Startup sync failed: ${err?.message || err}`);
     });
     // ─────────────────────────────────────────────────────────────────────────
+    //Force reset when admin changes password
+ strapi.db.lifecycles.subscribe({
+  models: ['plugin::users-permissions.user'],
+
+  beforeUpdate(event) {
+    const { data } = event.params;
+    const ctx = strapi.requestContext.get(); // 🔥 important
+
+    console.log("🔥 [User Lifecycle] beforeUpdate");
+    console.log("📦 Data:", data);
+
+    if (data.password) {
+      // ✅ Detect frontend API call (your changePassword)
+      if (ctx?.request?.url?.includes('/change-password')) {
+        console.log("👤 Frontend reset detected → keep FALSE");
+        return;
+      }
+
+      // ✅ Otherwise it's admin panel
+      console.log("🔑 Admin password change detected");
+
+      data.is_first_login = true;
+
+      console.log("✅ is_first_login set to TRUE");
+    }
+  },
+});
 
     strapi.utils = strapi.utils || {};
     strapi.utils.notification = require('./utils/notification')(strapi);
