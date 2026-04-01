@@ -321,6 +321,11 @@
       "relation": "manyToOne",
       "target": "api::course-workflow.course-workflow",
       "inversedBy": "users_permissions_users"
+    },
+    "is_first_login": {
+      "type": "boolean",
+      "required": true,
+      "default": true
     }
   }
 }
