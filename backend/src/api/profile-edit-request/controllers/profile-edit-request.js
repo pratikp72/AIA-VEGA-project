@@ -6,58 +6,92 @@
 
 const { createCoreController } = require('@strapi/strapi').factories;
 
+const ALLOWED_PROFILE_FIELDS = [
+	'username',
+	'employee_name',
+	'contact_no',
+	'designation',
+	'department',
+	'working_location',
+	'branch',
+	'description',
+	'date_of_birth',
+	'age',
+];
+
+function sanitizeRequestedChanges(changes) {
+	if (!changes || typeof changes !== 'object' || Array.isArray(changes)) {
+		return {};
+	}
+
+	const filtered = {};
+	for (const [key, value] of Object.entries(changes)) {
+		if (ALLOWED_PROFILE_FIELDS.includes(key)) {
+			filtered[key] = value;
+		}
+	}
+	return filtered;
+}
+
 module.exports = createCoreController('api::profile-edit-request.profile-edit-request', ({ strapi }) => ({
-		async find(ctx) {
-			// Populate related fields for table display
-			ctx.query = ctx.query || {};
-			ctx.query.populate = {
-				users_permissions_user: true,
-				reviewed_by: true,
-				company: true
-			};
-			return await super.find(ctx);
-		},
-		async findOne(ctx) {
-			ctx.query = ctx.query || {};
-			ctx.query.populate = {
-				users_permissions_user: true,
-				reviewed_by: true,
-				company: true
-			};
-			return await super.findOne(ctx);
-		},
+	async find(ctx) {
+		// Populate related fields for table display
+		ctx.query = ctx.query || {};
+		ctx.query.populate = {
+			users_permissions_user: true,
+			reviewed_by: true,
+			company: true,
+		};
+		return await super.find(ctx);
+	},
+
+	async findOne(ctx) {
+		ctx.query = ctx.query || {};
+		ctx.query.populate = {
+			users_permissions_user: true,
+			reviewed_by: true,
+			company: true,
+		};
+		return await super.findOne(ctx);
+	},
+
 	async create(ctx) {
-		// Get authenticated user
 		const user = ctx.state.user;
 		if (!user) {
-			return ctx.badRequest('User not authenticated');
+			return ctx.unauthorized('User not authenticated');
 		}
-		// Fetch user's company (assuming user.company exists)
-		const userData = await strapi.entityService.findOne('plugin::users-permissions.user', user.id, { fields: ['company'] });
+
+		const userData = await strapi.entityService.findOne('plugin::users-permissions.user', user.id, {
+			fields: ['company'],
+		});
+
 		if (!userData || !userData.company) {
 			return ctx.badRequest('User company not found');
 		}
-		// Inject company into request body (root field)
-		ctx.request.body.data = ctx.request.body.data || {};
-		ctx.request.body.data.company = userData.company;
-		// Call default create
+
+		const bodyData = (ctx.request.body && ctx.request.body.data) || {};
+		const filteredChanges = sanitizeRequestedChanges(bodyData.requested_changes);
+
+		if (Object.keys(filteredChanges).length === 0) {
+			return ctx.badRequest('requested_changes must include at least one allowed field');
+		}
+
+		ctx.request.body = ctx.request.body || {};
+		ctx.request.body.data = {
+			...bodyData,
+			requested_changes: filteredChanges,
+			users_permissions_user: user.id,
+			company: userData.company,
+			request_status: 'Pending',
+			reviewed_by: null,
+			reviewed_at: null,
+		};
+
 		return await super.create(ctx);
 	},
 
 	async update(ctx) {
-		// Get authenticated user
-		const user = ctx.state.user;
-		if (!user) {
-			return ctx.badRequest('User not authenticated');
-		}
-		// Fetch user's company
-		const userData = await strapi.entityService.findOne('plugin::users-permissions.user', user.id, { fields: ['company'] });
-		if (!userData || !userData.company) {
-			return ctx.badRequest('User company not found');
-		}
-		ctx.request.body.data = ctx.request.body.data || {};
-		ctx.request.body.data.company = userData.company;
-		// Call default update
-		return await super.update(ctx);
-	}
+		// Users should not update request records directly after creation.
+		return ctx.forbidden('Profile edit request updates are not allowed from this endpoint');
+	},
 }));

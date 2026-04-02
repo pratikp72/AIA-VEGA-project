@@ -1,3 +1,4 @@
+// @ts-nocheck
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Layouts } from '@strapi/strapi/admin';
 import {
@@ -6,12 +7,6 @@ import {
   Button,
   Flex,
   Loader,
-  Table,
-  Thead,
-  Tbody,
-  Tr,
-  Td,
-  Th,
   Badge,
   SingleSelect,
   SingleSelectOption,
@@ -73,17 +68,16 @@ export default function ProfileEditRequestsPage() {
     };
   }, []);
 
-  const updateStatus = async (documentId, newStatus, comment = '') => {
+  const updateStatus = async (documentId, newStatus) => {
     const id = documentId != null ? String(documentId) : null;
     if (!id) return;
     setUpdatingId(id);
     setError(null);
     try {
       await put(`/profile-edit-requests/requests/${encodeURIComponent(id)}`, {
-        data: { 
+        data: {
           request_status: newStatus,
-          admin_comment: comment 
-        }
+        },
       });
       
       if (isMounted.current) {
@@ -111,25 +105,28 @@ export default function ProfileEditRequestsPage() {
 
   const entryId = (entry) => entry.documentId ?? entry.id ?? entry._id;
 
+  const getStatusValue = (entry) => {
+    const attrs = entry?.attributes || entry || {};
+    return attrs.request_status ?? entry?.request_status ?? 'Pending';
+  };
+
   const getDisplayValues = (entry) => {
     const attrs = entry.attributes || entry;
     const user = attrs.users_permissions_user?.data ?? attrs.users_permissions_user ?? {};
     const userAttrs = user.attributes ?? user;
     const userName = userAttrs.username ?? userAttrs.email ?? userAttrs.employee_name ?? '—';
     const userId = user.id ?? '—';
-    const statusRaw = attrs.request_status ?? entry.request_status ?? 'Pending';
-    const reason = attrs.reason ?? entry.reason ?? '—';
     const requestedChanges = attrs.requested_changes ?? entry.requested_changes ?? {};
     // Prefer company from user, fallback to company on request
     const userCompany = userAttrs.company || attrs.company || attrs.companyName || '';
-      return { userName, userId, reason, requestedChanges, attrs, userCompany };
+    return { userName, userId, requestedChanges, attrs, userCompany };
   };
 
   const filteredList = useMemo(() => {
     const q = (search || '').toLowerCase().trim();
     const company = (companyFilter || '').trim();
     return list.filter((entry) => {
-      const { userName, userId, userCompany, attrs } = getDisplayValues(entry);
+      const { userName, userCompany, attrs } = getDisplayValues(entry);
       const entryIdVal = entry.documentId ?? entry.id ?? entry._id;
       // Company filtering
       if (company) {
@@ -176,6 +173,13 @@ export default function ProfileEditRequestsPage() {
     setShowModal(true);
   };
 
+  const handleDecision = async (status) => {
+    if (!selectedRequest) return;
+    const id = entryId(selectedRequest);
+    if (!id) return;
+    await updateStatus(id, status);
+  };
+
   const renderChangesPreview = (requestedChanges) => {
     if (!requestedChanges || typeof requestedChanges !== 'object') {
       return <Typography>No changes specified</Typography>;
@@ -191,9 +195,6 @@ export default function ProfileEditRequestsPage() {
     } else if (selectedRequest?.users_permissions_user) {
       user = selectedRequest.users_permissions_user;
     }
-    // Debug: print user object to console
-    console.log('User object for changes dialog:', user);
-
     // Helper to get old value with fallback for common aliases
     const getOldValue = (field) => {
       if (user[field] !== undefined) return user[field];
@@ -208,7 +209,6 @@ export default function ProfileEditRequestsPage() {
       <Box>
         {Object.entries(requestedChanges).map(([field, newValue]) => {
           const oldValue = getOldValue(field);
-          console.log('Field:', field, 'New:', newValue, 'Old:', oldValue, 'User:', user);
           return (
             <Flex key={field} padding={2} background="neutral100" marginBottom={2} hasRadius>
               <Box style={{ flex: 1, display: 'flex', alignItems: 'center' }}>
@@ -331,6 +331,7 @@ export default function ProfileEditRequestsPage() {
           <>
             {/* <Box background="neutral0" hasRadius shadow="tableShadow" padding={6}> */}
               <DataTable
+                title="Profile Edit Requests"
                 data={pageList}
                 fullData={filteredList}
                 paginatedData={pageList}
@@ -350,7 +351,15 @@ export default function ProfileEditRequestsPage() {
                               }
                             }
                           },
-                          { key: 'reason', label: 'Reason' },
+                          {
+                            key: 'status',
+                            label: 'Status',
+                            render: (val, row) => {
+                              const status = getStatusValue(row);
+                              const tone = status === 'Approved' ? 'success' : status === 'Rejected' ? 'danger' : 'secondary';
+                              return <Badge tone={tone}>{status}</Badge>;
+                            },
+                          },
                           { key: 'changes', label: 'Changes', render: (val, row) => (
                             <Button size="S" variant="tertiary" onClick={() => viewChanges(row)}>
                               View 
@@ -393,6 +402,24 @@ export default function ProfileEditRequestsPage() {
                 </Box>
               </Modal.Body>
               <Modal.Footer>
+                {getStatusValue(selectedRequest) === 'Pending' && (
+                  <>
+                    <Button
+                      variant="danger"
+                      disabled={updatingId === String(entryId(selectedRequest))}
+                      onClick={() => handleDecision('Rejected')}
+                    >
+                      Reject
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      disabled={updatingId === String(entryId(selectedRequest))}
+                      onClick={() => handleDecision('Approved')}
+                    >
+                      Approve
+                    </Button>
+                  </>
+                )}
                 <Button variant="tertiary" onClick={() => setShowModal(false)}>
                   Close
                 </Button>

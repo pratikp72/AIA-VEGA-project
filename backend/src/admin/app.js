@@ -368,6 +368,27 @@ export default {
     });
 
     /**
+     * Profile Edit Requests - under HR Module
+     * Allows HR to review and approve/reject employee profile change requests
+     */
+    app.addMenuLink({
+      id: 'profile-edit-requests',
+      to: '/content-manager/collection-types/api::profile-edit-request.profile-edit-request',
+      icon: 'pencil',
+      intlLabel: {
+        id: 'custom-menu.profile-edit-requests',
+        defaultMessage: 'Profile Edit Requests',
+      },
+      parent: 'hr-module',
+      permissions: [
+        {
+          action: 'plugin::content-manager.read',
+          subject: 'api::profile-edit-request.profile-edit-request',
+        },
+      ],
+    });
+
+    /**
      * Learning Module - Parent menu item under "All Modules"
      * Another sub-group within "All Modules"
      */

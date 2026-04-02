@@ -89,11 +89,7 @@ function syncModuleBlocks(current, prevLanguages, nextLanguages, createPlacehold
 
   // If empty, create the first module block (one per language)
   if (list.length === 0) {
-    const initialModuleId = generateId('mod');
-    return nextLanguages.map((lang, i) => ({
-      ...createPlaceholder(lang, i),
-      module_id: initialModuleId,
-    }));
+    return nextLanguages.map((lang, i) => createPlaceholder(lang, i));
   }
 
   // Infer block size using previous language count whenever possible.
@@ -116,11 +112,6 @@ function syncModuleBlocks(current, prevLanguages, nextLanguages, createPlacehold
   const out = [];
 
   blocks.forEach((block, blockIdx) => {
-    const blockModuleId =
-      block
-        .map((m) => (typeof m?.module_id === 'string' ? m.module_id.trim() : ''))
-        .find(Boolean) || generateId('mod');
-
     // index by language for best preservation when removing/adding languages
     const byLang = new Map();
     block.forEach((m) => {
@@ -131,10 +122,10 @@ function syncModuleBlocks(current, prevLanguages, nextLanguages, createPlacehold
     nextLanguages.forEach((lang, langIdx) => {
       const found = byLang.get(normalizeLang(lang));
       if (found) {
-        out.push({ ...found, language: lang, module_id: blockModuleId });
+        out.push({ ...found, language: lang });
       } else {
-        // New language added: create a clean placeholder (do not clone IDs from another language)
-        out.push({ ...createPlaceholder(lang, langIdx), module_id: blockModuleId });
+        // New language added: create a clean placeholder with its own unique module_id
+        out.push(createPlaceholder(lang, langIdx));
       }
 
       const last = out[out.length - 1];
@@ -308,7 +299,6 @@ function expandLastModuleSetToLanguages(modules, languages) {
   const expanded = expandLastSetToLanguages(modules, languages);
   if (!expanded) return null;
 
-  const bulkModuleId = generateId('mod');
   const bulkStartIdx = Math.max(0, expanded.length - languages.length);
 
   return expanded.map((m, idx) => {
@@ -319,7 +309,7 @@ function expandLastModuleSetToLanguages(modules, languages) {
     return {
       ...cleaned,
       language: cleaned.language,
-      module_id: bulkModuleId,
+      module_id: generateId('mod'),   // each language variant gets its own unique id
       module_duration_min: cleaned.module_duration_min ?? 1,
       __temp_key__: `mod-expand-${idx}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
     };
@@ -346,8 +336,8 @@ function moduleEntryKey(entry, idx) {
   return `idx:${idx}`;
 }
 
-function findRemovedEntry(previousItems, currentItems) {
-  if (!Array.isArray(previousItems) || !Array.isArray(currentItems)) return null;
+function findRemovedEntryIndex(previousItems, currentItems) {
+  if (!Array.isArray(previousItems) || !Array.isArray(currentItems)) return -1;
 
   const currentCount = new Map();
   currentItems.forEach((entry, idx) => {
@@ -358,11 +348,11 @@ function findRemovedEntry(previousItems, currentItems) {
   for (let i = 0; i < previousItems.length; i += 1) {
     const key = moduleEntryKey(previousItems[i], i);
     const count = currentCount.get(key) || 0;
-    if (count === 0) return previousItems[i];
+    if (count === 0) return i;
     currentCount.set(key, count - 1);
   }
 
-  return null;
+  return -1;
 }
 
 function expandLastQuizSetToLanguages(quiz, languages) {
@@ -500,14 +490,13 @@ function CourseLanguageSyncOnSelect({ slug, model }) {
     }
 
     // 3. If one module row from a bulk-created group is deleted, confirm and delete the full group.
-    if (modules.length === prevModules.length - 1) {
-      const removed = findRemovedEntry(prevModules, modules);
-      const removedModuleId = typeof removed?.module_id === 'string' ? removed.module_id.trim() : '';
+    if (N > 1 && modules.length === prevModules.length - 1) {
+      const removedIndex = findRemovedEntryIndex(prevModules, modules);
 
-      if (removedModuleId) {
-        const grouped = prevModules.filter(
-          (m) => typeof m?.module_id === 'string' && m.module_id.trim() === removedModuleId,
-        );
+      if (removedIndex >= 0) {
+        const blockStart = Math.floor(removedIndex / N) * N;
+        const blockEnd = Math.min(blockStart + N, prevModules.length);
+        const grouped = prevModules.slice(blockStart, blockEnd);
 
         if (grouped.length > 1) {
           const ok = window.confirm(
@@ -527,9 +516,7 @@ function CourseLanguageSyncOnSelect({ slug, model }) {
             return;
           }
 
-          const filteredModules = prevModules.filter(
-            (m) => !(typeof m?.module_id === 'string' && m.module_id.trim() === removedModuleId),
-          );
+          const filteredModules = prevModules.filter((_, idx) => idx < blockStart || idx >= blockEnd);
 
           prevOrientationRequiredRef.current = orientationRequired;
           prevLengthsRef.current = {
@@ -546,7 +533,12 @@ function CourseLanguageSyncOnSelect({ slug, model }) {
     }
 
     // 4. When user clicks "Add an entry", Strapi adds 1 row. Expand it to N rows (one per language).
-    if (shouldExpandAfterSingleAdd(modules.length, prevLengths.modules, N)) {
+    // Use two triggers:
+    // (a) Classic: length went up by exactly 1 (primary fast-path).
+    // (b) Fallback: module count is not a multiple of N AND grew vs prevLengths — means a row was
+    //     added while our prevLengths was stale from a prior race condition.
+    const hasMisalignedModules = N > 0 && modules.length > prevLengths.modules && modules.length % N !== 0;
+    if (shouldExpandAfterSingleAdd(modules.length, prevLengths.modules, N) || hasMisalignedModules) {
       const expanded = expandLastModuleSetToLanguages(modules, languages);
       if (expanded) {
         prevLangRef.current = languages;

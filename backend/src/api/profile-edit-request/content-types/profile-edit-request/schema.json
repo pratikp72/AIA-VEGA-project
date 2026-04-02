@@ -21,9 +21,6 @@
       "type": "json",
       "required": true
     },
-    "reason": {
-      "type": "text"
-    },
     "request_status": {
       "type": "enumeration",
       "enum": [
@@ -41,9 +38,6 @@
     },
     "reviewed_at": {
       "type": "datetime"
-    },
-    "admin_comment": {
-      "type": "text"
     },
     "company": {
       "type": "enumeration",
