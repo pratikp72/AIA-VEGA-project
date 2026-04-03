@@ -21,6 +21,14 @@
       "type": "json",
       "required": true
     },
+    "previous_values": {
+      "type": "json",
+      "required": false
+    },
+    "requester_name": {
+      "type": "string",
+      "required": false
+    },
     "request_status": {
       "type": "enumeration",
       "enum": [

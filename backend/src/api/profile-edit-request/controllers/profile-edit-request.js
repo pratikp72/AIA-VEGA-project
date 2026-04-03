@@ -1,3 +1,4 @@
+// @ts-nocheck
 'use strict';
 
 /**
@@ -20,6 +21,8 @@ const ALLOWED_PROFILE_FIELDS = [
 	'age',
 ];
 
+const SNAPSHOT_SCALAR_FIELDS = ALLOWED_PROFILE_FIELDS.filter((field) => field !== 'photograph');
+
 /**
  * @param {Record<string, unknown> | null | undefined} changes
  */
@@ -36,6 +39,30 @@ function sanitizeRequestedChanges(changes) {
 		}
 	}
 	return filtered;
+}
+
+function normalizeSnapshotValue(value) {
+	if (value == null) return value;
+	if (Array.isArray(value)) {
+		return value.map((item) => normalizeSnapshotValue(item));
+	}
+	if (typeof value === 'object') {
+		if (Object.prototype.hasOwnProperty.call(value, 'id')) {
+			return value.id;
+		}
+		if (Object.prototype.hasOwnProperty.call(value, 'documentId')) {
+			return value.documentId;
+		}
+	}
+	return value;
+}
+
+function buildPreviousValuesSnapshot(currentUser, filteredChanges) {
+	const previous = {};
+	for (const key of Object.keys(filteredChanges)) {
+		previous[key] = normalizeSnapshotValue(currentUser?.[key]);
+	}
+	return previous;
 }
 
 module.exports = createCoreController('api::profile-edit-request.profile-edit-request', ({ strapi }) => ({
@@ -78,12 +105,36 @@ module.exports = createCoreController('api::profile-edit-request.profile-edit-re
 		const filteredChanges = sanitizeRequestedChanges(bodyData.requested_changes);
 
 		if (Object.keys(filteredChanges).length === 0) {
-			return ctx.badRequest('requested_changes must include at least one allowed field');
+			const requestedFields = Object.keys(bodyData.requested_changes || {});
+			const allowedFieldsStr = ALLOWED_PROFILE_FIELDS.join(', ');
+			const errorMsg = requestedFields.length === 0 
+				? `requested_changes is required. Allowed fields: ${allowedFieldsStr}`
+				: `Invalid field(s) in requested_changes: ${requestedFields.join(', ')}. Allowed fields: ${allowedFieldsStr}`;
+			return ctx.badRequest(errorMsg);
 		}
+
+		const currentUserProfile = await strapi.entityService.findOne('plugin::users-permissions.user', user.id, {
+			fields: SNAPSHOT_SCALAR_FIELDS,
+			populate: {
+				photograph: {
+					fields: ['id', 'documentId', 'url'],
+				},
+			},
+		});
+
+		const previousValues = buildPreviousValuesSnapshot(currentUserProfile, filteredChanges);
+		const requesterName =
+			currentUserProfile?.username ||
+			currentUserProfile?.employee_name ||
+			currentUserProfile?.name ||
+			currentUserProfile?.email ||
+			`User ${user.id}`;
 
 		ctx.request.body = ctx.request.body || {};
 		ctx.request.body.data = {
 			requested_changes: filteredChanges,
+			previous_values: previousValues,
+			requester_name: requesterName,
 			users_permissions_user: user.id,
 			company: userData.company,
 			request_status: 'Pending',

@@ -4,6 +4,14 @@ module.exports = {
     routes: [
       {
         method: 'GET',
+        path: '/requests/count',
+        handler: 'profileEditController.getPendingCount',
+        config: {
+          policies: [],
+        },
+      },
+      {
+        method: 'GET',
         path: '/requests',
         handler: 'profileEditController.getRequests',
         config: {
