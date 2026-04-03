@@ -102,23 +102,10 @@
     },
     "photograph": {
       "type": "media",
-      "conditions": {
-        "visible": {
-          "==": [
-            {
-              "var": "company"
-            },
-            "AIA"
-          ]
-        }
-      },
       "multiple": false,
       "required": true,
       "allowedTypes": [
-        "images",
-        "files",
-        "videos",
-        "audios"
+        "images"
       ]
     },
     "age": {

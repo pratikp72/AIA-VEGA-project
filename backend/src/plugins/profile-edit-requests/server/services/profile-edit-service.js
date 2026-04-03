@@ -1,3 +1,4 @@
+// @ts-nocheck
 const ALLOWED_PROFILE_FIELDS = [
   'username',
   'contact_no',
@@ -11,6 +12,57 @@ const ALLOWED_PROFILE_FIELDS = [
   'email',
 ];
 
+function runDetached(strapi, label, work) {
+  Promise.resolve()
+    .then(work)
+    .catch((error) => {
+      strapi.log.error(`[profile-edit-request] ${label}:`, error?.message || error);
+    });
+}
+
+function parseMeta(meta) {
+  if (!meta) return null;
+  if (typeof meta === 'object') return meta;
+  if (typeof meta === 'string') {
+    try {
+      return JSON.parse(meta);
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+async function findRequesterNameFromNotification(strapi, request) {
+  try {
+    const requestIds = [request?.documentId, request?.id]
+      .filter(Boolean)
+      .map((v) => String(v));
+
+    if (requestIds.length === 0) return null;
+
+    const row = await strapi.db
+      .connection('notifications')
+      .select('meta')
+      .where('type', 'profile_edit_request')
+      .andWhereRaw("meta ->> 'action' = ?", ['created'])
+      .andWhere(function whereRequestId() {
+        requestIds.forEach((rid, idx) => {
+          if (idx === 0) this.whereRaw("meta ->> 'requestId' = ?", [rid]);
+          else this.orWhereRaw("meta ->> 'requestId' = ?", [rid]);
+        });
+      })
+      .orderBy('id', 'desc')
+      .first();
+
+    const meta = parseMeta(row?.meta);
+    return meta?.userName || null;
+  } catch (error) {
+    strapi.log.warn(`[profile-edit-request] requester_name fallback lookup failed for request ${request?.id || request?.documentId}: ${error?.message || error}`);
+    return null;
+  }
+}
+
 module.exports = ({ strapi }) => ({
   async getAll() {
     const entries = await strapi.entityService.findMany('api::profile-edit-request.profile-edit-request', {
@@ -22,22 +74,66 @@ module.exports = ({ strapi }) => ({
       },
       sort: { createdAt: 'desc' },
     });
+
     // Ensure all user fields are present
-    return entries.map((entry) => {
+    for (const entry of entries) {
+      if (!entry.requester_name) {
+        const historicalName = await findRequesterNameFromNotification(strapi, entry);
+        if (historicalName) {
+          entry.requester_name = historicalName;
+          runDetached(strapi, `persist requester_name for request ${entry.id || entry.documentId}`, async () => {
+            await strapi.db.query('api::profile-edit-request.profile-edit-request').update({
+              where: { id: entry.id },
+              data: { requester_name: historicalName },
+            });
+          });
+        }
+      }
+
+      // Backfill old username snapshot for historical rows that predate previous_values storage.
+      const requestedChanges = entry.requested_changes && typeof entry.requested_changes === 'object'
+        ? entry.requested_changes
+        : {};
+      const hasUsernameChange = Object.prototype.hasOwnProperty.call(requestedChanges, 'username');
+      const previousValues = entry.previous_values && typeof entry.previous_values === 'object'
+        ? { ...entry.previous_values }
+        : {};
+      const hasOldUsername = Object.prototype.hasOwnProperty.call(previousValues, 'username');
+
+      if (hasUsernameChange && !hasOldUsername && entry.requester_name) {
+        previousValues.username = entry.requester_name;
+        entry.previous_values = previousValues;
+
+        runDetached(strapi, `persist previous_values.username for request ${entry.id || entry.documentId}`, async () => {
+          await strapi.db.query('api::profile-edit-request.profile-edit-request').update({
+            where: { id: entry.id },
+            data: { previous_values: previousValues },
+          });
+        });
+      }
+
       if (entry.users_permissions_user && typeof entry.users_permissions_user === 'object') {
         const user = entry.users_permissions_user;
-        entry.userName = user.username || user.employee_name || user.name || '—';
+        entry.userName = entry.requester_name || user.username || user.employee_name || user.name || '—';
         entry.userId = user.id || user.emp_id || '—';
         entry.userCompany = user.company || '—';
         entry.userContact = user.contact_no || '—';
       } else {
-        entry.userName = '—';
+        entry.userName = entry.requester_name || '—';
         entry.userId = '—';
         entry.userCompany = '—';
         entry.userContact = '—';
       }
-      return entry;
+    }
+
+    return entries;
+  },
+
+  async getPendingCount() {
+    const count = await strapi.db.query('api::profile-edit-request.profile-edit-request').count({
+      where: { request_status: 'Pending' },
     });
+    return count || 0;
   },
 
   async updateStatus(id, newStatus, adminUser) {
@@ -68,20 +164,34 @@ module.exports = ({ strapi }) => ({
         throw new Error('Only pending requests can be approved or rejected');
       }
 
-      if (newStatus === 'Approved') {
-        await this.applyProfileChanges(request);
-      }
+      const baseUpdateData = {
+        request_status: newStatus,
+        reviewed_by: adminUser?.id || null,
+        reviewed_at: new Date(),
+      };
 
       const updated = await strapi.db.query('api::profile-edit-request.profile-edit-request').update({
         where: { id: request.id },
-        data: {
-          request_status: newStatus,
-          reviewed_by: adminUser?.id || null,
-          reviewed_at: new Date(),
-        },
+        data: baseUpdateData,
       });
 
-      return updated;
+      if (!updated) {
+        throw new Error('Failed to persist profile edit request status');
+      }
+
+      if (newStatus === 'Approved') {
+        runDetached(strapi, `apply approved changes for request ${request.id}`, async () => {
+          await this.applyProfileChanges(request);
+        });
+      }
+
+      return {
+        id: request.id,
+        documentId: request.documentId,
+        request_status: newStatus,
+        reviewed_by: adminUser?.id || null,
+        reviewed_at: baseUpdateData.reviewed_at,
+      };
     } catch (error) {
       strapi.log.error('Failed to update status:', error);
       throw error;

@@ -6,7 +6,7 @@
 
 import pluginPkg from '../../package.json';
 import { PLUGIN_ID } from './pluginId';
-import { User } from '@strapi/icons';
+import ProfileEditWithBadge from './components/ProfileEditWithBadge.jsx';
 
 const name = pluginPkg.strapi.name;
 
@@ -20,7 +20,7 @@ export default {
     // Profile Edit Requests - sidebar link
     app.addMenuLink({
       to: `plugins/${PLUGIN_ID}`,
-      icon: User,
+      icon: ProfileEditWithBadge,
       intlLabel: {
         id: `${PLUGIN_ID}.menu.main`,
         defaultMessage: 'Profile Edit Requests',

@@ -1,4 +1,13 @@
 module.exports = ({ strapi }) => ({
+  async getPendingCount(ctx) {
+    try {
+      const count = await strapi.plugin('profile-edit-requests').service('profileEditService').getPendingCount();
+      ctx.body = { count };
+    } catch (error) {
+      ctx.throw(500, error);
+    }
+  },
+
   async getRequests(ctx) {
     try {
       const data = await strapi.plugin('profile-edit-requests').service('profileEditService').getAll();

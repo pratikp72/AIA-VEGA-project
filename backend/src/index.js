@@ -1,3 +1,4 @@
+// @ts-nocheck
 'use strict';
 
 const USER_UID = 'plugin::users-permissions.user';
@@ -115,6 +116,52 @@ module.exports = {
         strapi.log.warn('ensureDepartmentForUser failed', err);
       }
       return result;
+    });
+
+    // Prevent direct user updates to sensitive fields - force profile-edit-request flow
+    strapi.documents.use(async (context, next) => {
+      const { uid, action } = context;
+      const data = context.params?.data;
+
+      if (uid !== USER_UID || action !== 'update' || !data) {
+        return await next();
+      }
+
+      const user = context.state?.user || context.user;
+      const targetDocId = context.params?.documentId;
+      const targetId = context.params?.id;
+      const isUpdatingSelf = user && (
+        String(user.documentId) === String(targetDocId) ||
+        String(user.id) === String(targetId)
+      );
+
+      if (!isUpdatingSelf) {
+        return await next();
+      }
+
+      const sensitiveFields = [
+        'photograph',
+        'email',
+        'contact_no',
+        'designation',
+        'department',
+        'working_location',
+        'branch',
+        'date_of_birth',
+      ];
+
+      const attemptedSensitiveUpdates = Object.keys(data).filter((key) =>
+        sensitiveFields.includes(key)
+      );
+
+      if (attemptedSensitiveUpdates.length > 0) {
+        throw new Error(
+          `Cannot directly update profile. Sensitive fields (${attemptedSensitiveUpdates.join(', ')}) ` +
+          'require approval via profile-edit-request. Please use the profile edit request system.'
+        );
+      }
+
+      return await next();
     });
 
     // Course-assignment automation runs from docManager.create (Content Manager) and from db lifecycle (API/fallback).
@@ -262,6 +309,14 @@ module.exports = {
       registerQuizReattemptNotificationLifecycles(strapi);
     } catch (e) {
       strapi.log.error('Quiz reattempt notification bootstrap failed:', e?.message || e);
+    }
+
+    // Profile edit request: notify admin on create, notify user on approve/reject
+    try {
+      const { registerProfileEditRequestNotificationLifecycles } = require('./lifecycles/profile-edit-request-notification');
+      registerProfileEditRequestNotificationLifecycles(strapi);
+    } catch (e) {
+      strapi.log.error('Profile edit request notification bootstrap failed:', String(e));
     }
 
     // Course-workflow: when module_type is Offline, create one offline_module row per selected user.
