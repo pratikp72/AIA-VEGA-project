@@ -8,13 +8,13 @@ const { createCoreController } = require('@strapi/strapi').factories;
 
 const ALLOWED_PROFILE_FIELDS = [
 	'username',
-	'employee_name',
 	'email',
 	'contact_no',
 	'designation',
 	'department',
 	'working_location',
 	'branch',
+	'photograph',
 	'date_of_birth',
 	'joining_date',
 	'age',
