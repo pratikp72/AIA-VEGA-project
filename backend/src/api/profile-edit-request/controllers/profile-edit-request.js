@@ -9,21 +9,26 @@ const { createCoreController } = require('@strapi/strapi').factories;
 const ALLOWED_PROFILE_FIELDS = [
 	'username',
 	'employee_name',
+	'email',
 	'contact_no',
 	'designation',
 	'department',
 	'working_location',
 	'branch',
-	'description',
 	'date_of_birth',
+	'joining_date',
 	'age',
 ];
 
+/**
+ * @param {Record<string, unknown> | null | undefined} changes
+ */
 function sanitizeRequestedChanges(changes) {
 	if (!changes || typeof changes !== 'object' || Array.isArray(changes)) {
 		return {};
 	}
 
+	/** @type {Record<string, unknown>} */
 	const filtered = {};
 	for (const [key, value] of Object.entries(changes)) {
 		if (ALLOWED_PROFILE_FIELDS.includes(key)) {
@@ -78,13 +83,10 @@ module.exports = createCoreController('api::profile-edit-request.profile-edit-re
 
 		ctx.request.body = ctx.request.body || {};
 		ctx.request.body.data = {
-			...bodyData,
 			requested_changes: filteredChanges,
 			users_permissions_user: user.id,
 			company: userData.company,
 			request_status: 'Pending',
-			reviewed_by: null,
-			reviewed_at: null,
 		};
 
 		return await super.create(ctx);
