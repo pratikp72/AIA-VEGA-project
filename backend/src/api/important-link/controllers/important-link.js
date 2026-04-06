@@ -10,7 +10,7 @@ const getUserCompany = require('../../../utils/getUserCompany');
 module.exports = createCoreController('api::important-link.important-link', ({ strapi }) => ({
 	async find(ctx) {
 		const userCompany = await getUserCompany(strapi, ctx);
-		const where = { publishedAt: { $notNull: true }, active: true };
+		const where = { publishedAt: { $notNull: true }, active: 'published' };
 		if (userCompany) {
 			where.company = { name: userCompany };
 		}
@@ -28,7 +28,7 @@ module.exports = createCoreController('api::important-link.important-link', ({ s
 	async findOne(ctx) {
 		const userCompany = await getUserCompany(strapi, ctx);
 		const docId = ctx.params.documentId ?? ctx.params.id;
-		const where = { publishedAt: { $notNull: true }, active: true };
+		const where = { publishedAt: { $notNull: true }, active: 'published' };
 		if (docId) where.documentId = docId;
 		if (userCompany) where.company = { name: userCompany };
 		const item = await strapi.db.query('api::important-link.important-link').findOne({

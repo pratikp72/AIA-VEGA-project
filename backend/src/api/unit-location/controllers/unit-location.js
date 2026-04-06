@@ -11,7 +11,7 @@ const getUserCompany = require('../../../utils/getUserCompany');
 module.exports = createCoreController('api::unit-location.unit-location', ({ strapi }) => ({
   async find(ctx) {
     const userCompany = await getUserCompany(strapi, ctx);
-    const where = { publishedAt: { $notNull: true }, active: true };
+    const where = { publishedAt: { $notNull: true }, active: 'published' };
     if (userCompany) {
       where.company = { name: userCompany };
     }
@@ -32,7 +32,7 @@ module.exports = createCoreController('api::unit-location.unit-location', ({ str
     const where = {
       documentId: docId,
       publishedAt: { $notNull: true },
-      active: true,
+      active: 'published',
     };
     if (userCompany) {
       where.company = { name: userCompany };

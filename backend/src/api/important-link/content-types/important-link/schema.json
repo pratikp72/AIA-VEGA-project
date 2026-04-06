@@ -22,9 +22,10 @@
       "unique": false
     },
     "active": {
-      "type": "boolean",
-      "required": true,
-      "default": true
+      "type": "enumeration",
+      "enum": ["published", "unpublished"],
+      "default": "published",
+      "required": true
     },
     "company": {
       "type": "relation",

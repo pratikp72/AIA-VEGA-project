@@ -539,9 +539,9 @@ export interface ApiCompanyPolicyCompanyPolicy
     draftAndPublish: true;
   };
   attributes: {
-    active: Schema.Attribute.Boolean &
+    active: Schema.Attribute.Enumeration<['published', 'unpublished']> &
       Schema.Attribute.Required &
-      Schema.Attribute.DefaultTo<true>;
+      Schema.Attribute.DefaultTo<'published'>;
     company: Schema.Attribute.Relation<'manyToMany', 'api::company.company'>;
     createdAt: Schema.Attribute.DateTime;
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
@@ -554,7 +554,6 @@ export interface ApiCompanyPolicyCompanyPolicy
           preset: 'defaultHtml';
         }
       >;
-    document: Schema.Attribute.Media<'files'>;
     locale: Schema.Attribute.String & Schema.Attribute.Private;
     localizations: Schema.Attribute.Relation<
       'oneToMany',
@@ -562,8 +561,15 @@ export interface ApiCompanyPolicyCompanyPolicy
     > &
       Schema.Attribute.Private;
     publishedAt: Schema.Attribute.DateTime;
-    tags: Schema.Attribute.String;
-    title: Schema.Attribute.String & Schema.Attribute.Required;
+    tags: Schema.Attribute.String &
+      Schema.Attribute.SetMinMaxLength<{
+        maxLength: 50;
+      }>;
+    title: Schema.Attribute.String &
+      Schema.Attribute.Required &
+      Schema.Attribute.SetMinMaxLength<{
+        maxLength: 100;
+      }>;
     updatedAt: Schema.Attribute.DateTime;
     updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
@@ -581,17 +587,13 @@ export interface ApiCompanyCompany extends Struct.CollectionTypeSchema {
     draftAndPublish: true;
   };
   attributes: {
-    active: Schema.Attribute.Boolean &
+    active: Schema.Attribute.Enumeration<['published', 'unpublished']> &
       Schema.Attribute.Required &
-      Schema.Attribute.DefaultTo<true>;
+      Schema.Attribute.DefaultTo<'published'>;
     address: Schema.Attribute.Text & Schema.Attribute.Required;
     company_mail: Schema.Attribute.Email;
     company_overview: Schema.Attribute.Text;
     company_type: Schema.Attribute.String & Schema.Attribute.Required;
-    course_assignments: Schema.Attribute.Relation<
-      'manyToMany',
-      'api::course-assignment.course-assignment'
-    >;
     createdAt: Schema.Attribute.DateTime;
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
@@ -630,14 +632,13 @@ export interface ApiCourseAssignmentCourseAssignment
     draftAndPublish: true;
   };
   attributes: {
-    active: Schema.Attribute.Boolean &
+    active: Schema.Attribute.Enumeration<['published', 'unpublished']> &
       Schema.Attribute.Required &
-      Schema.Attribute.DefaultTo<true>;
+      Schema.Attribute.DefaultTo<'published'>;
     assignment_target_type: Schema.Attribute.Enumeration<
-      ['Department', 'Location', 'Company', 'Individual']
-    > &
-      Schema.Attribute.Required;
-    companies: Schema.Attribute.Relation<'manyToMany', 'api::company.company'>;
+      ['Individual', 'Location', 'Department']
+    >;
+    company: Schema.Attribute.Relation<'oneToOne', 'api::company.company'>;
     courses: Schema.Attribute.Relation<'manyToMany', 'api::course.course'>;
     createdAt: Schema.Attribute.DateTime;
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
@@ -684,6 +685,7 @@ export interface ApiCourseWorkflowCourseWorkflow
     category: Schema.Attribute.Enumeration<
       ['Mandatory', 'Orientation', 'other']
     >;
+    company: Schema.Attribute.Relation<'oneToOne', 'api::company.company'>;
     createdAt: Schema.Attribute.DateTime;
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'>;
     locale: Schema.Attribute.String & Schema.Attribute.Private;
@@ -707,6 +709,7 @@ export interface ApiCourseCourse extends Struct.CollectionTypeSchema {
   collectionName: 'courses';
   info: {
     displayName: 'Courses';
+    mainField: 'title';
     pluralName: 'courses';
     singularName: 'course';
   };
@@ -714,9 +717,9 @@ export interface ApiCourseCourse extends Struct.CollectionTypeSchema {
     draftAndPublish: true;
   };
   attributes: {
-    active: Schema.Attribute.Boolean &
+    active: Schema.Attribute.Enumeration<['published', 'unpublished']> &
       Schema.Attribute.Required &
-      Schema.Attribute.DefaultTo<true>;
+      Schema.Attribute.DefaultTo<'published'>;
     company: Schema.Attribute.Relation<'manyToMany', 'api::company.company'>;
     course_assignments: Schema.Attribute.Relation<
       'manyToMany',
@@ -770,7 +773,11 @@ export interface ApiCourseCourse extends Struct.CollectionTypeSchema {
     publishedAt: Schema.Attribute.DateTime;
     quiz: Schema.Attribute.Component<'quiz.quiz', true>;
     thumbnail: Schema.Attribute.Media<'images' | 'files' | 'videos' | 'audios'>;
-    title: Schema.Attribute.String & Schema.Attribute.Required;
+    title: Schema.Attribute.String &
+      Schema.Attribute.Required &
+      Schema.Attribute.SetMinMaxLength<{
+        maxLength: 100;
+      }>;
     updatedAt: Schema.Attribute.DateTime;
     updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
@@ -831,7 +838,11 @@ export interface ApiEventTypeEventType extends Struct.CollectionTypeSchema {
       'api::event-type.event-type'
     > &
       Schema.Attribute.Private;
-    name: Schema.Attribute.String & Schema.Attribute.Required;
+    name: Schema.Attribute.String &
+      Schema.Attribute.Required &
+      Schema.Attribute.SetMinMaxLength<{
+        maxLength: 50;
+      }>;
     publishedAt: Schema.Attribute.DateTime;
     updatedAt: Schema.Attribute.DateTime;
     updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
@@ -850,9 +861,9 @@ export interface ApiEventEvent extends Struct.CollectionTypeSchema {
     draftAndPublish: true;
   };
   attributes: {
-    active: Schema.Attribute.Boolean &
+    active: Schema.Attribute.Enumeration<['published', 'unpublished']> &
       Schema.Attribute.Required &
-      Schema.Attribute.DefaultTo<true>;
+      Schema.Attribute.DefaultTo<'published'>;
     company: Schema.Attribute.Relation<'manyToMany', 'api::company.company'>;
     createdAt: Schema.Attribute.DateTime;
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
@@ -881,7 +892,11 @@ export interface ApiEventEvent extends Struct.CollectionTypeSchema {
           required: true;
         }
       >;
-    title: Schema.Attribute.String & Schema.Attribute.Required;
+    title: Schema.Attribute.String &
+      Schema.Attribute.Required &
+      Schema.Attribute.SetMinMaxLength<{
+        maxLength: 100;
+      }>;
     type_of_event: Schema.Attribute.Relation<
       'manyToOne',
       'api::event-type.event-type'
@@ -950,14 +965,18 @@ export interface ApiFormTemplateFormTemplate
     draftAndPublish: true;
   };
   attributes: {
-    active: Schema.Attribute.Boolean &
+    active: Schema.Attribute.Enumeration<['published', 'unpublished']> &
       Schema.Attribute.Required &
-      Schema.Attribute.DefaultTo<true>;
+      Schema.Attribute.DefaultTo<'published'>;
     company: Schema.Attribute.Relation<'manyToMany', 'api::company.company'>;
     createdAt: Schema.Attribute.DateTime;
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
-    description: Schema.Attribute.Text & Schema.Attribute.Required;
+    description: Schema.Attribute.Text &
+      Schema.Attribute.Required &
+      Schema.Attribute.SetMinMaxLength<{
+        maxLength: 1000;
+      }>;
     form_excel: Schema.Attribute.Media<'files'> & Schema.Attribute.Required;
     form_pdf: Schema.Attribute.Media<'files'> & Schema.Attribute.Required;
     form_type: Schema.Attribute.Enumeration<['PDF', 'URL', 'Excel', 'Word']> &
@@ -971,7 +990,11 @@ export interface ApiFormTemplateFormTemplate
     > &
       Schema.Attribute.Private;
     publishedAt: Schema.Attribute.DateTime;
-    title: Schema.Attribute.String & Schema.Attribute.Required;
+    title: Schema.Attribute.String &
+      Schema.Attribute.Required &
+      Schema.Attribute.SetMinMaxLength<{
+        maxLength: 100;
+      }>;
     updatedAt: Schema.Attribute.DateTime;
     updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
@@ -994,7 +1017,11 @@ export interface ApiGalleryItemGalleryItem extends Struct.CollectionTypeSchema {
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
     date: Schema.Attribute.Date & Schema.Attribute.Required;
-    description: Schema.Attribute.String & Schema.Attribute.Required;
+    description: Schema.Attribute.Text &
+      Schema.Attribute.Required &
+      Schema.Attribute.SetMinMaxLength<{
+        maxLength: 255;
+      }>;
     image: Schema.Attribute.Media<'images'> & Schema.Attribute.Required;
     locale: Schema.Attribute.String & Schema.Attribute.Private;
     localizations: Schema.Attribute.Relation<
@@ -1002,19 +1029,24 @@ export interface ApiGalleryItemGalleryItem extends Struct.CollectionTypeSchema {
       'api::gallery-item.gallery-item'
     > &
       Schema.Attribute.Private;
-    location: Schema.Attribute.String & Schema.Attribute.Required;
+    location: Schema.Attribute.String &
+      Schema.Attribute.Required &
+      Schema.Attribute.SetMinMaxLength<{
+        maxLength: 50;
+      }>;
     media_type: Schema.Attribute.Enumeration<['Image', 'Video']> &
       Schema.Attribute.Required;
     publishedAt: Schema.Attribute.DateTime;
-    title: Schema.Attribute.String & Schema.Attribute.Required;
+    title: Schema.Attribute.String &
+      Schema.Attribute.Required &
+      Schema.Attribute.SetMinMaxLength<{
+        maxLength: 100;
+      }>;
     updatedAt: Schema.Attribute.DateTime;
     updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
     video: Schema.Attribute.Media<'videos' | 'audios'> &
       Schema.Attribute.Required;
-    visibility: Schema.Attribute.Boolean &
-      Schema.Attribute.Required &
-      Schema.Attribute.DefaultTo<true>;
   };
 }
 
@@ -1029,16 +1061,14 @@ export interface ApiHolidayHoliday extends Struct.CollectionTypeSchema {
     draftAndPublish: true;
   };
   attributes: {
-    active: Schema.Attribute.Boolean &
+    active: Schema.Attribute.Enumeration<['published', 'unpublished']> &
       Schema.Attribute.Required &
-      Schema.Attribute.DefaultTo<true>;
+      Schema.Attribute.DefaultTo<'published'>;
     companies: Schema.Attribute.Relation<'manyToMany', 'api::company.company'>;
     createdAt: Schema.Attribute.DateTime;
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
     date: Schema.Attribute.Date & Schema.Attribute.Required;
-    holiday_for: Schema.Attribute.Enumeration<['Company', 'Location']> &
-      Schema.Attribute.Required;
     locale: Schema.Attribute.String & Schema.Attribute.Private;
     localizations: Schema.Attribute.Relation<
       'oneToMany',
@@ -1046,7 +1076,11 @@ export interface ApiHolidayHoliday extends Struct.CollectionTypeSchema {
     > &
       Schema.Attribute.Private;
     publishedAt: Schema.Attribute.DateTime;
-    title: Schema.Attribute.String & Schema.Attribute.Required;
+    title: Schema.Attribute.String &
+      Schema.Attribute.Required &
+      Schema.Attribute.SetMinMaxLength<{
+        maxLength: 100;
+      }>;
     updatedAt: Schema.Attribute.DateTime;
     updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
@@ -1069,9 +1103,9 @@ export interface ApiImportantLinkImportantLink
     draftAndPublish: true;
   };
   attributes: {
-    active: Schema.Attribute.Boolean &
+    active: Schema.Attribute.Enumeration<['published', 'unpublished']> &
       Schema.Attribute.Required &
-      Schema.Attribute.DefaultTo<true>;
+      Schema.Attribute.DefaultTo<'published'>;
     company: Schema.Attribute.Relation<'manyToMany', 'api::company.company'>;
     createdAt: Schema.Attribute.DateTime;
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
@@ -1084,7 +1118,11 @@ export interface ApiImportantLinkImportantLink
     > &
       Schema.Attribute.Private;
     publishedAt: Schema.Attribute.DateTime;
-    title: Schema.Attribute.String & Schema.Attribute.Required;
+    title: Schema.Attribute.String &
+      Schema.Attribute.Required &
+      Schema.Attribute.SetMinMaxLength<{
+        maxLength: 90;
+      }>;
     updatedAt: Schema.Attribute.DateTime;
     updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
@@ -1148,9 +1186,9 @@ export interface ApiNewsCategoryNewsCategory
     draftAndPublish: true;
   };
   attributes: {
-    active: Schema.Attribute.Boolean &
+    active: Schema.Attribute.Enumeration<['published', 'unpublished']> &
       Schema.Attribute.Required &
-      Schema.Attribute.DefaultTo<true>;
+      Schema.Attribute.DefaultTo<'published'>;
     company: Schema.Attribute.Relation<'manyToMany', 'api::company.company'>;
     createdAt: Schema.Attribute.DateTime;
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
@@ -1161,7 +1199,11 @@ export interface ApiNewsCategoryNewsCategory
       'api::news-category.news-category'
     > &
       Schema.Attribute.Private;
-    name: Schema.Attribute.String & Schema.Attribute.Required;
+    name: Schema.Attribute.String &
+      Schema.Attribute.Required &
+      Schema.Attribute.SetMinMaxLength<{
+        maxLength: 50;
+      }>;
     publishedAt: Schema.Attribute.DateTime;
     updatedAt: Schema.Attribute.DateTime;
     updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
@@ -1180,9 +1222,10 @@ export interface ApiNewsNews extends Struct.CollectionTypeSchema {
     draftAndPublish: true;
   };
   attributes: {
-    active: Schema.Attribute.Boolean &
+    active: Schema.Attribute.Enumeration<['published', 'unpublished']> &
       Schema.Attribute.Required &
-      Schema.Attribute.DefaultTo<true>;
+      Schema.Attribute.DefaultTo<'published'>;
+    author_name: Schema.Attribute.String;
     company: Schema.Attribute.Relation<'manyToMany', 'api::company.company'>;
     cover_image: Schema.Attribute.Media<'images' | 'videos'> &
       Schema.Attribute.Required;
@@ -1211,7 +1254,11 @@ export interface ApiNewsNews extends Struct.CollectionTypeSchema {
     publish_date: Schema.Attribute.Date &
       Schema.Attribute.CustomField<'global::date-future-only'>;
     publishedAt: Schema.Attribute.DateTime;
-    title: Schema.Attribute.String & Schema.Attribute.Required;
+    title: Schema.Attribute.String &
+      Schema.Attribute.Required &
+      Schema.Attribute.SetMinMaxLength<{
+        maxLength: 100;
+      }>;
     updatedAt: Schema.Attribute.DateTime;
     updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
@@ -1264,6 +1311,7 @@ export interface ApiNotificationNotification
         'quiz_submitted',
         'feedback_submitted',
         'news_liked',
+        'profile_edit_request',
         'custom',
       ]
     > &
@@ -1322,7 +1370,6 @@ export interface ApiProfileEditRequestProfileEditRequest
     draftAndPublish: false;
   };
   attributes: {
-    admin_comment: Schema.Attribute.Text;
     company: Schema.Attribute.Enumeration<['AIA', 'Vega']>;
     createdAt: Schema.Attribute.DateTime;
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
@@ -1333,14 +1380,15 @@ export interface ApiProfileEditRequestProfileEditRequest
       'api::profile-edit-request.profile-edit-request'
     > &
       Schema.Attribute.Private;
+    previous_values: Schema.Attribute.JSON;
     publishedAt: Schema.Attribute.DateTime;
-    reason: Schema.Attribute.Text;
     request_status: Schema.Attribute.Enumeration<
       ['Pending', 'Approved', 'Rejected']
     > &
       Schema.Attribute.Required &
       Schema.Attribute.DefaultTo<'Pending'>;
     requested_changes: Schema.Attribute.JSON & Schema.Attribute.Required;
+    requester_name: Schema.Attribute.String;
     reviewed_at: Schema.Attribute.DateTime;
     reviewed_by: Schema.Attribute.Relation<'manyToOne', 'admin::user'>;
     updatedAt: Schema.Attribute.DateTime;
@@ -1362,7 +1410,7 @@ export interface ApiQuizReattemptRequestQuizReattemptRequest
     singularName: 'quiz-reattempt-request';
   };
   options: {
-    draftAndPublish: true;
+    draftAndPublish: false;
   };
   attributes: {
     course: Schema.Attribute.Relation<'manyToOne', 'api::course.course'>;
@@ -1420,6 +1468,9 @@ export interface ApiQuizSubmissionQuizSubmission
     passed: Schema.Attribute.Boolean & Schema.Attribute.Required;
     publishedAt: Schema.Attribute.DateTime;
     score: Schema.Attribute.Integer & Schema.Attribute.Required;
+    submission_type: Schema.Attribute.Enumeration<
+      ['Auto Submit or Leave', 'Time Limit Exceed', 'Manual Submit']
+    >;
     submitted_at: Schema.Attribute.DateTime & Schema.Attribute.Required;
     submitted_by: Schema.Attribute.Relation<
       'manyToOne',
@@ -1448,9 +1499,9 @@ export interface ApiUnitLocationUnitLocation
     draftAndPublish: true;
   };
   attributes: {
-    active: Schema.Attribute.Boolean &
+    active: Schema.Attribute.Enumeration<['published', 'unpublished']> &
       Schema.Attribute.Required &
-      Schema.Attribute.DefaultTo<true>;
+      Schema.Attribute.DefaultTo<'published'>;
     company: Schema.Attribute.Relation<'manyToMany', 'api::company.company'>;
     createdAt: Schema.Attribute.DateTime;
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
@@ -1461,10 +1512,13 @@ export interface ApiUnitLocationUnitLocation
       'api::unit-location.unit-location'
     > &
       Schema.Attribute.Private;
-    name: Schema.Attribute.String & Schema.Attribute.Required;
-    note: Schema.Attribute.RichText;
+    name: Schema.Attribute.String &
+      Schema.Attribute.Required &
+      Schema.Attribute.SetMinMaxLength<{
+        maxLength: 100;
+      }>;
     publishedAt: Schema.Attribute.DateTime;
-    units: Schema.Attribute.Component<'routes.bus-route', true> &
+    Units: Schema.Attribute.Component<'routes.unit', true> &
       Schema.Attribute.Required;
     updatedAt: Schema.Attribute.DateTime;
     updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
@@ -2084,7 +2138,10 @@ export interface PluginUsersPermissionsUser
       Schema.Attribute.Private;
     date_of_birth: Schema.Attribute.Date & Schema.Attribute.Required;
     department: Schema.Attribute.String & Schema.Attribute.Required;
-    description: Schema.Attribute.Text;
+    description: Schema.Attribute.Text &
+      Schema.Attribute.SetMinMaxLength<{
+        maxLength: 255;
+      }>;
     designation: Schema.Attribute.String & Schema.Attribute.Required;
     email: Schema.Attribute.Email &
       Schema.Attribute.Required &
@@ -2098,6 +2155,9 @@ export interface PluginUsersPermissionsUser
     experience_with_vega: Schema.Attribute.String & Schema.Attribute.Required;
     ext: Schema.Attribute.Integer & Schema.Attribute.Required;
     HOD: Schema.Attribute.String & Schema.Attribute.Required;
+    is_first_login: Schema.Attribute.Boolean &
+      Schema.Attribute.Required &
+      Schema.Attribute.DefaultTo<true>;
     joining_date: Schema.Attribute.Date & Schema.Attribute.Required;
     locale: Schema.Attribute.String & Schema.Attribute.Private;
     localizations: Schema.Attribute.Relation<
@@ -2111,10 +2171,7 @@ export interface PluginUsersPermissionsUser
         minLength: 6;
       }>;
     payroll_office: Schema.Attribute.String & Schema.Attribute.Required;
-    photograph: Schema.Attribute.Media<
-      'images' | 'files' | 'videos' | 'audios'
-    > &
-      Schema.Attribute.Required;
+    photograph: Schema.Attribute.Media<'images'> & Schema.Attribute.Required;
     provider: Schema.Attribute.String;
     publishedAt: Schema.Attribute.DateTime;
     region: Schema.Attribute.String & Schema.Attribute.Required;

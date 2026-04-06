@@ -192,13 +192,13 @@ async function syncOnlineAssignmentsForWorkflow(strapi, workflowLike) {
             if (existingAssignment?.documentId) {
               await docService.update({
                 documentId: existingAssignment.documentId,
-                data: { due_date: dueDateValue, active: true },
+                data: { due_date: dueDateValue, active: 'published' },
                 status: 'published',
               });
             } else if (existingAssignment?.id != null) {
               await strapi.db.query(COURSE_ASSIGNMENT_UID).update({
                 where: { id: existingAssignment.id },
-                data: { due_date: dueDateValue, active: true },
+                data: { due_date: dueDateValue, active: 'published' },
               });
             }
           }
@@ -216,7 +216,7 @@ async function syncOnlineAssignmentsForWorkflow(strapi, workflowLike) {
             assignment_target_type: 'Individual',
             courses: { connect: [{ id: Number(courseId) }] },
             due_date: dueDateValue,
-            active: true,
+            active: 'published',
             individual_user: { connect: [{ id: Number(userId) }] },
             ...(companyId != null ? { company: { connect: [{ id: Number(companyId) }] } } : {}),
           },
