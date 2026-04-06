@@ -179,12 +179,6 @@ module.exports = ({ strapi }) => ({
         throw new Error('Failed to persist profile edit request status');
       }
 
-      if (newStatus === 'Approved') {
-        runDetached(strapi, `apply approved changes for request ${request.id}`, async () => {
-          await this.applyProfileChanges(request);
-        });
-      }
-
       return {
         id: request.id,
         documentId: request.documentId,

@@ -1,8 +1,11 @@
-﻿import React, { useEffect, useRef } from 'react';
+﻿
+// @ts-nocheck
+import React, { useEffect, useRef } from 'react';
 import { useForm } from '@strapi/admin/strapi-admin';
 
 const COURSE_WORKFLOW_MODEL = 'api::course-workflow.course-workflow';
 
+/** @param {any} value */
 function isOffline(value) {
   return String(value || '').trim().toLowerCase() === 'offline';
 }
@@ -18,23 +21,43 @@ function getUsersCountFromDom() {
   return null;
 }
 
+/** @param {any} raw */
+function getRelationCount(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+
+  const candidates = [
+    raw.count,
+    raw.total,
+    raw.meta?.count,
+    raw.meta?.pagination?.total,
+    raw.pagination?.total,
+  ];
+
+  for (const candidate of candidates) {
+    if (typeof candidate === 'number' && Number.isFinite(candidate)) {
+      return candidate;
+    }
+  }
+
+  return null;
+}
+
+/** @param {any} raw */
+function isCountOnlyRelationState(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return false;
+
+  const relationKeys = ['set', 'data', 'results', 'connect', 'disconnect'];
+  if (relationKeys.some((key) => Array.isArray(raw[key]))) return false;
+
+  return getRelationCount(raw) != null;
+}
+
+/**
+ * @param {any} raw
+ * @param {any[]} previousUsers
+ */
 function getSelectedUsersFromRelation(raw, previousUsers) {
   const prev = Array.isArray(previousUsers) ? previousUsers : [];
-
-  const getCount = (obj) => {
-    if (!obj || typeof obj !== 'object') return null;
-    const candidates = [
-      obj.count,
-      obj.total,
-      obj.meta?.count,
-      obj.meta?.pagination?.total,
-      obj.pagination?.total,
-    ];
-    for (const c of candidates) {
-      if (typeof c === 'number' && Number.isFinite(c)) return c;
-    }
-    return null;
-  };
 
   if (raw == null) {
     return { users: [], resolved: true };
@@ -53,6 +76,7 @@ function getSelectedUsersFromRelation(raw, previousUsers) {
       return { users: [], resolved: true };
     }
 
+    /** @type {any[] | null} */
     let next = null;
 
     if (Array.isArray(raw.set)) {
@@ -104,7 +128,7 @@ function getSelectedUsersFromRelation(raw, previousUsers) {
       return { users: next, resolved: true };
     }
 
-    const count = getCount(raw);
+    const count = getRelationCount(raw);
     if (count != null) {
       if (count <= 0) return { users: [], resolved: true };
       if (count < prev.length) return { users: prev.slice(0, count), resolved: true };
@@ -144,10 +168,13 @@ function getUserDisplayName(user) {
   return null;
 }
 
+/** @param {any} user */
 function getUserIdentityTokens(user) {
   if (!user || typeof user !== 'object') return [];
 
+  /** @type {string[]} */
   const tokens = [];
+  /** @param {string} prefix @param {any} value */
   const add = (prefix, value) => {
     if (value == null) return;
     const s = String(value).trim();
@@ -173,6 +200,7 @@ function getUserIdentityTokens(user) {
   return [...new Set(tokens)];
 }
 
+/** @param {any} a @param {any} b */
 function usersMatch(a, b) {
   const left = getUserIdentityTokens(a);
   if (left.length === 0) return false;
@@ -180,8 +208,10 @@ function usersMatch(a, b) {
   return left.some((t) => right.has(t));
 }
 
+/** @param {any[]} users */
 function getUniqueSelectedUsers(users) {
   const list = Array.isArray(users) ? users : [];
+  /** @type {any[]} */
   const out = [];
 
   for (const user of list) {
@@ -193,6 +223,7 @@ function getUniqueSelectedUsers(users) {
   return out;
 }
 
+/** @param {any} user @param {number} index */
 function getUserKey(user, index) {
   if (!user || typeof user !== 'object') return `idx:${index}`;
   if (user.id != null) return `id:${String(user.id)}`;
@@ -209,10 +240,12 @@ function getUserKey(user, index) {
   return `idx:${index}`;
 }
 
+/** @param {string} prefix @param {number} i */
 function tempKey(prefix, i) {
   return `${prefix}-${i}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
+/** @param {any[]} users @param {any[]} currentRows */
 function buildOfflineModuleFromUsers(users, currentRows) {
   const existingRows = Array.isArray(currentRows) ? currentRows : [];
 
@@ -248,6 +281,7 @@ function buildOfflineModuleFromUsers(users, currentRows) {
   return out;
 }
 
+/** @param {any[]} a @param {any[]} b */
 function sameUsernames(a, b) {
   const left = Array.isArray(a) ? a : [];
   const right = Array.isArray(b) ? b : [];
@@ -258,12 +292,14 @@ function sameUsernames(a, b) {
   return true;
 }
 
+/** @param {any} values */
 function getWorkflowItemsFromValues(values) {
   if (Array.isArray(values?.modules)) return values.modules;
   if (Array.isArray(values?.workflow)) return values.workflow;
   return [];
 }
 
+/** @param {any} values @param {any[]} nextWorkflowItems */
 function withUpdatedWorkflowItems(values, nextWorkflowItems) {
   if (Array.isArray(values?.modules)) {
     return {
@@ -278,6 +314,7 @@ function withUpdatedWorkflowItems(values, nextWorkflowItems) {
   };
 }
 
+/** @param {any[]} workflowItems @param {any[]} selectedUsers */
 function syncWorkflowOfflineModules(workflowItems, selectedUsers) {
   let changed = false;
 
@@ -299,11 +336,109 @@ function syncWorkflowOfflineModules(workflowItems, selectedUsers) {
   return { changed, nextWorkflowItems };
 }
 
+function hasOfflineModuleNeedingBackfill(workflowItems, selectedUsers) {
+  if (!Array.isArray(workflowItems) || workflowItems.length === 0) return false;
+  if (!Array.isArray(selectedUsers) || selectedUsers.length === 0) return false;
+
+  for (const item of workflowItems) {
+    if (!isOffline(item?.module_type)) continue;
+    const rows = Array.isArray(item?.offline_module) ? item.offline_module : [];
+    if (rows.length === 0) return true;
+  }
+
+  return false;
+}
+
+/** @param {any[]} workflowItems */
+function hasExistingOfflineRows(workflowItems) {
+  for (const item of workflowItems) {
+    if (!isOffline(item?.module_type)) continue;
+    if (Array.isArray(item?.offline_module) && item.offline_module.length > 0) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/** @param {any} raw */
+function isAmbiguousUsersState(raw) {
+  if (raw == null) return true;
+  if (isCountOnlyRelationState(raw)) return true;
+
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return false;
+
+  const relationKeys = ['set', 'data', 'results', 'connect', 'disconnect'];
+  const hasRelationShape = relationKeys.some((key) => Object.prototype.hasOwnProperty.call(raw, key));
+  if (hasRelationShape) return false;
+
+  return true;
+}
+
+function isExplicitlyEmptyUsersSelection(raw, domCount) {
+  if (typeof domCount === 'number') return domCount <= 0;
+
+  if (Array.isArray(raw)) return raw.length === 0;
+  if (typeof raw === 'string') return raw.trim() === '';
+
+  if (!raw || typeof raw !== 'object') return false;
+
+  if (Array.isArray(raw.set)) return raw.set.length === 0;
+  if (Array.isArray(raw.data)) return raw.data.length === 0;
+  if (Array.isArray(raw.results)) return raw.results.length === 0;
+
+  const hasConnect = Array.isArray(raw.connect);
+  const hasDisconnect = Array.isArray(raw.disconnect);
+
+  if (hasConnect && hasDisconnect) {
+    return raw.connect.length === 0;
+  }
+
+  if (hasConnect) return raw.connect.length === 0;
+
+  if (hasDisconnect) {
+    return raw.disconnect.length > 0;
+  }
+
+  const count = getRelationCount(raw);
+  if (typeof count === 'number' && count === 0) return true;
+
+  return false;
+}
+
+function getUsersSelectionSignature(raw, domCount) {
+  const domPart = typeof domCount === 'number' ? `dom:${domCount}` : 'dom:null';
+
+  if (raw == null) return `${domPart}|raw:null`;
+  if (typeof raw === 'string') return `${domPart}|raw:str:${raw.trim()}`;
+
+  if (Array.isArray(raw)) {
+    const arr = raw.map((u, i) => getUserKey(u, i)).join('|');
+    return `${domPart}|raw:arr:${arr}`;
+  }
+
+  if (typeof raw !== 'object') {
+    return `${domPart}|raw:other:${String(raw)}`;
+  }
+
+  const toKeyList = (arr) => (Array.isArray(arr) ? arr.map((u, i) => getUserKey(u, i)).join('|') : '');
+  const setPart = toKeyList(raw.set);
+  const dataPart = toKeyList(raw.data);
+  const resultsPart = toKeyList(raw.results);
+  const connectPart = toKeyList(raw.connect);
+  const disconnectPart = toKeyList(raw.disconnect);
+  const countPart = getRelationCount(raw);
+
+  return `${domPart}|set:${setPart}|data:${dataPart}|results:${resultsPart}|connect:${connectPart}|disconnect:${disconnectPart}|count:${countPart ?? 'null'}`;
+}
+
+/** @param {{ slug?: string, model?: string }} props */
 function CourseWorkflowOfflineModuleSyncOnSelect({ slug, model }) {
   const uid = slug || model;
   const values = useForm('useContentManagerContext', (state) => state?.values, false);
   const setValues = useForm('useContentManagerContext', (state) => state?.setValues, false);
-  const lastSelectedUsersRef = useRef([]);
+  const lastSelectedUsersRef = useRef(/** @type {any[]} */ ([]));
+  const hasInitializedRef = useRef(false);
+  const lastUsersSelectionSignatureRef = useRef('');
 
   useEffect(() => {
     if (uid !== COURSE_WORKFLOW_MODEL || !values || typeof setValues !== 'function') return;
@@ -316,6 +451,7 @@ function CourseWorkflowOfflineModuleSyncOnSelect({ slug, model }) {
 
     let effectiveUsers = selectedUsers;
     const domCount = getUsersCountFromDom();
+    const selectionSignature = getUsersSelectionSignature(selectedUsersRaw, domCount);
 
     if (typeof domCount === 'number') {
       if (domCount <= 0) {
@@ -329,10 +465,46 @@ function CourseWorkflowOfflineModuleSyncOnSelect({ slug, model }) {
 
     if (!resolved && typeof domCount !== 'number') return;
 
-    lastSelectedUsersRef.current = effectiveUsers;
+    if (!hasInitializedRef.current) {
+      hasInitializedRef.current = true;
+      lastUsersSelectionSignatureRef.current = selectionSignature;
+      lastSelectedUsersRef.current = effectiveUsers;
+      return;
+    }
 
     const workflowItems = getWorkflowItemsFromValues(values);
     if (workflowItems.length === 0) return;
+
+    const usersSelectionChanged = lastUsersSelectionSignatureRef.current !== selectionSignature;
+    const shouldBackfillOnModuleChange = hasOfflineModuleNeedingBackfill(workflowItems, effectiveUsers);
+    if (!usersSelectionChanged && !shouldBackfillOnModuleChange) return;
+
+    const relationCount = getRelationCount(selectedUsersRaw);
+    const effectiveCount = typeof domCount === 'number'
+      ? domCount
+      : (typeof relationCount === 'number' ? relationCount : null);
+
+    // On publish/reopen, Strapi may return users relation in ambiguous shape (null/count-only)
+    // before full relation hydration. Never clear existing offline rows in that transient state.
+    if (
+      effectiveUsers.length === 0 &&
+      hasExistingOfflineRows(workflowItems) &&
+      isAmbiguousUsersState(selectedUsersRaw) &&
+      (effectiveCount == null || effectiveCount > 0)
+    ) {
+      return;
+    }
+
+    if (
+      effectiveUsers.length === 0 &&
+      hasExistingOfflineRows(workflowItems) &&
+      !isExplicitlyEmptyUsersSelection(selectedUsersRaw, domCount)
+    ) {
+      return;
+    }
+
+    lastUsersSelectionSignatureRef.current = selectionSignature;
+    lastSelectedUsersRef.current = effectiveUsers;
 
     const { changed, nextWorkflowItems } = syncWorkflowOfflineModules(workflowItems, effectiveUsers);
     if (!changed) return;

@@ -20,6 +20,12 @@
         "storeIconData": true,
         "storeIconName": true
       }
+    },
+    "checklist": {
+      "type": "component",
+      "component": "quiz.checklist",
+      "repeatable": true,
+      "required": true
     }
   },
   "config": {}

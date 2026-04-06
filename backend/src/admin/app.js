@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Strapi v5 Admin Customization
  * 
@@ -31,13 +32,14 @@ import CourseAssignmentCompanyFilter from './components/CourseAssignmentCompanyF
 import CourseWorkflowCompanyFilter from './components/CourseWorkflowCompanyFilter.jsx';
 import EventCompanyFilter from './components/EventCompanyFilter.jsx';
 import HolidayCompanyFilter from './components/HolidayCompanyFilter.jsx';
+import CourseAssignmentExcelUserUpload from './components/CourseAssignmentExcelUserUpload.jsx';
 
 export default {
   /**
    * Register function - runs when the admin panel initializes
    * This is where we add custom menu links to the sidebar
    * 
-   * @param {Object} app - Strapi admin app instance
+  * @param {any} app - Strapi admin app instance
    */
   register(app) {
     // Custom field: date picker that only allows today or future (e.g. News publish date)
@@ -275,6 +277,11 @@ export default {
         name: 'HolidayCompanyFilter',
         Component: HolidayCompanyFilter,
       });
+      // For Course Assignment: upload Excel to populate individual_user relation
+      contentManager.injectComponent('editView', 'right-links', {
+        name: 'CourseAssignmentExcelUserUpload',
+        Component: CourseAssignmentExcelUserUpload,
+      });
     }
 
     /**
@@ -457,7 +464,7 @@ export default {
    * Bootstrap function - runs after register
    * Used for additional setup and menu customization
    * 
-   * @param {Object} app - Strapi admin app instance
+  * @param {any} app - Strapi admin app instance
    */
   bootstrap(app) {
     /**
@@ -494,10 +501,15 @@ export default {
         Object.defineProperty(document, 'title', {
           set: function(newTitle) {
             const updatedTitle = (newTitle || '').replace(/Strapi/gi, 'AIA-VEGA');
-            originalTitleDescriptor.set.call(this, updatedTitle);
+            if (typeof originalTitleDescriptor.set === 'function') {
+              originalTitleDescriptor.set.call(this, updatedTitle);
+            }
           },
           get: function() {
-            return originalTitleDescriptor.get.call(this);
+            if (typeof originalTitleDescriptor.get === 'function') {
+              return originalTitleDescriptor.get.call(this);
+            }
+            return document.title;
           },
           configurable: true,
         });

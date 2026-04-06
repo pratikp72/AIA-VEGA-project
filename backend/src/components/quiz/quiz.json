@@ -31,12 +31,6 @@
       "repeatable": true,
       "required": true
     },
-    "quiz_instruction_checklist": {
-      "type": "component",
-      "component": "quiz.checklist",
-      "repeatable": true,
-      "required": true
-    },
     "max_attempt": {
       "type": "customField",
       "customField": "global::number-range"
@@ -51,6 +45,10 @@
       "options": {
         "required": true
       }
+    },
+    "instruction": {
+      "type": "richtext",
+      "required": true
     }
   },
   "config": {}
