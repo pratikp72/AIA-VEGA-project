@@ -69,20 +69,24 @@ module.exports = createCoreController('api::profile-edit-request.profile-edit-re
 	async find(ctx) {
 		// Populate related fields for table display
 		ctx.query = ctx.query || {};
+		const existingFields = Array.isArray(ctx.query.fields) ? ctx.query.fields : [];
+		ctx.query.fields = Array.from(new Set([...existingFields, 'company']));
 		ctx.query.populate = {
+			...(ctx.query.populate && typeof ctx.query.populate === 'object' ? ctx.query.populate : {}),
 			users_permissions_user: true,
 			reviewed_by: true,
-			company: true,
 		};
 		return await super.find(ctx);
 	},
 
 	async findOne(ctx) {
 		ctx.query = ctx.query || {};
+		const existingFields = Array.isArray(ctx.query.fields) ? ctx.query.fields : [];
+		ctx.query.fields = Array.from(new Set([...existingFields, 'company']));
 		ctx.query.populate = {
+			...(ctx.query.populate && typeof ctx.query.populate === 'object' ? ctx.query.populate : {}),
 			users_permissions_user: true,
 			reviewed_by: true,
-			company: true,
 		};
 		return await super.findOne(ctx);
 	},
