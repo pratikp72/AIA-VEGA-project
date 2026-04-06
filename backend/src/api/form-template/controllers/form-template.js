@@ -11,7 +11,7 @@ const getUserCompany = require('../../../utils/getUserCompany');
 module.exports = createCoreController('api::form-template.form-template', ({ strapi }) => ({
   async find(ctx) {
     const userCompany = await getUserCompany(strapi, ctx);
-    const where = { publishedAt: { $notNull: true }, active: true };
+    const where = { publishedAt: { $notNull: true }, active: 'published' };
     const query = ctx.query || {};
 
     const search = String(query.search || '').trim();
@@ -65,7 +65,7 @@ module.exports = createCoreController('api::form-template.form-template', ({ str
   async findOne(ctx) {
     const userCompany = await getUserCompany(strapi, ctx);
     const docId = ctx.params.documentId ?? ctx.params.id;
-    const where = { publishedAt: { $notNull: true }, active: true };
+    const where = { publishedAt: { $notNull: true }, active: 'published' };
     if (docId) where.documentId = docId;
     if (userCompany) where.company = { name: userCompany };
     const item = await strapi.db.query('api::form-template.form-template').findOne({
