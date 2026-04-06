@@ -91,7 +91,7 @@ module.exports = createCoreController('api::event.event', ({ strapi }) => ({
 
     const where = {
       publishedAt: { $notNull: true },
-      active: true,
+      active: 'published',
       company: { name: userCompany },
     };
     const items = await strapi.db.query('api::event.event').findMany({
@@ -120,7 +120,7 @@ module.exports = createCoreController('api::event.event', ({ strapi }) => ({
     const item = await strapi.db.query('api::event.event').findOne({
       where: {
         publishedAt: { $notNull: true },
-        active: true,
+        active: 'published',
         $or: [{ documentId: id }, { id: Number(id) || 0 }],
       },
       populate: ['event_image', 'company', 'work_locations', 'type_of_event'],

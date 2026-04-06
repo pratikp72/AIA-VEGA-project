@@ -50,7 +50,7 @@ module.exports = createCoreController('api::news.news', ({ strapi }) => ({
     try {
       const userCompany = await getUserCompany(strapi, ctx.state?.user?.id);
 
-      const where = { publishedAt: { $notNull: true }, active: true };
+      const where = { publishedAt: { $notNull: true }, active: 'published' };
       const q = ctx.query || {};
       const filters = q.filters && typeof q.filters === 'object' ? q.filters : {};
       const catName = q['filters[news_category][name][$eq]'] ?? filters['news_category']?.name?.$eq;
@@ -89,7 +89,7 @@ module.exports = createCoreController('api::news.news', ({ strapi }) => ({
           $and: [
             { $or: [{ documentId: id }, { id: Number(id) || 0 }] },
             { publishedAt: { $notNull: true } },
-            { active: true },
+            { active: 'published' },
           ],
         },
         populate: NEWS_POPULATE,
