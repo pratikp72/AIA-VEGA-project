@@ -35,7 +35,11 @@ export interface CourseModule extends Struct.ComponentSchema {
           preset: 'defaultHtml';
         }
       >;
-    title: Schema.Attribute.String & Schema.Attribute.Required;
+    title: Schema.Attribute.String &
+      Schema.Attribute.Required &
+      Schema.Attribute.SetMinMaxLength<{
+        maxLength: 100;
+      }>;
     video_description: Schema.Attribute.RichText &
       Schema.Attribute.CustomField<
         'plugin::ckeditor5.CKEditor',
@@ -76,7 +80,11 @@ export interface CourseOfflineModule extends Struct.ComponentSchema {
         },
         number
       >;
-    username: Schema.Attribute.String & Schema.Attribute.Required;
+    username: Schema.Attribute.String &
+      Schema.Attribute.Required &
+      Schema.Attribute.SetMinMaxLength<{
+        maxLength: 50;
+      }>;
   };
 }
 
@@ -147,7 +155,11 @@ export interface FeedbackFormQuestion extends Struct.ComponentSchema {
     mandatory: Schema.Attribute.Boolean &
       Schema.Attribute.Required &
       Schema.Attribute.DefaultTo<true>;
-    qestion: Schema.Attribute.String & Schema.Attribute.Required;
+    question: Schema.Attribute.String &
+      Schema.Attribute.Required &
+      Schema.Attribute.SetMinMaxLength<{
+        maxLength: 100;
+      }>;
     question_id: Schema.Attribute.String &
       Schema.Attribute.Required &
       Schema.Attribute.Unique;
@@ -162,7 +174,11 @@ export interface QuizAnswer extends Struct.ComponentSchema {
   attributes: {
     correct: Schema.Attribute.Boolean;
     point: Schema.Attribute.Integer;
-    question: Schema.Attribute.String & Schema.Attribute.Required;
+    question: Schema.Attribute.String &
+      Schema.Attribute.Required &
+      Schema.Attribute.SetMinMaxLength<{
+        maxLength: 255;
+      }>;
     question_id: Schema.Attribute.String & Schema.Attribute.Required;
     question_type: Schema.Attribute.Enumeration<
       ['Multiple_choice', 'Multiple_select']
@@ -180,7 +196,10 @@ export interface QuizChecklist extends Struct.ComponentSchema {
     displayName: 'Checklist';
   };
   attributes: {
-    discription: Schema.Attribute.Text;
+    description: Schema.Attribute.Text &
+      Schema.Attribute.SetMinMaxLength<{
+        maxLength: 100;
+      }>;
   };
 }
 
@@ -201,7 +220,11 @@ export interface QuizOptions extends Struct.ComponentSchema {
   };
   attributes: {
     option_key: Schema.Attribute.String & Schema.Attribute.Required;
-    option_label: Schema.Attribute.String & Schema.Attribute.Required;
+    option_label: Schema.Attribute.String &
+      Schema.Attribute.Required &
+      Schema.Attribute.SetMinMaxLength<{
+        maxLength: 100;
+      }>;
   };
 }
 
@@ -220,7 +243,11 @@ export interface QuizQuestion extends Struct.ComponentSchema {
     options: Schema.Attribute.Component<'quiz.options', true>;
     order: Schema.Attribute.Integer;
     question_id: Schema.Attribute.String & Schema.Attribute.Required;
-    question_text: Schema.Attribute.Text & Schema.Attribute.Required;
+    question_text: Schema.Attribute.Text &
+      Schema.Attribute.Required &
+      Schema.Attribute.SetMinMaxLength<{
+        maxLength: 100;
+      }>;
     question_type: Schema.Attribute.Enumeration<
       ['Multiple_choice', 'Multiple_select']
     > &
@@ -255,11 +282,6 @@ export interface QuizQuiz extends Struct.ComponentSchema {
       true
     > &
       Schema.Attribute.Required;
-    quiz_instruction_checklist: Schema.Attribute.Component<
-      'quiz.checklist',
-      true
-    > &
-      Schema.Attribute.Required;
     quiz_questions: Schema.Attribute.Component<'quiz.question', true> &
       Schema.Attribute.Required;
   };
@@ -271,7 +293,12 @@ export interface QuizQuizInstruction extends Struct.ComponentSchema {
     displayName: 'Quiz instruction';
   };
   attributes: {
-    description: Schema.Attribute.Text;
+    checklist: Schema.Attribute.Component<'quiz.checklist', true> &
+      Schema.Attribute.Required;
+    description: Schema.Attribute.Text &
+      Schema.Attribute.SetMinMaxLength<{
+        maxLength: 100;
+      }>;
     icon: Schema.Attribute.JSON &
       Schema.Attribute.CustomField<
         'plugin::strapi-plugin-iconhub.iconhub',
@@ -280,7 +307,10 @@ export interface QuizQuizInstruction extends Struct.ComponentSchema {
           storeIconName: true;
         }
       >;
-    name: Schema.Attribute.String;
+    name: Schema.Attribute.String &
+      Schema.Attribute.SetMinMaxLength<{
+        maxLength: 100;
+      }>;
   };
 }
 
@@ -290,17 +320,16 @@ export interface RoutesBusRoute extends Struct.ComponentSchema {
     displayName: 'Bus route';
   };
   attributes: {
-    address: Schema.Attribute.String & Schema.Attribute.Required;
-    contact: Schema.Attribute.String & Schema.Attribute.Required;
-    hr_manager: Schema.Attribute.String;
-    map_link: Schema.Attribute.String & Schema.Attribute.Required;
-    routes: Schema.Attribute.Component<'routes.bus-stop', true>;
-    site_manager: Schema.Attribute.String;
-    unit_id: Schema.Attribute.String &
+    bus_stops: Schema.Attribute.Component<'routes.bus-stop', true>;
+    route_id: Schema.Attribute.String &
       Schema.Attribute.Required &
       Schema.Attribute.Unique;
-    unit_img: Schema.Attribute.Media<'images'> & Schema.Attribute.Required;
-    unit_name: Schema.Attribute.String & Schema.Attribute.Required;
+    route_img: Schema.Attribute.Media<'images'> & Schema.Attribute.Required;
+    route_name: Schema.Attribute.String &
+      Schema.Attribute.Required &
+      Schema.Attribute.SetMinMaxLength<{
+        maxLength: 100;
+      }>;
   };
 }
 
@@ -310,23 +339,58 @@ export interface RoutesBusStop extends Struct.ComponentSchema {
     displayName: 'Bus stop';
   };
   attributes: {
-    bus_sifts: Schema.Attribute.Component<'routes.sift', true> &
+    bus_shifts: Schema.Attribute.Component<'routes.sift', true> &
       Schema.Attribute.Required;
-    route_id: Schema.Attribute.String &
+    bus_stop_location_link: Schema.Attribute.String & Schema.Attribute.Required;
+    stop_id: Schema.Attribute.String & Schema.Attribute.Required;
+    stop_name: Schema.Attribute.String &
       Schema.Attribute.Required &
-      Schema.Attribute.Unique;
-    route_name: Schema.Attribute.String & Schema.Attribute.Required;
+      Schema.Attribute.SetMinMaxLength<{
+        maxLength: 100;
+      }>;
   };
 }
 
 export interface RoutesSift extends Struct.ComponentSchema {
   collectionName: 'components_routes_sifts';
   info: {
-    displayName: 'Sift';
+    displayName: 'Shift';
   };
   attributes: {
-    sift_name: Schema.Attribute.String & Schema.Attribute.Required;
-    sift_time: Schema.Attribute.Time & Schema.Attribute.Required;
+    shift_name: Schema.Attribute.String &
+      Schema.Attribute.Required &
+      Schema.Attribute.SetMinMaxLength<{
+        maxLength: 50;
+      }>;
+    shift_time: Schema.Attribute.Time & Schema.Attribute.Required;
+  };
+}
+
+export interface RoutesUnit extends Struct.ComponentSchema {
+  collectionName: 'components_routes_units';
+  info: {
+    displayName: 'Unit';
+  };
+  attributes: {
+    address: Schema.Attribute.String &
+      Schema.Attribute.Required &
+      Schema.Attribute.SetMinMaxLength<{
+        maxLength: 255;
+      }>;
+    contact: Schema.Attribute.String & Schema.Attribute.Required;
+    hr_manager: Schema.Attribute.String & Schema.Attribute.Required;
+    note: Schema.Attribute.RichText;
+    routes: Schema.Attribute.Component<'routes.bus-route', true> &
+      Schema.Attribute.Required;
+    site_manager: Schema.Attribute.String & Schema.Attribute.Required;
+    unit_img: Schema.Attribute.Media<'images', true> &
+      Schema.Attribute.Required;
+    unit_map_link: Schema.Attribute.String;
+    unit_name: Schema.Attribute.String &
+      Schema.Attribute.Required &
+      Schema.Attribute.SetMinMaxLength<{
+        maxLength: 100;
+      }>;
   };
 }
 
@@ -362,6 +426,7 @@ declare module '@strapi/strapi' {
       'routes.bus-route': RoutesBusRoute;
       'routes.bus-stop': RoutesBusStop;
       'routes.sift': RoutesSift;
+      'routes.unit': RoutesUnit;
       'shared.required-toggle': SharedRequiredToggle;
     }
   }

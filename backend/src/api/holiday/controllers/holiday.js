@@ -91,7 +91,7 @@ module.exports = createCoreController('api::holiday.holiday', ({ strapi }) => ({
     const { company: userCompany, workingLocation: userLocation } = await getUserInfo(strapi, ctx);
 
     const all = await strapi.db.query('api::holiday.holiday').findMany({
-      where: { publishedAt: { $notNull: true }, active: true },
+      where: { publishedAt: { $notNull: true }, active: 'published' },
       orderBy: { date: 'asc' },
       populate: ['companies', 'work_locations'],
     });
@@ -112,7 +112,7 @@ module.exports = createCoreController('api::holiday.holiday', ({ strapi }) => ({
     const item = await strapi.db.query('api::holiday.holiday').findOne({
       where: {
         publishedAt: { $notNull: true },
-        active: true,
+        active: 'published',
         $or: [{ documentId: id }, { id: Number(id) || 0 }],
       },
       populate: ['companies', 'work_locations'],

@@ -60,7 +60,7 @@ async function getAssignedCourseIdsForUser(strapi, user) {
     // Keep legacy rows where active may be null; only exclude explicit false.
     where: {
       $or: [
-        { active: true },
+        { active: 'published' },
         { active: { $null: true } },
       ],
     },
@@ -247,7 +247,7 @@ module.exports = createCoreController('api::course.course', ({ strapi }) => ({
     const { data, meta } = await super.findOne(ctx);
     if (!data) return { data: null, meta };
 
-    if (data.active === false) {
+    if (data.active === 'unpublished') {
       return ctx.notFound('Course not found');
     }
 

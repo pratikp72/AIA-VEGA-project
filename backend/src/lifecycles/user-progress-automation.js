@@ -377,7 +377,7 @@ async function createCourseAssignmentEntries(strapi, courseId, userIds, dueDate,
   if (!courseId || !Array.isArray(userIds) || userIds.length === 0) return;
   const due = dueDate instanceof Date ? dueDate : (dueDate ? new Date(dueDate) : new Date());
   const dueValue = due.toISOString().slice(0, 10);
-  const isActive = active !== false;
+  const activeValue = active === 'unpublished' ? 'unpublished' : 'published';
   
   const existingByUserId = new Map();
   try {
@@ -429,13 +429,13 @@ async function createCourseAssignmentEntries(strapi, courseId, userIds, dueDate,
             if (existingAssignment?.documentId) {
               await docService.update({
                 documentId: existingAssignment.documentId,
-                data: { due_date: dueValue, active: isActive },
+                data: { due_date: dueValue, active: activeValue },
                 status: 'published',
               });
             } else if (existingAssignment?.id != null) {
               await strapi.db.query(COURSE_ASSIGNMENT_UID).update({
                 where: { id: existingAssignment.id },
-                data: { due_date: dueValue, active: isActive },
+                data: { due_date: dueValue, active: activeValue },
               });
             }
           }
@@ -455,7 +455,7 @@ async function createCourseAssignmentEntries(strapi, courseId, userIds, dueDate,
             assignment_target_type: 'Individual',
             courses: { connect: [{ id: Number(courseId) }] },
             due_date: dueValue,
-            active: isActive,
+            active: activeValue,
             individual_user: [userId],
             ...(companyId ? { company: { connect: [{ id: companyId }] } } : {}),
           },
