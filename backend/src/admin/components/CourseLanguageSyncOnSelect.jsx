@@ -209,7 +209,6 @@ function createQuizPlaceholder(lang) {
     title: '',
     quiz_questions: [],
     quiz_instruction: [],
-    quiz_instruction_checklist: [],
   };
 }
 
@@ -262,7 +261,6 @@ function buildSyncedValues(values, nextLanguages, prevLanguages) {
     ...q,
     quiz_questions: ensureArray(q.quiz_questions),
     quiz_instruction: ensureArray(q.quiz_instruction),
-    quiz_instruction_checklist: ensureArray(q.quiz_instruction_checklist),
   }));
   const normalizedFeedback = ensureArray(syncedFeedback).map((f) => ({
     ...f,
@@ -368,7 +366,6 @@ function expandLastQuizSetToLanguages(quiz, languages) {
       quiz_id: generateId('quiz'),
       quiz_questions: ensureArray(cleaned.quiz_questions),
       quiz_instruction: ensureArray(cleaned.quiz_instruction),
-      quiz_instruction_checklist: ensureArray(cleaned.quiz_instruction_checklist),
       __temp_key__: `quiz-expand-${idx}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
     };
   });

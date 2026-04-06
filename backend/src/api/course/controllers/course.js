@@ -184,8 +184,11 @@ module.exports = createCoreController('api::course.course', ({ strapi }) => ({
                 correct_multiSelect_answers: true
               }
             },
-            quiz_instruction: true,
-            quiz_instruction_checklist: true
+            quiz_instruction: {
+              populate: {
+                checklist: true
+              }
+            }
           }
         },
         thumbnail: true,
@@ -227,8 +230,11 @@ module.exports = createCoreController('api::course.course', ({ strapi }) => ({
                 correct_multiSelect_answers: true
               }
             },
-            quiz_instruction: true,
-            quiz_instruction_checklist: true
+            quiz_instruction: {
+              populate: {
+                checklist: true
+              }
+            }
           }
         },
         thumbnail: true,

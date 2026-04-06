@@ -45,10 +45,6 @@
       "options": {
         "required": true
       }
-    },
-    "instruction": {
-      "type": "richtext",
-      "required": true
     }
   },
   "config": {}
