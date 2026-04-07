@@ -39,7 +39,7 @@ async function getUserCompany(strapi, ctx) {
 module.exports = createCoreController('api::news-category.news-category', ({ strapi }) => ({
   async find(ctx) {
     const userCompany = await getUserCompany(strapi, ctx);
-    const where = { active: true, publishedAt: { $notNull: true } };
+    const where = { active: 'published', publishedAt: { $notNull: true } };
     if (userCompany) {
       where.company = { name: userCompany };
     }
