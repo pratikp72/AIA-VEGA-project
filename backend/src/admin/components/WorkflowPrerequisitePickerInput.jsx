@@ -73,7 +73,7 @@ function getModuleLabel(item, idx) {
 }
 
 const WorkflowPrerequisitePickerInput = React.forwardRef((props, ref) => {
-  const { name, onChange, value, intlLabel, description, disabled, error } = props;
+  const { name, onChange, value, label, intlLabel, description, disabled, error } = props;
 
   const { formatMessage } = useIntl();
 
@@ -117,6 +117,11 @@ const WorkflowPrerequisitePickerInput = React.forwardRef((props, ref) => {
   };
 
   const labelText = (() => {
+    if (label) {
+      if (typeof label === 'string') return label;
+      if (label.id) return formatMessage(label);
+      if (label.defaultMessage) return label.defaultMessage;
+    }
     if (!intlLabel) return 'Prerequisite Modules';
     if (typeof intlLabel === 'string') return intlLabel;
     if (intlLabel.id) return formatMessage(intlLabel);

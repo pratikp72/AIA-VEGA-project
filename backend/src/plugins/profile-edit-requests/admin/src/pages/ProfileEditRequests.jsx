@@ -261,14 +261,28 @@ export default function ProfileEditRequestsPage() {
           if (mediaUrl) {
             return (
               <Box>
-                <Typography variant="omega" style={{ marginLeft: 8, marginBottom: 8, display: 'block' }}>
-                  {mediaUrl}
-                </Typography>
                 <img
                   src={mediaUrl}
                   alt={field}
-                  style={{ maxWidth: 200, maxHeight: 200, marginLeft: 8, borderRadius: 4 }}
+                  style={{ maxWidth: 200, maxHeight: 200, marginLeft: 8, borderRadius: 4, display: 'block', marginBottom: 8 }}
                 />
+                <a
+                  href={mediaUrl}
+                  download
+                  style={{
+                    marginLeft: 8,
+                    padding: '4px 12px',
+                    background: '#4945ff',
+                    color: '#fff',
+                    borderRadius: 4,
+                    textDecoration: 'none',
+                    fontSize: 13,
+                    display: 'inline-block',
+                    cursor: 'pointer',
+                  }}
+                >
+                  Download Photo
+                </a>
               </Box>
             );
           }
@@ -278,14 +292,28 @@ export default function ProfileEditRequestsPage() {
         if (typeof value === 'object' && value?.url) {
           return (
             <Box>
-              <Typography variant="omega" style={{ marginLeft: 8, marginBottom: 8, display: 'block' }}>
-                {value.url}
-              </Typography>
               <img
                 src={value.url}
                 alt={field}
-                style={{ maxWidth: 200, maxHeight: 200, marginLeft: 8, borderRadius: 4 }}
+                style={{ maxWidth: 200, maxHeight: 200, marginLeft: 8, borderRadius: 4, display: 'block', marginBottom: 8 }}
               />
+              <a
+                href={value.url}
+                download
+                style={{
+                  marginLeft: 8,
+                  padding: '4px 12px',
+                  background: '#4945ff',
+                  color: '#fff',
+                  borderRadius: 4,
+                  textDecoration: 'none',
+                  fontSize: 13,
+                  display: 'inline-block',
+                  cursor: 'pointer',
+                }}
+              >
+                Download Photo
+              </a>
             </Box>
           );
         }
