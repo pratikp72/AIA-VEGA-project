@@ -16,6 +16,7 @@ module.exports = createCoreController('api::gallery-item.gallery-item', ({ strap
     const dateQuery = date != null ? String(date) : '';
 
     // ---- 1) Build filters ----
+    /** @type {any} */
     const filters = {};
 
     // Company filter:
@@ -72,19 +73,23 @@ module.exports = createCoreController('api::gallery-item.gallery-item', ({ strap
 
     // ---- 2) Build sort ----
     let sort = [];
-    switch (sortByQuery) {
+    const normalizedSortBy = sortByQuery.trim().toLowerCase();
+    switch (normalizedSortBy) {
       case 'oldest':
-        sort = ['date:asc', 'createdAt:asc'];
+        sort = [{ date: 'asc' }, { createdAt: 'asc' }];
         break;
+      case 'title a-z':
       case 'title-asc':
-        sort = ['title:asc'];
+        sort = [{ title: 'asc' }];
         break;
+      case 'title z-a':
       case 'title-desc':
-        sort = ['title:desc'];
+        sort = [{ title: 'desc' }];
         break;
+      case 'latest':
       case 'newest':
       default:
-        sort = ['date:desc', 'createdAt:desc'];
+        sort = [{ date: 'desc' }, { createdAt: 'desc' }];
         break;
     }
 
@@ -95,13 +100,10 @@ module.exports = createCoreController('api::gallery-item.gallery-item', ({ strap
       company: true, // or { fields: ['name'] } if you want only name
     };
 
-    /** @type {any} */
-    const sortOption = sort;
-
     // ---- 4) Query Strapi ----
     const entities = await strapi.entityService.findMany('api::gallery-item.gallery-item', {
       filters,
-      sort: sortOption,
+      sort: /** @type {any} */ (sort),
       populate,
     });
 
