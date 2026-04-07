@@ -39,7 +39,7 @@
             {
               "var": "active"
             },
-            true
+            "published"
           ]
         }
       },

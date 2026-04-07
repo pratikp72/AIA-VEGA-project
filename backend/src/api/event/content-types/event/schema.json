@@ -46,7 +46,7 @@
             {
               "var": "active"
             },
-            true
+            "published"
           ]
         }
       },
