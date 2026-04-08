@@ -12,6 +12,7 @@ const DateFutureOnlyInput = React.forwardRef((props, ref) => {
     attribute,
     description,
     disabled,
+    label,
     intlLabel,
     name,
     onChange,
@@ -31,7 +32,10 @@ const DateFutureOnlyInput = React.forwardRef((props, ref) => {
   };
 
   // Fallback when Content Manager doesn't pass a label (e.g. custom field in edit view)
-  const labelText = formatLabel(intlLabel) || (name ? name.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) : 'Date');
+  const labelText =
+    formatLabel(label) ||
+    formatLabel(intlLabel) ||
+    (name ? name.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) : 'Date');
 
   // Min date: today in local date string (YYYY-MM-DD)
   const today = new Date();

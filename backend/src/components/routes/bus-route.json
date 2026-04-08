@@ -13,7 +13,7 @@
     "route_name": {
       "type": "string",
       "maxLength": 100,
-      "required": true
+      "required": false
     },
     "bus_stops": {
       "type": "component",
@@ -23,7 +23,7 @@
     "route_img": {
       "type": "media",
       "multiple": false,
-      "required": true,
+      "required": false,
       "allowedTypes": [
         "images"
       ]

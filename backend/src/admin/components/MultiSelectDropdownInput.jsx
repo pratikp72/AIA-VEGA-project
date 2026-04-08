@@ -42,6 +42,7 @@ const MultiSelectDropdownInput = React.forwardRef((props, ref) => {
     attribute,
     description,
     disabled,
+    label,
     intlLabel,
     name,
     onChange,
@@ -69,6 +70,7 @@ const MultiSelectDropdownInput = React.forwardRef((props, ref) => {
 
   const displayName = name && name.includes('.') ? name.split('.').pop() : name;
   const labelText =
+    formatLabel(label) ||
     formatLabel(intlLabel) ||
     (displayName ? displayName.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) : 'Multi-select');
 

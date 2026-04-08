@@ -14,7 +14,7 @@
       "type": "component",
       "component": "routes.bus-route",
       "repeatable": true,
-      "required": true
+      "required": false
     },
     "unit_map_link": {
       "type": "string"

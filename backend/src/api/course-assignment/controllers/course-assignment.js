@@ -1,3 +1,4 @@
+// @ts-nocheck
 'use strict';
 
 /**
@@ -11,9 +12,69 @@ module.exports = createCoreController('api::course-assignment.course-assignment'
     const body = ctx.request.body || {};
     let identifiers = [];
 
+    const normalizeHeaderToken = (value) => {
+      return String(value || '')
+        .replace(/^\uFEFF/, '')
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '');
+    };
+
+    const knownHeaderTokens = new Set([
+      'email',
+      'email_id',
+      'email_address',
+      'emp_code',
+      'employee_code',
+      'emp_id',
+      'employee_id',
+      'username',
+      'user_name',
+      'user',
+      'identifier',
+      'name',
+      'employee_name',
+      'emp_name',
+      'full_name',
+      'fullname',
+      'staff_id',
+      'staff_name',
+      'staff_code',
+      'user_id',
+      'userid',
+      'login',
+      'login_id',
+      'no',
+      'sr_no',
+      'sr',
+      'sno',
+      'sl_no',
+      'serial_no',
+      'id',
+      'row',
+      'index',
+    ]);
+
+    const isHeaderLikeIdentifier = (value) => knownHeaderTokens.has(normalizeHeaderToken(value));
+
+    const finalizeIdentifiers = (rawList) => {
+      const out = [];
+      const seen = new Set();
+      for (const item of rawList || []) {
+        const value = String(item || '').replace(/^\uFEFF/, '').trim();
+        if (!value) continue;
+        if (isHeaderLikeIdentifier(value)) continue;
+        if (seen.has(value)) continue;
+        seen.add(value);
+        out.push(value);
+      }
+      return out;
+    };
+
     if (Array.isArray(body.identifiers)) {
       // CSV pre-parsed on the frontend — receive identifier strings directly
-      identifiers = body.identifiers.map((s) => String(s || '').trim()).filter(Boolean);
+      identifiers = finalizeIdentifiers(body.identifiers);
     } else if (body.fileContent) {
       // XLSX / XLS sent as base64 from the browser — parse server-side
       try {
@@ -27,18 +88,12 @@ module.exports = createCoreController('api::course-assignment.course-assignment'
         const sheet = workbook.Sheets[sheetName];
         const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
 
-        // Skip a header row if the first cell is a known column label
-        const knownHeaders = new Set(['email', 'emp_code', 'emp_id', 'username', 'user', 'identifier', 'name']);
-        let startRow = 0;
-        if (rows.length > 0) {
-          const firstCell = String((rows[0] && rows[0][0]) || '').trim().toLowerCase();
-          if (knownHeaders.has(firstCell)) startRow = 1;
-        }
-
-        identifiers = rows
-          .slice(startRow)
+        // Always skip the first row — it is the header row in virtually all Excel exports
+        identifiers = finalizeIdentifiers(
+          rows
+          .slice(1)
           .map((row) => String((row && row[0]) || '').trim())
-          .filter(Boolean);
+        );
       } catch (e) {
         return ctx.badRequest('Failed to parse Excel file: ' + (e?.message || String(e)));
       }

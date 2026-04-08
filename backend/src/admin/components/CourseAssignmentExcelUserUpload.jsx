@@ -69,6 +69,14 @@ function extractCurrentRelationIds(raw) {
   return [];
 }
 
+function isPublishButton(element) {
+  const button = element?.closest?.('button');
+  if (!button) return false;
+  const text = String(button.textContent || '').trim().toLowerCase();
+  if (!text) return false;
+  return text === 'publish' || text === 'publish & continue';
+}
+
 /** POST JSON to Strapi API with no-auth (route uses policies: []). */
 async function apiPost(path, payload) {
   const res = await fetch(path, {
@@ -306,9 +314,38 @@ function UploadCore() {
   const [errorMsg, setErrorMsg] = useState('');
   const [selectedFileName, setSelectedFileName] = useState('');
   const [showPreview, setShowPreview] = useState(false);
+  const [publishValidationMsg, setPublishValidationMsg] = useState('');
 
   const isIndividual = String(values?.assignment_target_type || '').toLowerCase() === 'individual';
-  if (!isIndividual) return null;
+  const selectedUsers = extractCurrentRelationIds(values?.individual_user);
+  const hasImportedUsers = selectedUsers.length > 0;
+
+  useEffect(() => {
+    if (!isIndividual) {
+      if (publishValidationMsg) setPublishValidationMsg('');
+      return;
+    }
+    if (hasImportedUsers && publishValidationMsg) {
+      setPublishValidationMsg('');
+    }
+  }, [isIndividual, hasImportedUsers, publishValidationMsg]);
+
+  useEffect(() => {
+    const handlePublishAttempt = (event) => {
+      if (!isIndividual || hasImportedUsers) return;
+      if (!isPublishButton(event.target)) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation?.();
+      setPublishValidationMsg('Import an Excel file and load at least one user before publishing an Individual course assignment.');
+    };
+
+    document.addEventListener('click', handlePublishAttempt, true);
+    return () => {
+      document.removeEventListener('click', handlePublishAttempt, true);
+    };
+  }, [isIndividual, hasImportedUsers]);
 
   // ── Process selected file ──
   async function processFile(file) {
@@ -368,6 +405,8 @@ function UploadCore() {
     setShowPreview(false);
   }
 
+  if (!isIndividual) return null;
+
   // ── Render ──
   return (
     <div style={S.wrap}>
@@ -394,6 +433,9 @@ function UploadCore() {
           </div>
           {selectedFileName ? (
             <div style={S.fileName}>Selected file: {selectedFileName}</div>
+          ) : null}
+          {publishValidationMsg ? (
+            <div style={{ ...S.error, marginTop: '8px' }}>{publishValidationMsg}</div>
           ) : null}
         </>
       )}
@@ -435,6 +477,9 @@ function UploadCore() {
               Cancel
             </button>
           </div>
+          {publishValidationMsg ? (
+            <div style={{ ...S.error, marginTop: '8px' }}>{publishValidationMsg}</div>
+          ) : null}
         </div>
       )}
 
@@ -514,6 +559,10 @@ function UploadCore() {
           </div>
         </div>
       )}
+
+      {status !== 'idle' && status !== 'done' && publishValidationMsg ? (
+        <div style={{ ...S.error, marginTop: '8px' }}>{publishValidationMsg}</div>
+      ) : null}
     </div>
   );
 }

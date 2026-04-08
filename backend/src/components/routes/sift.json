@@ -8,11 +8,11 @@
     "shift_name": {
       "type": "string",
       "maxLength": 50,
-      "required": true
+      "required": false
     },
     "shift_time": {
       "type": "time",
-      "required": true
+      "required": false
     }
   },
   "config": {}
