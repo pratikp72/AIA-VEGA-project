@@ -75,6 +75,7 @@ module.exports = ({ strapi }) => {
     const where = {
       blocked: { $eq: false },
       active: { $ne: false },
+      exit_date: { $null: true },
     };
 
     const companyVal = params.company && String(params.company).trim() && !/^all\s*companies?$/i.test(String(params.company));
@@ -201,6 +202,7 @@ module.exports = ({ strapi }) => {
         company: u.company ?? '—',
         working_location: u.working_location ?? '—',
         joining_date: u.joining_date ?? null,
+        exit_date: u.exit_date ?? null,
         date_of_birth: u.date_of_birth ?? null,
         description: u.description ?? null,
         branch: u.branch ?? '—',
