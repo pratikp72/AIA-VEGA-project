@@ -9,6 +9,7 @@ const { ensureDepartmentForUser } = require('./utils/ensure-department-for-user'
 const { syncCourseLanguageComponents } = require('./utils/sync-course-language-components');
 const { autoGenerateComponentIds } = require('./utils/auto-generate-component-ids');
 const { syncVegaEmployees } = require('./cron-tasks/sync-vega-employees');
+const { populateAnswerCorrectField } = require('./utils/quiz-submission-correctness');
 
 function isEmailEnabled() {
   const raw = String(process.env.EMAIL_ENABLED || 'false').trim().toLowerCase();
@@ -641,6 +642,29 @@ module.exports = {
       registerCourseWorkflowOfflineModuleSync(strapi);
     } catch (e) {
       strapi.log.error('Course-workflow offline-module sync bootstrap failed:', e?.message || e);
+    }
+
+    // Global safety net: always populate quiz_submission.answers[].correct regardless of route/controller path.
+    try {
+      strapi.db.lifecycles.subscribe({
+        models: ['api::quiz-submission.quiz-submission'],
+        async beforeCreate(event) {
+          const data = event?.params?.data || {};
+          await populateAnswerCorrectField(strapi, data);
+          const t = Array.isArray(data.answers) ? data.answers.filter((a) => a?.correct === true).length : 0;
+          const f = Array.isArray(data.answers) ? data.answers.filter((a) => a?.correct === false).length : 0;
+          strapi.log.info('[quiz-submission db lifecycle] beforeCreate total=%s true=%s false=%s', data?.answers?.length || 0, t, f);
+        },
+        async beforeUpdate(event) {
+          const data = event?.params?.data || {};
+          await populateAnswerCorrectField(strapi, data);
+          const t = Array.isArray(data.answers) ? data.answers.filter((a) => a?.correct === true).length : 0;
+          const f = Array.isArray(data.answers) ? data.answers.filter((a) => a?.correct === false).length : 0;
+          strapi.log.info('[quiz-submission db lifecycle] beforeUpdate total=%s true=%s false=%s', data?.answers?.length || 0, t, f);
+        },
+      });
+    } catch (e) {
+      strapi.log.error('Quiz-submission correctness lifecycle bootstrap failed:', e?.message || e);
     }
 
     // Fallback: ensure department when user is created/updated via Content Manager
