@@ -75,6 +75,7 @@ module.exports = ({ strapi }) => {
     const where = {
       blocked: { $eq: false },
       active: { $ne: false },
+      exit_date: { $null: true },
     };
 
     const companyVal = params.company && String(params.company).trim() && !/^all\s*companies?$/i.test(String(params.company));
@@ -201,6 +202,7 @@ module.exports = ({ strapi }) => {
         company: u.company ?? '—',
         working_location: u.working_location ?? '—',
         joining_date: u.joining_date ?? null,
+        exit_date: u.exit_date ?? null,
         date_of_birth: u.date_of_birth ?? null,
         description: u.description ?? null,
         branch: u.branch ?? '—',
@@ -301,7 +303,7 @@ module.exports = ({ strapi }) => {
         pageTypes.forEach((t) => { initial[t] = 0; });
         byDate[dateKey] = initial;
       }
-      const type = log.activity_type || 'News';
+      const type = normalizeActivityType(log.activity_type || 'News', log.route_path);
       const mins = (log.activity_duration || 0) / 60; // activity_duration stored in seconds
       if (byDate[dateKey][type] !== undefined) {
         byDate[dateKey][type] += mins;
@@ -324,13 +326,79 @@ module.exports = ({ strapi }) => {
     return str;
   }
 
-  /** Activity types to exclude from Overall Analytics (Course, Quiz, Feedback). */
-  const EXCLUDED_ACTIVITY_TYPES = ['Course', 'Quiz', 'Feedback'];
+  /** Allowed page activity types for Overall Activity Tracking filter/dropdown. */
+  const ALLOWED_ACTIVITY_TYPES = ['News', 'Location', 'Routes', 'People', 'Gallery', 'Home', 'Company policy', 'Form & Templates', 'Calendar'];
+  const ACTIVITY_TYPE_ALIASES = {
+    News: ['News'],
+    Location: ['Location', 'Locations'],
+    Routes: ['Routes', 'Route'],
+    People: ['People', 'Person'],
+    Gallery: ['Gallery'],
+    Home: ['Home'],
+    'Company policy': ['Company policy', 'Company Policy', 'Resources'],
+    'Form & Templates': ['Form & Templates', 'Form and Templates', 'Resources'],
+    Calendar: ['Calendar'],
+  };
+
+  function normalizeActivityType(type, routePath = '') {
+    const route = String(routePath || '').trim().toLowerCase();
+    const rawType = String(type || '').trim().toLowerCase();
+    if (rawType === 'resources') {
+      if (route.includes('policy')) return 'Company policy';
+      if (route.includes('form') || route.includes('template')) return 'Form & Templates';
+    }
+    const raw = String(type || '').trim().toLowerCase();
+    if (!raw) return '';
+    for (const key of ALLOWED_ACTIVITY_TYPES) {
+      const aliases = ACTIVITY_TYPE_ALIASES[key] || [key];
+      if (aliases.some((a) => String(a).trim().toLowerCase() === raw)) return key;
+    }
+    return String(type || '').trim();
+  }
+
+  function expandAllowedActivityTypes() {
+    const set = new Set();
+    ALLOWED_ACTIVITY_TYPES.forEach((k) => {
+      const aliases = ACTIVITY_TYPE_ALIASES[k] || [k];
+      aliases.forEach((a) => set.add(String(a)));
+    });
+    return [...set];
+  }
 
   /** Build shared where for activity log queries (date, company, department, unitLocation, activityType, userId). Uses relation "user" and activity_log.company so filters work with Strapi 5. Excludes Course, Quiz, Feedback from all activity data. Excludes page_view_started (zero-duration) from KPI/chart/log queries so visit counts are not doubled. */
   self._buildActivityWhere = async function (params = {}) {
     const where = {};
-    where.activity_type = { $notIn: EXCLUDED_ACTIVITY_TYPES };
+    const requestedActivityType = params.activityType ? String(params.activityType).trim() : '';
+    if (requestedActivityType) {
+      // Only allow page types that exist in the Overall dashboard filter.
+      if (ALLOWED_ACTIVITY_TYPES.includes(requestedActivityType)) {
+        where.activity_type = { $in: ACTIVITY_TYPE_ALIASES[requestedActivityType] || [requestedActivityType] };
+        if (requestedActivityType === 'Form & Templates') {
+          where.$and = (where.$and || []).concat([{
+            $or: [
+              { activity_type: { $ne: 'Resources' } },
+              { route_path: { $containsi: 'forms-templates' } },
+              { route_path: { $containsi: 'form' } },
+              { route_path: { $containsi: 'template' } },
+            ],
+          }]);
+        }
+        if (requestedActivityType === 'Company policy') {
+          where.$and = (where.$and || []).concat([{
+            $or: [
+              { activity_type: { $ne: 'Resources' } },
+              { route_path: { $containsi: 'polic' } },
+            ],
+          }]);
+        }
+      } else {
+        // Invalid/unsupported filter value should return no rows.
+        where.activity_type = { $eq: '__none__' };
+      }
+    } else {
+      // "All Pages" means only the configured page filter set, never Course/Quiz/Feedback rows.
+      where.activity_type = { $in: expandAllowedActivityTypes() };
+    }
     // Exclude page_view_started: both events are stored in the DB (visible in Content Manager)
     // but dashboard KPIs and tables should only count page_view_ended which carries duration.
     where.activity_description = { $ne: 'page_view_started' };
@@ -344,8 +412,6 @@ module.exports = ({ strapi }) => {
         if (to) where.timestamp.$lte = to;
       }
     }
-    if (params.activityType) where.activity_type = params.activityType;
-
     /* When newsId is selected: do NOT filter by activity_description - frontend often sends generic "News".
        Show all News activity; likes column will show Yes/No for the selected news. */
 
@@ -411,7 +477,13 @@ module.exports = ({ strapi }) => {
                 where: { documentId: String(locId) },
                 select: ['name'],
               });
-          if (locRow?.name) userWhere.working_location = { $containsi: locRow.name };
+          if (locRow?.name) {
+            // AIA users are mapped by `branch`, Vega users by `working_location`.
+            userWhere.$or = [
+              { working_location: { $containsi: locRow.name } },
+              { branch: { $containsi: locRow.name } },
+            ];
+          }
         } catch (e) {
           strapi.log.warn('_buildActivityWhere: resolve work location failed', e?.message);
         }
@@ -477,7 +549,7 @@ module.exports = ({ strapi }) => {
     const list = Array.isArray(logs) ? logs : [];
     const byType = {};
     list.forEach((log) => {
-      const t = log.activity_type || 'News';
+      const t = normalizeActivityType(log.activity_type || 'News', log.route_path);
       if (!byType[t]) byType[t] = { count: 0, timeMin: 0 };
       byType[t].count += 1;
       byType[t].timeMin += (Number(log.activity_duration) || 0) / 60; // stored as seconds → convert to minutes
@@ -580,7 +652,7 @@ module.exports = ({ strapi }) => {
         userDocumentId,
         userName,
         company: companyName,
-        activity: log.activity_type || log.activity_description || '—',
+        activity: normalizeActivityType(log.activity_type || log.activity_description || '—', log.route_path),
         activityDescription: activityDesc,
         duration,
         timestamp: log.timestamp,

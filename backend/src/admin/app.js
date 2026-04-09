@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Strapi v5 Admin Customization
  * 
@@ -31,13 +32,14 @@ import CourseAssignmentCompanyFilter from './components/CourseAssignmentCompanyF
 import CourseWorkflowCompanyFilter from './components/CourseWorkflowCompanyFilter.jsx';
 import EventCompanyFilter from './components/EventCompanyFilter.jsx';
 import HolidayCompanyFilter from './components/HolidayCompanyFilter.jsx';
+import CourseAssignmentExcelUserUpload from './components/CourseAssignmentExcelUserUpload.jsx';
 
 export default {
   /**
    * Register function - runs when the admin panel initializes
    * This is where we add custom menu links to the sidebar
    * 
-   * @param {Object} app - Strapi admin app instance
+  * @param {any} app - Strapi admin app instance
    */
   register(app) {
     // Custom field: date picker that only allows today or future (e.g. News publish date)
@@ -229,7 +231,7 @@ export default {
         name: 'CourseLanguageSyncOnSelect',
         Component: CourseLanguageSyncOnSelect,
       });
-      // Fill component id fields (module_id, quiz_id, question_id, route_id, bus_stop_id) before save
+      // Fill component id fields (module_id, quiz_id, question_id, route_id, stop_id) before save
       contentManager.injectComponent('editView', 'right-links', {
         name: 'AutoFillComponentIds',
         Component: AutoFillComponentIds,
@@ -274,6 +276,11 @@ export default {
       contentManager.injectComponent('editView', 'right-links', {
         name: 'HolidayCompanyFilter',
         Component: HolidayCompanyFilter,
+      });
+      // For Course Assignment: upload Excel to populate individual_user relation
+      contentManager.injectComponent('editView', 'right-links', {
+        name: 'CourseAssignmentExcelUserUpload',
+        Component: CourseAssignmentExcelUserUpload,
       });
     }
 
@@ -368,6 +375,27 @@ export default {
     });
 
     /**
+     * Profile Edit Requests - under HR Module
+     * Allows HR to review and approve/reject employee profile change requests
+     */
+    app.addMenuLink({
+      id: 'profile-edit-requests',
+      to: '/content-manager/collection-types/api::profile-edit-request.profile-edit-request',
+      icon: 'pencil',
+      intlLabel: {
+        id: 'custom-menu.profile-edit-requests',
+        defaultMessage: 'Profile Edit Requests',
+      },
+      parent: 'hr-module',
+      permissions: [
+        {
+          action: 'plugin::content-manager.read',
+          subject: 'api::profile-edit-request.profile-edit-request',
+        },
+      ],
+    });
+
+    /**
      * Learning Module - Parent menu item under "All Modules"
      * Another sub-group within "All Modules"
      */
@@ -436,7 +464,7 @@ export default {
    * Bootstrap function - runs after register
    * Used for additional setup and menu customization
    * 
-   * @param {Object} app - Strapi admin app instance
+  * @param {any} app - Strapi admin app instance
    */
   bootstrap(app) {
     /**
@@ -473,10 +501,15 @@ export default {
         Object.defineProperty(document, 'title', {
           set: function(newTitle) {
             const updatedTitle = (newTitle || '').replace(/Strapi/gi, 'AIA-VEGA');
-            originalTitleDescriptor.set.call(this, updatedTitle);
+            if (typeof originalTitleDescriptor.set === 'function') {
+              originalTitleDescriptor.set.call(this, updatedTitle);
+            }
           },
           get: function() {
-            return originalTitleDescriptor.get.call(this);
+            if (typeof originalTitleDescriptor.get === 'function') {
+              return originalTitleDescriptor.get.call(this);
+            }
+            return document.title;
           },
           configurable: true,
         });
@@ -517,10 +550,21 @@ export default {
         'Settings.application.title': 'AIA-VEGA Settings',
       },
     },
-    // Head configuration for page title
+    
     head: {
-      favicon: '/favicon.png',
+    link: [
+    {
+      rel: 'icon',
+      type: 'image/png',
+      href: '/favicon.png',
     },
+    {
+      rel: 'shortcut icon',
+      type: 'image/x-icon',
+      href: '/favicon.ico',
+    },
+  ],
+},
     // Tutorial configuration
     tutorials: false,
     // Notification configuration

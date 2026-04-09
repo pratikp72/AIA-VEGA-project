@@ -50,6 +50,10 @@ export function LearningPersonalView({
 
   const moduleColumnsForCourse = useMemo(() => {
     if (!hasCourse || !courseModules.length) return [];
+    const completedSet = new Set(
+      (tableRows[0]?.completedModules || []).map((v) => String(v))
+    );
+    const hasCompleted = completedSet.size > 0;
     // Collect titles that actually have video progress data
     const progressTitles = new Set(
       moduleVideoProgress.map((mv) => (mv.moduleTitle || '').trim().toLowerCase()).filter(Boolean)
@@ -63,6 +67,12 @@ export function LearningPersonalView({
     // Only include modules that have matching video progress entries (by title)
     return courseModules
       .filter((m) => {
+        if (hasCompleted) {
+          const mid = m.module_id != null ? String(m.module_id) : '';
+          const idx = m.index ?? m.moduleIndex;
+          const idxStr = idx != null ? String(idx) : '';
+          return (mid && completedSet.has(mid)) || (idxStr && completedSet.has(idxStr));
+        }
         const t = (m.title || '').trim().toLowerCase();
         return t && progressTitles.has(t);
       })
@@ -71,7 +81,7 @@ export function LearningPersonalView({
         const label = m.title ?? `Module ${idx + 1}`;
         return { key: `mod_title_${label}`, label, moduleIndex: idx };
       });
-  }, [hasCourse, hasModule, moduleIndexSelected, courseModules, moduleVideoProgress]);
+  }, [hasCourse, hasModule, moduleIndexSelected, courseModules, moduleVideoProgress, tableRows]);
 
   const tableDataWithModuleCells = useMemo(() => {
     const modCols = moduleColumnsForCourse;

@@ -102,23 +102,10 @@
     },
     "photograph": {
       "type": "media",
-      "conditions": {
-        "visible": {
-          "==": [
-            {
-              "var": "company"
-            },
-            "AIA"
-          ]
-        }
-      },
       "multiple": false,
       "required": true,
       "allowedTypes": [
-        "images",
-        "files",
-        "videos",
-        "audios"
+        "images"
       ]
     },
     "age": {
@@ -321,6 +308,11 @@
       "relation": "manyToOne",
       "target": "api::course-workflow.course-workflow",
       "inversedBy": "users_permissions_users"
+    },
+    "is_first_login": {
+      "type": "boolean",
+      "required": true,
+      "default": true
     }
   }
 }

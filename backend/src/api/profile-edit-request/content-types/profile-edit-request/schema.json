@@ -21,8 +21,13 @@
       "type": "json",
       "required": true
     },
-    "reason": {
-      "type": "text"
+    "previous_values": {
+      "type": "json",
+      "required": false
+    },
+    "requester_name": {
+      "type": "string",
+      "required": false
     },
     "request_status": {
       "type": "enumeration",
@@ -41,9 +46,6 @@
     },
     "reviewed_at": {
       "type": "datetime"
-    },
-    "admin_comment": {
-      "type": "text"
     },
     "company": {
       "type": "enumeration",

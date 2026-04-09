@@ -1,18 +1,18 @@
 {
   "collectionName": "components_routes_sifts",
   "info": {
-    "displayName": "Sift"
+    "displayName": "Shift"
   },
   "options": {},
   "attributes": {
-    "sift_name": {
+    "shift_name": {
       "type": "string",
       "maxLength": 50,
-      "required": true
+      "required": false
     },
-    "sift_time": {
+    "shift_time": {
       "type": "time",
-      "required": true
+      "required": false
     }
   },
   "config": {}

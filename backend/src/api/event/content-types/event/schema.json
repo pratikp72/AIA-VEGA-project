@@ -33,9 +33,10 @@
       "required": true
     },
     "active": {
-      "type": "boolean",
-      "required": true,
-      "default": true
+      "type": "enumeration",
+      "enum": ["published", "unpublished"],
+      "default": "published",
+      "required": true
     },
     "visible_on_homepage": {
       "type": "boolean",
@@ -45,7 +46,7 @@
             {
               "var": "active"
             },
-            true
+            "published"
           ]
         }
       },

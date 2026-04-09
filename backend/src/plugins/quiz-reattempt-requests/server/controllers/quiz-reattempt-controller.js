@@ -1,4 +1,16 @@
 module.exports = ({ strapi }) => ({
+  async getCount(ctx) {
+    try {
+      const count = await strapi.db.query('api::quiz-reattempt-request.quiz-reattempt-request').count({
+        where: { request_status: 'Pending' },
+      });
+      ctx.body = { count: count || 0 };
+    } catch (error) {
+      strapi.log.error('[quiz-reattempt plugin] getCount error:', error);
+      ctx.throw(500, error);
+    }
+  },
+
   async getRequests(ctx) {
     try {
       const data = await strapi.plugin('quiz-reattempt-requests').service('quizReattemptService').getAll();

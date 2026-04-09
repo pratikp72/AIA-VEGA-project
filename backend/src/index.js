@@ -1,3 +1,4 @@
+// @ts-nocheck
 'use strict';
 
 const USER_UID = 'plugin::users-permissions.user';
@@ -5,6 +6,7 @@ const COURSE_UID = 'api::course.course';
 const { ensureDepartmentForUser } = require('./utils/ensure-department-for-user');
 const { syncCourseLanguageComponents } = require('./utils/sync-course-language-components');
 const { autoGenerateComponentIds } = require('./utils/auto-generate-component-ids');
+const { syncVegaEmployees } = require('./cron-tasks/sync-vega-employees');
 
 function isEmailEnabled() {
   const raw = String(process.env.EMAIL_ENABLED || 'false').trim().toLowerCase();
@@ -116,12 +118,126 @@ module.exports = {
       return result;
     });
 
+    // Prevent direct user updates to sensitive fields - force profile-edit-request flow
+    strapi.documents.use(async (context, next) => {
+      const { uid, action } = context;
+      const data = context.params?.data;
+
+      if (uid !== USER_UID || action !== 'update' || !data) {
+        return await next();
+      }
+
+      const user = context.state?.user || context.user;
+      const targetDocId = context.params?.documentId;
+      const targetId = context.params?.id;
+      const isUpdatingSelf = user && (
+        String(user.documentId) === String(targetDocId) ||
+        String(user.id) === String(targetId)
+      );
+
+      if (!isUpdatingSelf) {
+        return await next();
+      }
+
+      const sensitiveFields = [
+        'photograph',
+        'email',
+        'contact_no',
+        'designation',
+        'department',
+        'working_location',
+        'branch',
+        'date_of_birth',
+      ];
+
+      const attemptedSensitiveUpdates = Object.keys(data).filter((key) =>
+        sensitiveFields.includes(key)
+      );
+
+      if (attemptedSensitiveUpdates.length > 0) {
+        throw new Error(
+          `Cannot directly update profile. Sensitive fields (${attemptedSensitiveUpdates.join(', ')}) ` +
+          'require approval via profile-edit-request. Please use the profile edit request system.'
+        );
+      }
+
+      return await next();
+    });
+
     // Course-assignment automation runs from docManager.create (Content Manager) and from db lifecycle (API/fallback).
     // We do not run it here in documents.use to avoid double-running when CM creates.
   },
 
   bootstrap({ strapi }) {
     suppressEmailServiceIfDisabled(strapi);
+
+    // ── Vega employee sync: run immediately on startup ───────────────────────
+    console.log('\n[vega-sync] 🚀 Bootstrap: triggering Vega employee sync on startup...');
+    syncVegaEmployees(strapi).catch((err) => {
+      console.error(`[vega-sync] ❌ Startup sync failed: ${err?.message || err}`);
+      strapi.log.error(`[vega-sync] Startup sync failed: ${err?.message || err}`);
+    });
+    // ─────────────────────────────────────────────────────────────────────────
+    //Force reset when admin changes password
+    strapi.db.lifecycles.subscribe({
+      models: ['plugin::users-permissions.user'],
+
+      async beforeUpdate(event) {
+        const { data, where } = event.params;
+        const ctx = strapi.requestContext.get();
+        const requestUrl = ctx?.request?.url || '';
+        const isFrontendChangePassword = requestUrl.includes('/change-password');
+        const isAdminContentManagerUpdate = requestUrl.includes('/content-manager/');
+        const hasPasswordInPayload = Object.prototype.hasOwnProperty.call(data || {}, 'password');
+        const nextPassword = typeof data?.password === 'string' ? data.password.trim() : '';
+
+        strapi.log.info(
+          `[user-password-lifecycle] beforeUpdate url=${requestUrl || 'n/a'} hasPasswordInPayload=${hasPasswordInPayload} passwordProvided=${Boolean(nextPassword)} isFrontendChangePassword=${isFrontendChangePassword} isAdminContentManagerUpdate=${isAdminContentManagerUpdate}`
+        );
+
+        if (!hasPasswordInPayload || !nextPassword || isFrontendChangePassword || !isAdminContentManagerUpdate) {
+          strapi.log.info('[user-password-lifecycle] skipped: update is not an admin Content Manager password change');
+          return;
+        }
+
+        const existingUser = await strapi.db.query(USER_UID).findOne({
+          where,
+          select: ['id', 'password'],
+        });
+
+        strapi.log.info(
+          `[user-password-lifecycle] candidate userId=${existingUser?.id ?? 'unknown'} existingPasswordFound=${Boolean(existingUser?.password)}`
+        );
+
+        if (!existingUser?.password) {
+          data.is_first_login = true;
+          strapi.log.info('[user-password-lifecycle] existing password not found, setting is_first_login=true');
+          return;
+        }
+
+        const userService =
+          strapi.plugins?.['users-permissions']?.services?.user ||
+          strapi.plugin?.('users-permissions')?.service?.('user');
+
+        if (!userService?.validatePassword) {
+          data.is_first_login = true;
+          strapi.log.warn('[user-password-lifecycle] validatePassword unavailable, setting is_first_login=true as fallback');
+          return;
+        }
+
+        const isSamePassword = await userService.validatePassword(nextPassword, existingUser.password);
+
+        strapi.log.info(`[user-password-lifecycle] password comparison result isSamePassword=${isSamePassword}`);
+
+        if (!isSamePassword) {
+          data.is_first_login = true;
+          strapi.log.info('[user-password-lifecycle] admin password changed, setting is_first_login=true');
+          return;
+        }
+
+        strapi.log.info('[user-password-lifecycle] password unchanged, leaving is_first_login as-is');
+      },
+    });
 
     strapi.utils = strapi.utils || {};
     strapi.utils.notification = require('./utils/notification')(strapi);
@@ -193,6 +309,14 @@ module.exports = {
       registerQuizReattemptNotificationLifecycles(strapi);
     } catch (e) {
       strapi.log.error('Quiz reattempt notification bootstrap failed:', e?.message || e);
+    }
+
+    // Profile edit request: notify admin on create, notify user on approve/reject
+    try {
+      const { registerProfileEditRequestNotificationLifecycles } = require('./lifecycles/profile-edit-request-notification');
+      registerProfileEditRequestNotificationLifecycles(strapi);
+    } catch (e) {
+      strapi.log.error('Profile edit request notification bootstrap failed:', String(e));
     }
 
     // Course-workflow: when module_type is Offline, create one offline_module row per selected user.

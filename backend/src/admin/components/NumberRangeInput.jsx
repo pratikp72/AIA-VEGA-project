@@ -1,3 +1,5 @@
+// @ts-nocheck
+
 import React, { useState, useCallback, useEffect } from 'react';
 import { useIntl } from 'react-intl';
 import { Box, Flex, Typography } from '@strapi/design-system';
@@ -27,6 +29,7 @@ const NumberRangeInput = React.forwardRef((props, ref) => {
     attribute,
     description,
     disabled,
+    label,
     intlLabel,
     name,
     onChange,
@@ -62,6 +65,7 @@ const NumberRangeInput = React.forwardRef((props, ref) => {
     ? name.split('.').pop()
     : name;
   const labelText =
+    formatLabel(label) ||
     formatLabel(intlLabel) ||
     (displayName ? displayName.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) : 'Number');
 

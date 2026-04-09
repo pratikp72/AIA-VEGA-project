@@ -32,12 +32,12 @@ module.exports = ({ env }) => ({
   },
 
   /**
-   * Local plugin: Profile Edit Requests (commented out – client no longer required; uncomment to show in admin)
+   * Local plugin: Profile Edit Requests
    */
-  // 'profile-edit-requests': {
-  //   enabled: true,
-  //   resolve: './src/plugins/profile-edit-requests',
-  // },
+  'profile-edit-requests': {
+    enabled: true,
+    resolve: './src/plugins/profile-edit-requests',
+  },
 
   /**
    * 📧 Email Provider (Nodemailer)

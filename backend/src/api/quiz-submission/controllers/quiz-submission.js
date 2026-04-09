@@ -199,6 +199,52 @@ async function calculateScore(strapi, courseId, answers, preloadedCourse = null)
       return Math.round((earnedPoints / totalPoints) * 100);
 }
 
+async function resolveCourseNumericId(strapi, rawCourseId) {
+  if (rawCourseId == null || rawCourseId === '') return null;
+
+  const asNumber = Number(rawCourseId);
+  if (Number.isFinite(asNumber) && asNumber > 0) {
+    // In Strapi v5, draftAndPublish types have two rows per document.
+    // Always resolve to the published row so entityService populate works.
+    const publishedById = await strapi.db.query('api::course.course').findOne({
+      where: { id: asNumber, publishedAt: { $notNull: true } },
+      select: ['id'],
+    });
+    if (publishedById?.id != null) return Number(publishedById.id);
+
+    // The id might be the draft row — find published sibling via documentId
+    const anyRow = await strapi.db.query('api::course.course').findOne({
+      where: { id: asNumber },
+      select: ['id', 'documentId'],
+    });
+    if (anyRow?.documentId) {
+      const publishedByDocId = await strapi.db.query('api::course.course').findOne({
+        where: { documentId: anyRow.documentId, publishedAt: { $notNull: true } },
+        select: ['id'],
+      });
+      if (publishedByDocId?.id != null) return Number(publishedByDocId.id);
+      // Course is unpublished — fall back to the draft row id
+      return Number(anyRow.id);
+    }
+  }
+
+  const asDocumentId = String(rawCourseId).trim();
+  if (!asDocumentId) return null;
+
+  // Prefer published row when resolving by documentId
+  const publishedByDocId = await strapi.db.query('api::course.course').findOne({
+    where: { documentId: asDocumentId, publishedAt: { $notNull: true } },
+    select: ['id'],
+  });
+  if (publishedByDocId?.id != null) return Number(publishedByDocId.id);
+
+  const anyByDocId = await strapi.db.query('api::course.course').findOne({
+    where: { documentId: asDocumentId },
+    select: ['id'],
+  });
+  return anyByDocId?.id != null ? Number(anyByDocId.id) : null;
+}
+
 module.exports = createCoreController(
   "api::quiz-submission.quiz-submission",
   ({ strapi }) => ({
@@ -246,8 +292,10 @@ module.exports = createCoreController(
           submission_type: submissionTypeRaw,
         } = ctx.request.body;
 
-        // Accept either `courseId` or `course` from the request body
-        const courseId = Number(courseIdParam ?? courseParam);
+          // Accept either numeric id or documentId from frontend
+          const courseInput = courseIdParam ?? courseParam;
+          const courseId = await resolveCourseNumericId(strapi, courseInput);
+          const userIdNum = Number(userId);
   // Enforce minimum 1 minute — never store 0
   const time_taken_minutes = Math.max(1, Math.round(Number(timeTakenRaw ?? 0)));
   const submitted_at = submittedAtRaw ? new Date(submittedAtRaw) : new Date();
@@ -258,7 +306,7 @@ module.exports = createCoreController(
           ? submissionTypeRaw
           : 'Manual Submit';
 
-        if (!userId || !courseId) {
+        if (!userIdNum || !courseId) {
           return ctx.badRequest("userId and courseId required");
         }
 
@@ -266,7 +314,8 @@ module.exports = createCoreController(
         // 0. If admin rejected a reattempt within the last 24h → block assessment (after 24h user can request again)
         // ------------------------------------------------------
         const REJECTION_COOLDOWN_MS = 24 * 60 * 60 * 1000;
-        const [course, rejectedList, lastSubmission] = await Promise.all([
+
+          const [course, rejectedList, lastSubmission] = await Promise.all([
           strapi.db.query("api::course.course").findOne({
             where: { id: Number(courseId) },
             populate: {
@@ -287,7 +336,7 @@ module.exports = createCoreController(
             .findMany({
               where: {
                 course: Number(courseId),
-                users_permissions_user: Number(userId),
+                users_permissions_user: userIdNum,
                 request_status: "Rejected",
               },
               orderBy: { updatedAt: "desc" },
@@ -296,8 +345,8 @@ module.exports = createCoreController(
           strapi.db
             .query("api::quiz-submission.quiz-submission")
             .findOne({
-              where: { submitted_by: userId, course: courseId },
-              orderBy: { attempt_number: "desc" }
+              where: { submitted_by: userIdNum, course: courseId },
+              orderBy: { attempt_number: "desc" },
             }),
         ]);
 
@@ -332,37 +381,36 @@ module.exports = createCoreController(
         const passed = score >= minPassingScore;
 
         // ------------------------------------------------------
-        // 4. If FAILED + would exceed max_attempt → block (do not save)
-        // Show re-attempt when current attempt === max_attempt, not only when trying attempt > max.
-        // So block when they already used all attempts and are trying to submit again.
-        // ------------------------------------------------------
-        if (!passed && nextAttempt > maxAttempt) {
-          return ctx.send({
-            message: `Max attempts reached (${maxAttempt}). Request reattempt.`,
-            reattempt_required: true
-          });
-        }
-
-        // ------------------------------------------------------
-        // 5. If admin approved reattempt → allow + mark as used
+        // 4+5. Check for admin-approved reattempt FIRST, then enforce max_attempt.
+        // The approved check MUST come before the max_attempt block, otherwise the
+        // early return would prevent the approved request from ever being used,
+        // keeping lastSubmission.attempt_number frozen and causing
+        // requested_for_attempt to repeat the same value on every new request.
         // ------------------------------------------------------
         const approvedRequest = await strapi.db
           .query("api::quiz-reattempt-request.quiz-reattempt-request")
           .findOne({
             where: {
               course: courseId,
-              users_permissions_user: userId,
+              users_permissions_user: userIdNum,
               request_status: "Approved"
             }
           });
 
         if (approvedRequest) {
+          // Mark approved request as used so the slot is consumed
           await strapi.db
             .query("api::quiz-reattempt-request.quiz-reattempt-request")
             .update({
               where: { id: approvedRequest.id },
               data: { request_status: "Used" }
             });
+        } else if (!passed && nextAttempt > maxAttempt) {
+          // No approved reattempt exists — block the submission
+          return ctx.send({
+            message: `Max attempts reached (${maxAttempt}). Request reattempt.`,
+            reattempt_required: true
+          });
         }
 
         // ------------------------------------------------------
@@ -386,7 +434,7 @@ module.exports = createCoreController(
               score,
               passed,
               course: Number(courseId),
-              submitted_by: Number(userId),
+              submitted_by: userIdNum,
               attempt_number: nextAttempt,
               submitted_at,
               time_taken_minutes,
@@ -395,6 +443,28 @@ module.exports = createCoreController(
             }),
           }
         );
+
+        let populatedSubmission = /** @type {any} */ (await strapi.db.query("api::quiz-submission.quiz-submission").findOne({
+          where: { id: entry.id },
+          populate: {
+            course: true,
+            submitted_by: true,
+          },
+        }));
+
+        if (!populatedSubmission?.course) {
+          await strapi.entityService.update("api::quiz-submission.quiz-submission", entry.id, {
+            data: /** @type {any} */ ({ course: Number(courseId) }),
+          });
+
+          populatedSubmission = /** @type {any} */ (await strapi.db.query("api::quiz-submission.quiz-submission").findOne({
+            where: { id: entry.id },
+            populate: {
+              course: true,
+              submitted_by: true,
+            },
+          }));
+        }
   
         // When user failed and this attempt used all allowed attempts → show re-attempt (e.g. max_attempt=1, failed 1st time)
         const reattemptRequired = !passed && nextAttempt >= maxAttempt;
@@ -455,7 +525,7 @@ module.exports = createCoreController(
 
       return ctx.send({
         message: "Quiz submitted successfully",
-        submission: entry,
+        submission: populatedSubmission || entry,
         maxAttempt,
         has_pending_reattempt: hasPendingReattempt,
         ...(reattemptRequired && { reattempt_required: true }),

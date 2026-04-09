@@ -17,24 +17,21 @@
       "required": true
     },
     "active": {
-      "type": "boolean",
-      "required": true,
-      "default": true
+      "type": "enumeration",
+      "enum": ["published", "unpublished"],
+      "default": "published",
+      "required": true
     },
     "company": {
       "type": "relation",
       "relation": "manyToMany",
       "target": "api::company.company"
     },
-    "units": {
+    "Units": {
       "type": "component",
-      "component": "routes.bus-route",
+      "component": "routes.unit",
       "repeatable": true,
       "required": true
-    },
-    "note": {
-      "type": "richtext",
-      "required": false
     }
   }
 }

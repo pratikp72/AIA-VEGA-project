@@ -5,47 +5,28 @@
   },
   "options": {},
   "attributes": {
-    "unit_id": {
+    "route_id": {
       "type": "string",
       "required": true,
       "unique": true
     },
-    "unit_name": {
+    "route_name": {
       "type": "string",
       "maxLength": 100,
-      "required": true
+      "required": false
     },
-    "routes": {
+    "bus_stops": {
       "type": "component",
       "component": "routes.bus-stop",
       "repeatable": true
     },
-    "map_link": {
-      "type": "string",
-      "required": true
-    },
-    "unit_img": {
+    "route_img": {
       "type": "media",
       "multiple": false,
-      "required": true,
+      "required": false,
       "allowedTypes": [
         "images"
       ]
-    },
-    "address": {
-      "type": "string",
-      "maxLength": 255,
-      "required": true
-    },
-    "contact": {
-      "type": "string",
-      "required": true
-    },
-    "site_manager": {
-      "type": "string"
-    },
-    "hr_manager": {
-      "type": "string"
     }
   },
   "config": {}

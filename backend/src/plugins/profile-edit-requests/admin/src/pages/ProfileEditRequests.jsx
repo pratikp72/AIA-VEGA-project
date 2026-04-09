@@ -1,3 +1,4 @@
+// @ts-nocheck
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Layouts } from '@strapi/strapi/admin';
 import {
@@ -6,12 +7,6 @@ import {
   Button,
   Flex,
   Loader,
-  Table,
-  Thead,
-  Tbody,
-  Tr,
-  Td,
-  Th,
   Badge,
   SingleSelect,
   SingleSelectOption,
@@ -41,6 +36,7 @@ export default function ProfileEditRequestsPage() {
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [showModal, setShowModal] = useState(false);
   const [dateRange, setDateRange] = useState({ start: null, end: null });
+  const [mediaCache, setMediaCache] = useState({}); // Cache for media URLs
   
   const { get, put } = getFetchClient();
   const isMounted = useRef(true);
@@ -73,17 +69,16 @@ export default function ProfileEditRequestsPage() {
     };
   }, []);
 
-  const updateStatus = async (documentId, newStatus, comment = '') => {
+  const updateStatus = async (documentId, newStatus) => {
     const id = documentId != null ? String(documentId) : null;
     if (!id) return;
     setUpdatingId(id);
     setError(null);
     try {
       await put(`/profile-edit-requests/requests/${encodeURIComponent(id)}`, {
-        data: { 
+        data: {
           request_status: newStatus,
-          admin_comment: comment 
-        }
+        },
       });
       
       if (isMounted.current) {
@@ -111,25 +106,28 @@ export default function ProfileEditRequestsPage() {
 
   const entryId = (entry) => entry.documentId ?? entry.id ?? entry._id;
 
+  const getStatusValue = (entry) => {
+    const attrs = entry?.attributes || entry || {};
+    return attrs.request_status ?? entry?.request_status ?? 'Pending';
+  };
+
   const getDisplayValues = (entry) => {
     const attrs = entry.attributes || entry;
     const user = attrs.users_permissions_user?.data ?? attrs.users_permissions_user ?? {};
     const userAttrs = user.attributes ?? user;
-    const userName = userAttrs.username ?? userAttrs.email ?? userAttrs.employee_name ?? '—';
+    const userName = attrs.requester_name ?? userAttrs.username ?? userAttrs.email ?? userAttrs.employee_name ?? '—';
     const userId = user.id ?? '—';
-    const statusRaw = attrs.request_status ?? entry.request_status ?? 'Pending';
-    const reason = attrs.reason ?? entry.reason ?? '—';
     const requestedChanges = attrs.requested_changes ?? entry.requested_changes ?? {};
     // Prefer company from user, fallback to company on request
     const userCompany = userAttrs.company || attrs.company || attrs.companyName || '';
-      return { userName, userId, reason, requestedChanges, attrs, userCompany };
+    return { userName, userId, requestedChanges, attrs, userCompany };
   };
 
   const filteredList = useMemo(() => {
     const q = (search || '').toLowerCase().trim();
     const company = (companyFilter || '').trim();
     return list.filter((entry) => {
-      const { userName, userId, userCompany, attrs } = getDisplayValues(entry);
+      const { userName, userCompany, attrs } = getDisplayValues(entry);
       const entryIdVal = entry.documentId ?? entry.id ?? entry._id;
       // Company filtering
       if (company) {
@@ -174,12 +172,58 @@ export default function ProfileEditRequestsPage() {
   const viewChanges = (entry) => {
     setSelectedRequest(entry);
     setShowModal(true);
+    // Clear media cache when opening a new request
+    setMediaCache({});
   };
+
+  const handleDecision = async (status) => {
+    if (!selectedRequest) return;
+    const id = entryId(selectedRequest);
+    if (!id) return;
+    await updateStatus(id, status);
+  };
+
+  const MEDIA_FIELDS = ['photograph'];
+
+  const fetchMediaUrl = async (mediaId) => {
+    if (!mediaId || typeof mediaId !== 'number') return null;
+    if (mediaCache[mediaId]) return mediaCache[mediaId];
+
+    try {
+      const { data } = await get(`/upload/files/${mediaId}`);
+      const url = data.url;
+      setMediaCache((prev) => ({ ...prev, [mediaId]: url }));
+      return url;
+    } catch (err) {
+      console.error('Failed to fetch media:', err);
+      return null;
+    }
+  };
+
+  // Fetch all media URLs when modal opens
+  useEffect(() => {
+    if (!showModal || !selectedRequest) return;
+
+    const requestedChanges = selectedRequest?.attributes?.requested_changes || selectedRequest?.requested_changes || {};
+    const mediaIds = Object.entries(requestedChanges)
+      .filter(([field]) => MEDIA_FIELDS.includes(field))
+      .map(([, value]) => (typeof value === 'number' ? value : null))
+      .filter((id) => id !== null);
+
+    mediaIds.forEach((mediaId) => {
+      if (!mediaCache[mediaId]) {
+        fetchMediaUrl(mediaId);
+      }
+    });
+  }, [showModal, selectedRequest]);
 
   const renderChangesPreview = (requestedChanges) => {
     if (!requestedChanges || typeof requestedChanges !== 'object') {
       return <Typography>No changes specified</Typography>;
     }
+
+    const attrs = selectedRequest?.attributes || selectedRequest || {};
+    const previousValues = attrs.previous_values || selectedRequest?.previous_values || {};
 
     // Get old values from selectedRequest's user (if available)
     // Support both Strapi v4 (with .data/.attributes) and flat populated object
@@ -191,11 +235,14 @@ export default function ProfileEditRequestsPage() {
     } else if (selectedRequest?.users_permissions_user) {
       user = selectedRequest.users_permissions_user;
     }
-    // Debug: print user object to console
-    console.log('User object for changes dialog:', user);
-
     // Helper to get old value with fallback for common aliases
     const getOldValue = (field) => {
+      if (previousValues && Object.prototype.hasOwnProperty.call(previousValues, field)) {
+        return previousValues[field];
+      }
+      if (field === 'username' && attrs.requester_name) {
+        return attrs.requester_name;
+      }
       if (user[field] !== undefined) return user[field];
       if (field === 'name' && user.employee_name !== undefined) return user.employee_name;
       if (field === 'employee_name' && user.name !== undefined) return user.name;
@@ -204,32 +251,105 @@ export default function ProfileEditRequestsPage() {
       return undefined;
     };
 
+    const renderValue = (field, value) => {
+      // Handle media fields (photograph)
+      if (MEDIA_FIELDS.includes(field)) {
+        if (typeof value === 'number') {
+          // It's a media ID - get the URL from cache
+          const mediaUrl = mediaCache[value];
+
+          if (mediaUrl) {
+            return (
+              <Box>
+                <img
+                  src={mediaUrl}
+                  alt={field}
+                  style={{ maxWidth: 200, maxHeight: 200, marginLeft: 8, borderRadius: 4, display: 'block', marginBottom: 8 }}
+                />
+                <a
+                  href={mediaUrl}
+                  download
+                  style={{
+                    marginLeft: 8,
+                    padding: '4px 12px',
+                    background: '#4945ff',
+                    color: '#fff',
+                    borderRadius: 4,
+                    textDecoration: 'none',
+                    fontSize: 13,
+                    display: 'inline-block',
+                    cursor: 'pointer',
+                  }}
+                >
+                  Download Photo
+                </a>
+              </Box>
+            );
+          }
+          return <Typography variant="omega" style={{ marginLeft: 8 }}>Loading media...</Typography>;
+        }
+        // If it's an object with url property
+        if (typeof value === 'object' && value?.url) {
+          return (
+            <Box>
+              <img
+                src={value.url}
+                alt={field}
+                style={{ maxWidth: 200, maxHeight: 200, marginLeft: 8, borderRadius: 4, display: 'block', marginBottom: 8 }}
+              />
+              <a
+                href={value.url}
+                download
+                style={{
+                  marginLeft: 8,
+                  padding: '4px 12px',
+                  background: '#4945ff',
+                  color: '#fff',
+                  borderRadius: 4,
+                  textDecoration: 'none',
+                  fontSize: 13,
+                  display: 'inline-block',
+                  cursor: 'pointer',
+                }}
+              >
+                Download Photo
+              </a>
+            </Box>
+          );
+        }
+      }
+
+      // Default rendering for non-media fields
+      return (
+        <Typography variant="omega">
+          {typeof value === 'object' ? JSON.stringify(value) : String(value)}
+        </Typography>
+      );
+    };
+
     return (
       <Box>
         {Object.entries(requestedChanges).map(([field, newValue]) => {
           const oldValue = getOldValue(field);
-          console.log('Field:', field, 'New:', newValue, 'Old:', oldValue, 'User:', user);
           return (
-            <Flex key={field} padding={2} background="neutral100" marginBottom={2} hasRadius>
-              <Box style={{ flex: 1, display: 'flex', alignItems: 'center' }}>
-                <Typography variant="pi" fontWeight="bold" style={{ minWidth: 80 }}>{field}:</Typography>
-                {oldValue !== undefined ? (
-                  <>
-                    <Typography variant="omega" style={{ marginLeft: 8, textDecoration: 'line-through' }}>
-                      {typeof oldValue === 'object' ? JSON.stringify(oldValue) : String(oldValue)}
+            <Flex key={field} padding={2} background="neutral100" marginBottom={2} hasRadius style={{ alignItems: 'flex-start' }}>
+              <Box style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                <Typography variant="pi" fontWeight="bold" style={{ minWidth: 80, marginBottom: 8 }}>
+                  {field}:
+                </Typography>
+                {oldValue !== undefined && (
+                  <Box marginBottom={2}>
+                    <Typography variant="omega" style={{ textDecoration: 'line-through', color: '#666' }}>
+                      Old: {typeof oldValue === 'object' ? JSON.stringify(oldValue) : String(oldValue)}
                     </Typography>
-                    <Typography variant="omega" style={{ margin: '0 8px' }}>
-                      &rarr;
-                    </Typography>
-                    <Typography variant="omega" style={{ fontWeight: 'bold' }}>
-                      {typeof newValue === 'object' ? JSON.stringify(newValue) : String(newValue)}
-                    </Typography>
-                  </>
-                ) : (
-                  <Typography variant="omega" style={{ marginLeft: 8 }}>
-                    {typeof newValue === 'object' ? JSON.stringify(newValue) : String(newValue)}
-                  </Typography>
+                  </Box>
                 )}
+                <Box>
+                  <Typography variant="omega" style={{ marginRight: 8, display: 'inline' }}>
+                    {oldValue !== undefined ? 'New:' : 'Value:'}
+                  </Typography>
+                  {renderValue(field, newValue)}
+                </Box>
               </Box>
             </Flex>
           );
@@ -331,6 +451,7 @@ export default function ProfileEditRequestsPage() {
           <>
             {/* <Box background="neutral0" hasRadius shadow="tableShadow" padding={6}> */}
               <DataTable
+                title="Profile Edit Requests"
                 data={pageList}
                 fullData={filteredList}
                 paginatedData={pageList}
@@ -350,7 +471,15 @@ export default function ProfileEditRequestsPage() {
                               }
                             }
                           },
-                          { key: 'reason', label: 'Reason' },
+                          {
+                            key: 'status',
+                            label: 'Status',
+                            render: (val, row) => {
+                              const status = getStatusValue(row);
+                              const tone = status === 'Approved' ? 'success' : status === 'Rejected' ? 'danger' : 'secondary';
+                              return <Badge tone={tone}>{status}</Badge>;
+                            },
+                          },
                           { key: 'changes', label: 'Changes', render: (val, row) => (
                             <Button size="S" variant="tertiary" onClick={() => viewChanges(row)}>
                               View 
@@ -393,6 +522,24 @@ export default function ProfileEditRequestsPage() {
                 </Box>
               </Modal.Body>
               <Modal.Footer>
+                {getStatusValue(selectedRequest) === 'Pending' && (
+                  <>
+                    <Button
+                      variant="danger"
+                      disabled={updatingId === String(entryId(selectedRequest))}
+                      onClick={() => handleDecision('Rejected')}
+                    >
+                      Reject
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      disabled={updatingId === String(entryId(selectedRequest))}
+                      onClick={() => handleDecision('Approved')}
+                    >
+                      Approve
+                    </Button>
+                  </>
+                )}
                 <Button variant="tertiary" onClick={() => setShowModal(false)}>
                   Close
                 </Button>

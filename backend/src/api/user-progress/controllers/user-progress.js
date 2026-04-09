@@ -35,6 +35,22 @@ function _filterModulesByLanguage(modules, language) {
   return filtered.length > 0 ? filtered : modules;
 }
 
+function _buildModuleKeySet(modules) {
+  const keys = new Set();
+  (Array.isArray(modules) ? modules : []).forEach((m) => {
+    const idKey = m?.id != null ? String(m.id) : null;
+    const moduleIdKey = m?.module_id != null ? String(m.module_id) : null;
+    if (idKey) keys.add(idKey);
+    if (moduleIdKey) keys.add(moduleIdKey);
+  });
+  return keys;
+}
+
+function _countCompletedInModuleSet(completedModules, moduleKeySet) {
+  const completed = Array.isArray(completedModules) ? completedModules : [];
+  return completed.filter((v) => moduleKeySet.has(String(v))).length;
+}
+
 async function resolveCourseId(strapi, courseId) {
   const num = Number(courseId);
   if (!Number.isNaN(num)) return num;
@@ -285,7 +301,10 @@ module.exports = createCoreController("api::user-progress.user-progress", ({ str
     const completedSet = new Set((progress.completed_modules || []).map(String));
     completedSet.add(String(moduleId));
     const completedArr2 = [...completedSet];
-    const pct2 = _calcModulePct(completedArr2.length, totalModules);
+    // Only count completed modules that belong to the current language's module list
+    const langModuleKeys2 = _buildModuleKeySet(langModules);
+    const completedInLangCount2 = _countCompletedInModuleSet(completedArr2, langModuleKeys2);
+    const pct2 = _calcModulePct(completedInLangCount2, totalModules);
 
     const newStatus2 = progress.progress_status === 'Completed'
       ? 'Completed'
@@ -328,7 +347,7 @@ module.exports = createCoreController("api::user-progress.user-progress", ({ str
     return ctx.send({
       message: "Module marked completed",
       completed_modules: completedArr2,
-      nextStep: _computeNextStep(completedArr2.length, totalModules, course),
+      nextStep: _computeNextStep(completedInLangCount2, totalModules, course),
       progress,
     });
   },
@@ -380,9 +399,13 @@ module.exports = createCoreController("api::user-progress.user-progress", ({ str
     const langModules = _filterModulesByLanguage(course?.modules, effectiveLang);
     const totalModules = langModules.length;
     const completedModules = Array.isArray(progress.completed_modules) ? progress.completed_modules : [];
-    const modulePct = _calcModulePct(completedModules.length, totalModules);
+    // Only count completed modules that belong to the current language's module list
+    const langModuleKeys = _buildModuleKeySet(langModules);
+    const completedInLang = completedModules.filter((id) => langModuleKeys.has(String(id)));
+    const modulePct = _calcModulePct(completedInLang.length, totalModules);
     const quizPct = feedbackCompulsory ? 10 : 20;
 
+    /** @type {any} */
     let updateData;
     if (passed === true) {
       if (feedbackCompulsory) {
@@ -415,11 +438,11 @@ module.exports = createCoreController("api::user-progress.user-progress", ({ str
 
     try {
       if (progress.documentId) {
-        await strapi.documents(uid).update({
+        await strapi.documents(uid).update(/** @type {any} */ ({
           documentId: progress.documentId,
           data: updateData,
           status: 'published',
-        });
+        }));
       } else {
         await strapi.db.query(uid).update({ where: { id: progress.id }, data: updateData });
       }
@@ -650,6 +673,7 @@ module.exports = createCoreController("api::user-progress.user-progress", ({ str
     }
 
     if (existing) {
+      /** @type {any} */
       const updateData = {
         progress_status: "Completed",
         progress_percentage: 100,
@@ -658,11 +682,11 @@ module.exports = createCoreController("api::user-progress.user-progress", ({ str
       };
       try {
         if (existing.documentId) {
-          await strapi.documents(uid).update({
+          await strapi.documents(uid).update(/** @type {any} */ ({
             documentId: existing.documentId,
             data: updateData,
             status: 'published',
-          });
+          }));
         } else {
           await strapi.db.query(uid).update({
             where: { id: existing.id },

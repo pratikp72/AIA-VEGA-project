@@ -2,6 +2,7 @@
 
 const bcrypt = require('bcryptjs');
 const { syncEmployeesFromHrms, backfillUserOrgTaxonomy } = require('../../../cron-tasks/sync-employees');
+const { syncVegaEmployees } = require('../../../cron-tasks/sync-vega-employees');
 
 module.exports = {
   async trigger(ctx) {
@@ -17,6 +18,21 @@ module.exports = {
     });
 
     return ctx.send({ message: 'Employee sync triggered. Check Strapi logs for progress.' });
+  },
+
+  async triggerVega(ctx) {
+    const secret = ctx.request.headers['x-sync-secret'] || ctx.request.body?.secret;
+    const expected = process.env.EMPLOYEE_SYNC_SECRET || 'sync-secret-2026';
+
+    if (secret !== expected) {
+      return ctx.unauthorized('Invalid or missing sync secret');
+    }
+
+    syncVegaEmployees(strapi).catch((err) => {
+      strapi.log.error('[vega-sync] manual trigger failed:', err?.message || err);
+    });
+
+    return ctx.send({ message: 'Vega employee sync triggered. Check Strapi logs for progress.' });
   },
 
   async patchPasswords(ctx) {

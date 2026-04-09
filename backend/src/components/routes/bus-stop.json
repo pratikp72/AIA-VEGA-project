@@ -5,21 +5,24 @@
   },
   "options": {},
   "attributes": {
-    "route_id": {
+    "stop_id": {
       "type": "string",
-      "required": true,
-      "unique": true
-    },
-    "route_name": {
-      "type": "string",
-      "maxLength": 100,
       "required": true
     },
-    "bus_sifts": {
+    "stop_name": {
+      "type": "string",
+      "maxLength": 100,
+      "required": false
+    },
+    "bus_shifts": {
       "type": "component",
       "component": "routes.sift",
       "repeatable": true,
-      "required": true
+      "required": false
+    },
+    "bus_stop_location_link": {
+      "type": "string",
+      "required": false
     }
   },
   "config": {}
