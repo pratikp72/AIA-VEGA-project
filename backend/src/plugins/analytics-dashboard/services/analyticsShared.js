@@ -1,3 +1,5 @@
+// @ts-nocheck
+
 'use strict';
 
 /**
@@ -204,6 +206,7 @@ module.exports = ({ strapi }) => {
         joining_date: u.joining_date ?? null,
         exit_date: u.exit_date ?? null,
         date_of_birth: u.date_of_birth ?? null,
+        exit_date: u.exit_date ?? null,
         description: u.description ?? null,
         branch: u.branch ?? '—',
         contact_no: u.contact_no ?? '—',

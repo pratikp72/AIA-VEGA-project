@@ -33,6 +33,8 @@ import CourseWorkflowCompanyFilter from './components/CourseWorkflowCompanyFilte
 import EventCompanyFilter from './components/EventCompanyFilter.jsx';
 import HolidayCompanyFilter from './components/HolidayCompanyFilter.jsx';
 import CourseAssignmentExcelUserUpload from './components/CourseAssignmentExcelUserUpload.jsx';
+import KeepRelationDropdownOpen from './components/KeepRelationDropdownOpen.jsx';
+import { installVegaDuplicateCourseFetchInterceptor } from './utils/vegaDuplicateCourseFetch.js';
 
 export default {
   /**
@@ -282,6 +284,11 @@ export default {
         name: 'CourseAssignmentExcelUserUpload',
         Component: CourseAssignmentExcelUserUpload,
       });
+      // Global: keep relation-field dropdown open after selecting an item
+      contentManager.injectComponent('editView', 'right-links', {
+        name: 'KeepRelationDropdownOpen',
+        Component: KeepRelationDropdownOpen,
+      });
     }
 
     /**
@@ -492,6 +499,8 @@ export default {
     
     // Replace "Strapi" with "AIA-VEGA" in document title
     if (typeof window !== 'undefined') {
+      installVegaDuplicateCourseFetchInterceptor();
+
       // Set initial title
       document.title = 'AIA-VEGA Admin';
       
