@@ -184,8 +184,7 @@ export default function LearningAnalyticsPage() {
   }, [viewMode, company, department, unitLocation, searchDebounced]);
 
   const [filterStatus, setFilterStatus] = useState('');
-  const [filterTimeMin, setFilterTimeMin] = useState('');
-  const [filterTimeMax, setFilterTimeMax] = useState('');
+  const [filterTimeValue, setFilterTimeValue] = useState('');
   const handleExportAllPersonalData = useCallback(() => {
     if (!data || !employeeDetail) return;
     const wb = XLSX.utils.book_new();
@@ -279,8 +278,7 @@ export default function LearningAnalyticsPage() {
         ...(searchVal && { search: searchVal }),
         ...(filterCourse && { courseId: filterCourse }),
         ...(filterStatus && { status: filterStatus }),
-        ...(filterTimeMin && { filterTimeMin }),
-        ...(filterTimeMax && { filterTimeMax }),
+        ...(filterTimeValue && { filterTimeValue }),
       };
       fetcher = () => fetchLearningEmployeeTable(tableParams);
     } else if (viewMode === 'personal' && employeeId) {
@@ -302,8 +300,7 @@ export default function LearningAnalyticsPage() {
             ...(searchDebounced?.trim() && { search: searchDebounced.trim() }),
             ...(filterCourse && { courseId: filterCourse }),
             ...(filterStatus && { status: filterStatus }),
-            ...(filterTimeMin && { filterTimeMin }),
-            ...(filterTimeMax && { filterTimeMax }),
+            ...(filterTimeValue && { filterTimeValue }),
           };
           if (dateFrom) tableParams.dateFrom = dateFrom;
           if (dateTo) tableParams.dateTo = dateTo;
@@ -319,7 +316,7 @@ export default function LearningAnalyticsPage() {
       })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
-  }, [viewMode, employeeId, dateFrom, dateTo, department, company, searchDebounced, sortOrder, page, pageSize, filterCourse, filterModule, filterStatus, filterTimeMin, filterTimeMax, filterCourseCategory, unitLocation, filterQuizStatus, filterFeedbackGiven, courseModules]);
+  }, [viewMode, employeeId, dateFrom, dateTo, department, company, searchDebounced, sortOrder, page, pageSize, filterCourse, filterModule, filterStatus, filterTimeValue, filterCourseCategory, unitLocation, filterQuizStatus, filterFeedbackGiven, courseModules]);
 
   useEffect(() => {
     if (viewMode === 'table') setPage(1);
@@ -354,7 +351,7 @@ export default function LearningAnalyticsPage() {
       setData(null);
       setLoading(false);
     }
-  }, [viewMode, employeeId, dateFrom, dateTo, department, company, searchDebounced, sortOrder, page, pageSize, filterCourse, filterModule, filterStatus, filterTimeMin, filterTimeMax, filterCourseCategory, unitLocation, filterQuizStatus, filterFeedbackGiven]);
+  }, [viewMode, employeeId, dateFrom, dateTo, department, company, searchDebounced, sortOrder, page, pageSize, filterCourse, filterModule, filterStatus, filterTimeValue, filterCourseCategory, unitLocation, filterQuizStatus, filterFeedbackGiven]);
 
   const kpis = data?.kpis || {};
   const quiz = data?.quiz || {};
@@ -394,10 +391,8 @@ export default function LearningAnalyticsPage() {
             courses={viewMode === 'personal' ? (employeeId && personalCourseOptions !== null ? personalCourseOptions : []) : courses}
             filterStatus={filterStatus}
             setFilterStatus={setFilterStatus}
-            filterTimeMin={filterTimeMin}
-            setFilterTimeMin={setFilterTimeMin}
-            filterTimeMax={filterTimeMax}
-            setFilterTimeMax={setFilterTimeMax}
+            filterTimeValue={filterTimeValue}
+            setFilterTimeValue={setFilterTimeValue}
             filterCourseCategory={filterCourseCategory}
             setFilterCourseCategory={setFilterCourseCategory}
             unitLocation={unitLocation}
