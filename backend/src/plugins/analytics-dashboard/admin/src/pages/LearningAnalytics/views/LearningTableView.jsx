@@ -93,6 +93,7 @@ export function LearningTableView({
                 { key: 'employeeName', label: 'Employee Name' },
                 { key: 'company', label: 'Company' },
                 { key: 'coursesEnrolled', label: 'Courses Enrolled' },
+                { key: 'courseStatus', label: 'Course Status' },
                 { key: 'totalModulesDone', label: 'Total Modules Done' },
                 { key: 'progressPercent', label: 'Avg Progress %', render: (v) => `${v ?? 0}%` },
                 { key: 'avgScore', label: 'Avg Quiz Score' },

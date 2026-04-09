@@ -2479,6 +2479,17 @@ module.exports = ({ strapi }) => {
     let rows = userList.map((u, i) => {
       const progs = progressByUserIdx[i] || [];
       const subs = submissionByUserIdx[i] || [];
+      const statusOrder = ['Not_started', 'In_progress', 'Completed', 'Failed'];
+      const statusCounts = {};
+      progs.forEach((p) => {
+        const status = p?.progress_status;
+        if (!status) return;
+        statusCounts[status] = (statusCounts[status] || 0) + 1;
+      });
+      const courseStatus = statusOrder
+        .filter((s) => statusCounts[s] > 0)
+        .map((s) => `${s}: ${statusCounts[s]}`)
+        .join(', ') || '—';
       const coursesEnrolled = progs.length;
       const totalTimeSpent = progs.reduce((sum, p) => {
         const minutes = Number(p?.time_spent_minutes);
@@ -2502,6 +2513,7 @@ module.exports = ({ strapi }) => {
         employeeName: u.username || u.email || `User ${u.id}`,
         company: u.company || '—',
         coursesEnrolled,
+        courseStatus,
         courseCompletionTimeMinutes: Math.round(totalTimeSpent),
         totalModulesDone,
         progressPercent: avgProgress,
@@ -2587,6 +2599,7 @@ module.exports = ({ strapi }) => {
       'Employee Name': r.employeeName || '—',
       'Company': r.company || '—',
       'Courses Enrolled': r.coursesEnrolled || 0,
+      'Course Status': r.courseStatus || '—',
       'Total Modules Done': r.totalModulesDone || 0,
       'Progress %': r.progressPercent || 0,
       'Avg Quiz Score': r.avgScore || 0,
@@ -2599,7 +2612,7 @@ module.exports = ({ strapi }) => {
 
     // Auto-size columns
     const maxWidth = 50;
-    const headers = ['Employee Name', 'Company', 'Courses Enrolled', 'Total Modules Done', 'Progress %', 'Avg Quiz Score', 'Course Completion Time (min)'];
+    const headers = ['Employee Name', 'Company', 'Courses Enrolled', 'Course Status', 'Total Modules Done', 'Progress %', 'Avg Quiz Score', 'Course Completion Time (min)'];
     const wscols = headers.map((header) => {
       const maxLen = Math.max(
         header.length,
@@ -2825,6 +2838,17 @@ module.exports = ({ strapi }) => {
     let rows = userList.map((u, i) => {
       const progs = progressByUserIdx[i] || [];
       const subs = submissionByUserIdx[i] || [];
+      const statusOrder = ['Not_started', 'In_progress', 'Completed', 'Failed'];
+      const statusCounts = {};
+      progs.forEach((p) => {
+        const status = p?.progress_status;
+        if (!status) return;
+        statusCounts[status] = (statusCounts[status] || 0) + 1;
+      });
+      const courseStatus = statusOrder
+        .filter((s) => statusCounts[s] > 0)
+        .map((s) => `${s}: ${statusCounts[s]}`)
+        .join(', ') || '—';
       const coursesEnrolled = progs.length;
       const totalTimeSpent = progs.reduce((sum, p) => {
         const minutes = Number(p?.time_spent_minutes);
@@ -2842,6 +2866,7 @@ module.exports = ({ strapi }) => {
         employeeName: u.username || u.email || `User ${u.id}`,
         company: u.company || '—',
         coursesEnrolled,
+        courseStatus,
         totalModulesDone,
         progressPercent: avgProgress,
         avgScore,
