@@ -1,3 +1,5 @@
+// @ts-nocheck
+
 'use strict';
 
 const fs = require('node:fs/promises');
@@ -339,38 +341,47 @@ async function syncEmployeesFromHrms(strapi) {
 
       for (const record of employees) {
         try {
+          const empCode = safeString(record?.Emp_Code, '');
           const email = normalizeEmail(record?.Work_Email);
-          if (!email) {
-            strapi.log.warn(`[employee-sync] Skipping ${record?.Emp_Code || record?.Emp_Name || 'unknown'}: no Work_Email in API data`);
+          const hasEmpCode = Boolean(empCode && empCode !== '-');
+
+          if (!hasEmpCode && !email) {
+            strapi.log.warn(`[employee-sync] Skipping ${record?.Emp_Code || record?.Emp_Name || 'unknown'}: missing both Emp_Code and Work_Email`);
             continue;
           }
 
-          let existing = await strapi.db.query(USER_UID).findOne({
-            where: { email },
-            select: ['id', 'username'],
-          });
-
-          // Fallback: match by emp_code in case user was previously created with a fake email
-          if (!existing) {
-            const empCode = safeString(record?.Emp_Code);
-            if (empCode && empCode !== '-') {
-              existing = await strapi.db.query(USER_UID).findOne({
-                where: { emp_code: empCode },
-                select: ['id', 'username'],
-              });
-            }
+          let existing = null;
+          if (hasEmpCode) {
+            existing = await strapi.db.query(USER_UID).findOne({
+              where: { emp_code: empCode },
+              select: ['id', 'username', 'email'],
+            });
           }
 
-          const preferredUsername = safeString(record?.Emp_Name, email.split('@')[0]);
+          // Fallback: match by email when emp_code lookup misses.
+          if (!existing && email) {
+            existing = await strapi.db.query(USER_UID).findOne({
+              where: { email },
+              select: ['id', 'username', 'email'],
+            });
+          }
+
+          const resolvedEmail = email || normalizeEmail(existing?.email);
+          if (!resolvedEmail) {
+            strapi.log.warn(`[employee-sync] Skipping ${record?.Emp_Code || record?.Emp_Name || 'unknown'}: no usable email to write`);
+            continue;
+          }
+
+          const preferredUsername = safeString(record?.Emp_Name, resolvedEmail.split('@')[0]);
           const username = await ensureUniqueUsername(strapi, preferredUsername, existing?.id);
-          const userData = buildUserData(record, roleId, username, email);
+          const userData = buildUserData(record, roleId, username, resolvedEmail);
 
           const photoUrl = resolvePhotoUrl(record?.Photograph, baseUrl);
           if (photoUrl) {
             try {
               userData.photograph = await uploadPhotograph(strapi, photoUrl, username);
             } catch (photoErr) {
-              strapi.log.warn(`[employee-sync] Photo upload failed for ${email}: ${photoErr?.message}`);
+              strapi.log.warn(`[employee-sync] Photo upload failed for ${resolvedEmail}: ${photoErr?.message}`);
             }
           }
 
@@ -389,7 +400,7 @@ async function syncEmployeesFromHrms(strapi) {
           try {
             await ensureDepartmentForUser(strapi, userData.department, userData.company);
           } catch (deptErr) {
-            strapi.log.warn(`[employee-sync] ensureDepartmentForUser failed for ${email}: ${deptErr?.message || deptErr}`);
+            strapi.log.warn(`[employee-sync] ensureDepartmentForUser failed for ${resolvedEmail}: ${deptErr?.message || deptErr}`);
           }
 
           try {
@@ -398,7 +409,7 @@ async function syncEmployeesFromHrms(strapi) {
               await ensureWorkLocationForUser(strapi, locationName, userData.company);
             }
           } catch (locErr) {
-            strapi.log.warn(`[employee-sync] ensureWorkLocationForUser failed for ${email}: ${locErr?.message || locErr}`);
+            strapi.log.warn(`[employee-sync] ensureWorkLocationForUser failed for ${resolvedEmail}: ${locErr?.message || locErr}`);
           }
         } catch (employeeErr) {
           errorCount += 1;
