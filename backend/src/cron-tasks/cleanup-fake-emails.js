@@ -307,8 +307,11 @@ async function cleanupVegaFakeEmails(strapi) {
 
   notFound = dirtyByEmpId.size;
   for (const [empId, u] of dirtyByEmpId) {
-    strapi.log.warn(`[cleanup-fake-emails][Vega] NO EXCEL MATCH for emp_id=${empId} (user id=${u.id}, fake email=${u.email}) — left unchanged`);
+    strapi.log.warn(`[cleanup-fake-emails][Vega] NO EXCEL MATCH for emp_id=${empId} (user id=${u.id}, fake email=${u.email}) — clearing fake email`);
+    await strapi.db.query(USER_UID).update({ where: { id: u.id }, data: { email: null } });
+    cleared += 1;
   }
+  notFound = 0;
 
   strapi.log.info(`[cleanup-fake-emails][Vega] done. fixed=${fixed}, cleared=${cleared}, notFound=${notFound}`);
 }
