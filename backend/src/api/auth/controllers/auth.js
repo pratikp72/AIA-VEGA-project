@@ -296,6 +296,53 @@ module.exports = {
       }
     },
 
+    async updatePassword(ctx) {
+      try {
+        const user = ctx.state.user;
+        if (!user) return ctx.unauthorized('You must be logged in');
+
+        const { currentPassword, newPassword, confirmPassword } = ctx.request.body;
+
+        if (!currentPassword || !newPassword || !confirmPassword) {
+          return ctx.badRequest('All fields are required');
+        }
+        if (newPassword.length < 6) {
+          return ctx.badRequest('New password must be at least 6 characters');
+        }
+        if (newPassword !== confirmPassword) {
+          return ctx.badRequest('New password and confirm password do not match');
+        }
+
+        if (currentPassword === newPassword) {
+          return ctx.badRequest('New password must be different from your current password');
+        }
+
+        // Verify current password against stored hash
+        const fullUser = await strapi.db.query('plugin::users-permissions.user').findOne({
+          where: { id: user.id },
+          select: ['password'],
+        });
+        const isValid = await strapi.service('plugin::users-permissions.user').validatePassword(
+          currentPassword,
+          fullUser.password
+        );
+        if (!isValid) {
+          return ctx.badRequest('Current password is incorrect');
+        }
+
+        await strapi.entityService.update('plugin::users-permissions.user', user.id, {
+          data: { password: newPassword },
+          state: { isResetFlow: true },
+        });
+
+        strapi.log.info(`User ${user.email} updated password from profile`);
+        return ctx.send({ message: 'Password updated successfully' });
+      } catch (err) {
+        strapi.log.error('updatePassword error:', err);
+        return ctx.internalServerError('Something went wrong');
+      }
+    },
+
     // src/api/auth/controllers/auth.js
 
     async checkUser(ctx) {

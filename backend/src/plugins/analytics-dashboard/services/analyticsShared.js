@@ -122,7 +122,11 @@ module.exports = ({ strapi }) => {
       const numericId = parseInt(search, 10);
       const isNumericSearch = !Number.isNaN(numericId) && String(numericId) === search;
       const searchOr = isNumericSearch
-        ? [{ id: numericId }, { emp_code: search }, { emp_id: search }]
+        ? [
+            { id: numericId },
+            { emp_code: { $containsi: search } },  // containsi handles leading zeros: "8918" matches "00008918"
+            { emp_id: { $containsi: search } },
+          ]
         : [
             { email: { $containsi: search } },
             { username: { $containsi: search } },
