@@ -311,7 +311,6 @@ export function Filters({
                   minWidth: '100%',
                 }}
               >
-                <option value="">All Courses</option>
                 {courses.map(c => (
                   <option key={c.id} value={c.id}>{c.title}</option>
                 ))}

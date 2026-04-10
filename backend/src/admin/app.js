@@ -500,6 +500,117 @@ export default {
     // Replace "Strapi" with "AIA-VEGA" in document title
     if (typeof window !== 'undefined') {
       installVegaDuplicateCourseFetchInterceptor();
+      
+      const getAdminRoles = () => {
+        let roles = [];
+        if (Array.isArray(window.__MODULES_SIDEBAR_ROLES__) && window.__MODULES_SIDEBAR_ROLES__.length > 0) {
+          roles = window.__MODULES_SIDEBAR_ROLES__;
+        }
+        if (roles.length === 0) {
+          try {
+            const stored = sessionStorage.getItem('__modules_sidebar_roles__');
+            if (stored) roles = JSON.parse(stored) || [];
+          } catch (e) {
+            // Ignore session parse errors
+          }
+        }
+        if (roles.length === 0) {
+          try {
+            const state = window.strapi?.store?.getState?.() || {};
+            const adminUser = state?.admin_app?.user;
+            const authUser = state?.auth?.user || state?.auth?.userInfo;
+            roles = adminUser?.roles || authUser?.roles || [];
+          } catch (e) {
+            // Ignore Redux read errors
+          }
+        }
+        return Array.isArray(roles) ? roles : [];
+      };
+      
+      const isSuperAdminRole = (roles) =>
+        Array.isArray(roles) &&
+        roles.some((r) => {
+          const value = String(r?.name || r?.code || '').toLowerCase();
+          return value === 'super admin' || value.includes('super admin') || value.includes('strapi-super-admin');
+        });
+      
+      const getRoleRedirectTarget = () =>
+        isSuperAdminRole(getAdminRoles()) ? '/admin' : '/admin/plugins/modules-sidebar/all-modules';
+      
+      const isMenuLogoTarget = (element) => {
+        if (!element?.closest) return false;
+        // Strapi sidebar brand/logo container (menu logo uploaded from Settings).
+        return !!element.closest(
+          '[class*="NavBrand"], [class*="Brand"], [data-strapi-navigation="true"] [class*="Logo"]'
+        );
+      };
+      
+      const isSidebarHomeTarget = (element) => {
+        const anchor = element?.closest?.('a');
+        if (!anchor) return false;
+        
+        const hrefAttr = (anchor.getAttribute('href') || '').trim();
+        let path = '';
+        try {
+          path = new URL(anchor.href, window.location.origin).pathname || '';
+        } catch (e) {
+          path = hrefAttr.split('?')[0].split('#')[0];
+        }
+        
+        const aria = (anchor.getAttribute('aria-label') || '').toLowerCase();
+        const title = (anchor.getAttribute('title') || '').toLowerCase();
+        const text = (anchor.textContent || '').toLowerCase().trim();
+        const inMainNav = !!anchor.closest('nav, aside, [role="menu"], [role="menuitem"]');
+        
+        return inMainNav && (
+          hrefAttr === '/admin' ||
+          hrefAttr === '/admin/' ||
+          hrefAttr === '/admin/home' ||
+          path === '/admin' ||
+          path === '/admin/' ||
+          aria === 'home' ||
+          title === 'home' ||
+          text === 'home'
+        );
+      };
+      
+      // Ensure menu logo area is always clickable even after React re-renders.
+      const enforceMenuLogoClickable = () => {
+        const nodes = document.querySelectorAll(
+          '[class*="NavBrand"], [class*="Brand"], [data-strapi-navigation="true"] [class*="Logo"]'
+        );
+        nodes.forEach((node) => {
+          if (!node?.style) return;
+          node.style.setProperty('pointer-events', 'auto', 'important');
+          node.style.setProperty('cursor', 'pointer', 'important');
+          node.querySelectorAll?.('*').forEach((child) => {
+            child.style?.setProperty('pointer-events', 'auto', 'important');
+          });
+        });
+      };
+      
+      enforceMenuLogoClickable();
+      setTimeout(enforceMenuLogoClickable, 100);
+      setInterval(enforceMenuLogoClickable, 1000);
+      
+      document.addEventListener(
+        'click',
+        (event) => {
+          const target = event.target;
+          if (!target) return;
+          const isLogoClick = isMenuLogoTarget(target);
+          const isHomeClick = isSidebarHomeTarget(target);
+          if (!isLogoClick && !isHomeClick) return;
+          
+          const destination = getRoleRedirectTarget();
+          if (destination && window.location.pathname !== destination) {
+            event.preventDefault();
+            event.stopPropagation();
+            window.location.assign(destination);
+          }
+        },
+        true
+      );
 
       // Set initial title
       document.title = 'AIA-VEGA Admin';
