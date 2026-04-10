@@ -589,9 +589,69 @@ export default {
         });
       };
       
+      const getMenuLogoContainer = () => {
+        const direct =
+          document.querySelector('[class*="NavBrand"]') ||
+          document.querySelector('[class*="Brand"]') ||
+          document.querySelector('[data-strapi-navigation="true"] [class*="Logo"]');
+        if (direct) return direct;
+        
+        // Fallback: uploaded menu logo image inside sidebar nav.
+        const nav = document.querySelector('nav, aside');
+        if (!nav) return null;
+        const logoImg =
+          nav.querySelector('img[src*="/uploads/"]') ||
+          nav.querySelector('img[alt*="logo" i]') ||
+          nav.querySelector('img');
+        if (!logoImg) return null;
+        return (
+          logoImg.closest('a') ||
+          logoImg.closest('button') ||
+          logoImg.closest('div') ||
+          logoImg
+        );
+      };
+      
+      const bindMenuLogoClick = () => {
+        const container = getMenuLogoContainer();
+        if (!container) return;
+        if (container.getAttribute('data-logo-click-bound') === 'true') return;
+        
+        container.setAttribute('data-logo-click-bound', 'true');
+        container.style?.setProperty('pointer-events', 'auto', 'important');
+        container.style?.setProperty('cursor', 'pointer', 'important');
+        
+        // Ensure parent wrappers cannot block clicks.
+        let parent = container.parentElement;
+        let depth = 0;
+        while (parent && depth < 6) {
+          parent.style?.setProperty('pointer-events', 'auto', 'important');
+          parent = parent.parentElement;
+          depth += 1;
+        }
+        
+        const handleLogoClick = (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          const destination = getRoleRedirectTarget();
+          if (destination && window.location.pathname !== destination) {
+            window.location.assign(destination);
+          }
+        };
+        
+        container.addEventListener('click', handleLogoClick, true);
+        container.addEventListener('mousedown', handleLogoClick, true);
+        container.addEventListener('pointerdown', handleLogoClick, true);
+      };
+      
       enforceMenuLogoClickable();
+      bindMenuLogoClick();
       setTimeout(enforceMenuLogoClickable, 100);
-      setInterval(enforceMenuLogoClickable, 1000);
+      setTimeout(bindMenuLogoClick, 100);
+      setInterval(() => {
+        enforceMenuLogoClickable();
+        bindMenuLogoClick();
+      }, 500);
       
       document.addEventListener(
         'click',
