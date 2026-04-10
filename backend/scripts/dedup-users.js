@@ -93,13 +93,29 @@ async function reassignChildRows(client, winnerId, loserIds) {
 
   for (const { table_name, column_name } of fkRes.rows) {
     for (const loserId of loserIds) {
-      const sql = `UPDATE "${table_name}" SET "${column_name}" = $1 WHERE "${column_name}" = $2`;
-      if (DRY_RUN) {
-        console.log(`  [dry-run] would reassign ${table_name}.${column_name}: ${loserId} → ${winnerId}`);
+      // For link tables with unique constraints (e.g. up_users_role_lnk),
+      // reassigning would create a duplicate if the winner already has a row.
+      // Instead, delete the loser's row — the winner's row already covers it.
+      const isLinkTable = table_name.endsWith('_lnk');
+      if (isLinkTable) {
+        const sql = `DELETE FROM "${table_name}" WHERE "${column_name}" = $1`;
+        if (DRY_RUN) {
+          console.log(`  [dry-run] would delete from ${table_name}.${column_name} where ${column_name}=${loserId}`);
+        } else {
+          const res = await client.query(sql, [loserId]);
+          if (res.rowCount > 0) {
+            console.log(`  deleted ${res.rowCount} row(s) from ${table_name}.${column_name} (loser id=${loserId})`);
+          }
+        }
       } else {
-        const res = await client.query(sql, [winnerId, loserId]);
-        if (res.rowCount > 0) {
-          console.log(`  reassigned ${res.rowCount} row(s) in ${table_name}.${column_name}: ${loserId} → ${winnerId}`);
+        const sql = `UPDATE "${table_name}" SET "${column_name}" = $1 WHERE "${column_name}" = $2`;
+        if (DRY_RUN) {
+          console.log(`  [dry-run] would reassign ${table_name}.${column_name}: ${loserId} → ${winnerId}`);
+        } else {
+          const res = await client.query(sql, [winnerId, loserId]);
+          if (res.rowCount > 0) {
+            console.log(`  reassigned ${res.rowCount} row(s) in ${table_name}.${column_name}: ${loserId} → ${winnerId}`);
+          }
         }
       }
     }
