@@ -37,8 +37,13 @@ async function buildEmpCodeToFileMap(imagesDir, strapi) {
     const underscoreIdx = entry.name.indexOf('_');
     if (underscoreIdx === -1) continue;
 
-    const empCode = entry.name.slice(0, underscoreIdx).trim();
-    if (!empCode) continue;
+    const rawPrefix = entry.name.slice(0, underscoreIdx).trim();
+    if (!rawPrefix) continue;
+
+    // Normalize: strip leading zeros so "09056" and "9056" both become "9056"
+    // This matches DB emp_code values like "00009056" after the same normalization
+    const empCode = String(Number(rawPrefix));
+    if (!empCode || empCode === 'NaN') continue;
 
     try {
       const stat = await fs.stat(path.join(imagesDir, entry.name));
@@ -114,7 +119,9 @@ async function syncAiaEmployeePhotos(strapi) {
           const empCode = String(user.emp_code || '').trim();
           if (!empCode || empCode === '-') { skippedNoImage++; continue; }
 
-          const imageEntry = empCodeMap.get(empCode);
+          // Normalize: strip leading zeros to match the filename map key
+          const normalizedCode = String(Number(empCode));
+          const imageEntry = empCodeMap.get(normalizedCode);
           if (!imageEntry) { skippedNoImage++; continue; }
 
           // Only update if the filename has changed (new photo dropped in folder)
