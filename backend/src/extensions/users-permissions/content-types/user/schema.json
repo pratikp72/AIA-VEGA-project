@@ -313,6 +313,16 @@
       "type": "boolean",
       "required": true,
       "default": true
+    },
+    "emp_photo_file": {
+      "type": "string",
+      "required": false,
+      "configurable": false,
+      "conditions": {
+        "visible": {
+          "==": [{ "var": "company" }, "AIA"]
+        }
+      }
     }
   }
 }

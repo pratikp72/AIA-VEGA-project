@@ -489,6 +489,56 @@ module.exports = {
   bootstrap({ strapi }) {
     suppressEmailServiceIfDisabled(strapi);
 
+    // ── Serve AIA employee photos directly from the mounted NFS share ─────────
+    // Route: GET /empimages/:filename  (e.g. /empimages/11000_06_06_2018_....JPG)
+    // No file copying — images are read straight from /mnt/empimages on every request.
+    // When the folder is updated, the new photo is served immediately.
+    {
+      const fsSync = require('node:fs');
+      const nodePath = require('node:path');
+      const imagesDir = String(process.env.AIA_EMP_IMAGES_DIR || '/mnt/empimages').trim();
+      const ALLOWED_EXT = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp']);
+      const MIME = {
+        '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
+        '.png': 'image/png', '.webp': 'image/webp',
+        '.gif': 'image/gif', '.bmp': 'image/bmp',
+      };
+
+      strapi.server.app.use(async (ctx, next) => {
+        if (!ctx.path.startsWith('/empimages/')) return next();
+
+        // Strip the prefix and sanitize — no path traversal
+        const rawName = ctx.path.slice('/empimages/'.length);
+        const fileName = nodePath.basename(rawName); // strips any ../ attempts
+        const ext = nodePath.extname(fileName).toLowerCase();
+
+        if (!fileName || !ALLOWED_EXT.has(ext)) {
+          ctx.status = 400;
+          return;
+        }
+
+        const filePath = nodePath.join(imagesDir, fileName);
+
+        // Security: ensure resolved path is still inside imagesDir
+        if (!filePath.startsWith(imagesDir + nodePath.sep) && filePath !== imagesDir) {
+          ctx.status = 403;
+          return;
+        }
+
+        if (!fsSync.existsSync(filePath)) {
+          ctx.status = 404;
+          return;
+        }
+
+        ctx.set('Content-Type', MIME[ext] || 'application/octet-stream');
+        ctx.set('Cache-Control', 'public, max-age=86400'); // cache 1 day in browser
+        ctx.body = fsSync.createReadStream(filePath);
+      });
+
+      strapi.log.info(`[aia-photo-sync] Serving employee photos from "${imagesDir}" at /empimages/:filename`);
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
     // ── Vega employee sync: run immediately on startup ───────────────────────
     console.log('\n[vega-sync] 🚀 Bootstrap: triggering Vega employee sync on startup...');
     syncVegaEmployees(strapi).catch((err) => {
