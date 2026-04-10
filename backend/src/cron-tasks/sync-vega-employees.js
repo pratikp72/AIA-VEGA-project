@@ -87,15 +87,7 @@ function excelSerialToIso(value, fallback = '1970-01-01') {
   return fallback;
 }
 
-function generateFallbackEmail(row) {
-  const name = safeString(row[COL.NAME], 'unknown')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '.')
-    .replace(/^\.+|\.+$/g, '')
-    .slice(0, 40);
-  const userId = safeString(row[COL.USER_ID], '').toLowerCase().replace(/\s+/g, '') || 'emp';
-  return `${userId}.${name}@vega.internal`;
-}
+
 
 async function getEmployeeRoleId(strapi) {
   const role =
@@ -183,12 +175,28 @@ async function syncVegaEmployees(strapi) {
     for (const row of rows) {
       try {
         const rawEmail = safeString(row[COL.EMAIL], '');
-        const email = normalizeEmail(rawEmail) || generateFallbackEmail(row);
+        const email = normalizeEmail(rawEmail);
+        if (!email) {
+          strapi.log.warn(`[vega-sync] Skipping ${row[COL.USER_ID] || row[COL.NAME] || 'unknown'}: no email in Excel data`);
+          console.log(`[vega-sync]   SKIPPED  ${String(row[COL.USER_ID] || '').padEnd(8)} | no email | ${row[COL.NAME] || 'unknown'}`);
+          continue;
+        }
 
-        const existing = await strapi.db.query(USER_UID).findOne({
+        let existing = await strapi.db.query(USER_UID).findOne({
           where: { email },
           select: ['id', 'username'],
         });
+
+        // Fallback: match by emp_id in case user was previously created with a fake email
+        if (!existing) {
+          const empId = safeString(row[COL.USER_ID], '');
+          if (empId && empId !== '-') {
+            existing = await strapi.db.query(USER_UID).findOne({
+              where: { emp_id: empId },
+              select: ['id', 'username'],
+            });
+          }
+        }
 
         const name = safeString(row[COL.NAME], email.split('@')[0]);
         const username = await ensureUniqueUsername(strapi, name, existing?.id);

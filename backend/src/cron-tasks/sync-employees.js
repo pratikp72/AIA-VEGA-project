@@ -68,18 +68,7 @@ function normalizeDate(value, fallback = '1970-01-01') {
   return parsed.toISOString().slice(0, 10);
 }
 
-function generateFallbackEmail(record) {
-  const mobile = String(record?.Mobile_No || '').trim().replace(/\D/g, '');
-  if (mobile) return `emp.${mobile}@aia.internal`;
 
-  const namePart = String(record?.Emp_Name || 'unknown')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '.')
-    .replace(/^\.+|\.+$/g, '')
-    .slice(0, 40);
-  const rand = Math.floor(Math.random() * 9000) + 1000;
-  return `emp.${namePart || 'unknown'}.${rand}@aia.internal`;
-}
 
 function resolvePhotoUrl(rawPhotoUrl, baseUrl) {
   if (!rawPhotoUrl) return null;
@@ -350,12 +339,27 @@ async function syncEmployeesFromHrms(strapi) {
 
       for (const record of employees) {
         try {
-          const email = normalizeEmail(record?.Work_Email) || generateFallbackEmail(record);
+          const email = normalizeEmail(record?.Work_Email);
+          if (!email) {
+            strapi.log.warn(`[employee-sync] Skipping ${record?.Emp_Code || record?.Emp_Name || 'unknown'}: no Work_Email in API data`);
+            continue;
+          }
 
-          const existing = await strapi.db.query(USER_UID).findOne({
+          let existing = await strapi.db.query(USER_UID).findOne({
             where: { email },
             select: ['id', 'username'],
           });
+
+          // Fallback: match by emp_code in case user was previously created with a fake email
+          if (!existing) {
+            const empCode = safeString(record?.Emp_Code);
+            if (empCode && empCode !== '-') {
+              existing = await strapi.db.query(USER_UID).findOne({
+                where: { emp_code: empCode },
+                select: ['id', 'username'],
+              });
+            }
+          }
 
           const preferredUsername = safeString(record?.Emp_Name, email.split('@')[0]);
           const username = await ensureUniqueUsername(strapi, preferredUsername, existing?.id);

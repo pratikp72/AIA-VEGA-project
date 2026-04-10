@@ -10,6 +10,7 @@ const { syncCourseLanguageComponents } = require('./utils/sync-course-language-c
 const { autoGenerateComponentIds } = require('./utils/auto-generate-component-ids');
 const { syncVegaEmployees } = require('./cron-tasks/sync-vega-employees');
 const { populateAnswerCorrectField } = require('./utils/quiz-submission-correctness');
+const { cleanupFakeEmails } = require('./cron-tasks/cleanup-fake-emails');
 
 function isEmailEnabled() {
   const raw = String(process.env.EMAIL_ENABLED || 'false').trim().toLowerCase();
@@ -494,6 +495,19 @@ module.exports = {
       console.error(`[vega-sync] ❌ Startup sync failed: ${err?.message || err}`);
       strapi.log.error(`[vega-sync] Startup sync failed: ${err?.message || err}`);
     });
+    // ─────────────────────────────────────────────────────────────────────────
+
+    // ── One-time cleanup: remove fake auto-generated emails ──────────────────
+    if (String(process.env.RUN_FAKE_EMAIL_CLEANUP || '').trim() === 'true') {
+      console.log('\n[cleanup-fake-emails] 🚀 Bootstrap: RUN_FAKE_EMAIL_CLEANUP=true, starting cleanup in 15s...');
+      // Delay to let hot-reload settle (token file write triggers restart in develop mode)
+      setTimeout(() => {
+        cleanupFakeEmails(strapi).catch((err) => {
+          console.error(`[cleanup-fake-emails] ❌ Cleanup failed: ${err?.message || err}`);
+          strapi.log.error(`[cleanup-fake-emails] Cleanup failed: ${err?.message || err}`);
+        });
+      }, 15000);
+    }
     // ─────────────────────────────────────────────────────────────────────────
     //Force reset when admin changes password
     strapi.db.lifecycles.subscribe({
