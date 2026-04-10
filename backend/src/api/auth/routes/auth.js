@@ -56,5 +56,13 @@ module.exports = {
       handler: 'auth.checkUser',
       auth: false ,
     },
+    {
+      method: 'POST',
+      path: '/auth/update-password',
+      handler: 'auth.updatePassword',
+      config: {
+        policies: ['global::isAuthenticated'],
+      },
+    },
   ],
 };

@@ -1,3 +1,5 @@
+// @ts-nocheck
+
 /**
  * modules-sidebar (Admin)
  *
@@ -318,6 +320,44 @@ if (typeof window !== 'undefined') {
         flex: 1 1 100% !important;
         margin-left: 0 !important;
         padding-left: 0 !important;
+      }
+      /* Keep sidebar brand/logo clickable for all roles */
+      body[data-hide-cm-sidebar="pending"] [class*="NavBrand"] a,
+      body[data-hide-cm-sidebar="pending"] [class*="Brand"] a,
+      body[data-hide-cm-sidebar="true"] [class*="NavBrand"] a,
+      body[data-hide-cm-sidebar="true"] [class*="Brand"] a {
+        display: inline-flex !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+        pointer-events: auto !important;
+      }
+      /* Hard-hide only Home sidebar item for non-super roles to prevent flicker */
+      body[data-hide-cm-sidebar="pending"] nav[class*="MainNav"] a[href="/admin"],
+      body[data-hide-cm-sidebar="pending"] nav[class*="MainNav"] a[href="/admin/"],
+      body[data-hide-cm-sidebar="pending"] nav[class*="MainNav"] a[href="/admin/home"],
+      body[data-hide-cm-sidebar="pending"] aside[class*="MainNav"] a[href="/admin"],
+      body[data-hide-cm-sidebar="pending"] aside[class*="MainNav"] a[href="/admin/"],
+      body[data-hide-cm-sidebar="pending"] aside[class*="MainNav"] a[href="/admin/home"],
+      body[data-hide-cm-sidebar="true"] nav[class*="MainNav"] a[href="/admin"],
+      body[data-hide-cm-sidebar="true"] nav[class*="MainNav"] a[href="/admin/"],
+      body[data-hide-cm-sidebar="true"] nav[class*="MainNav"] a[href="/admin/home"],
+      body[data-hide-cm-sidebar="true"] aside[class*="MainNav"] a[href="/admin"],
+      body[data-hide-cm-sidebar="true"] aside[class*="MainNav"] a[href="/admin/"],
+      body[data-hide-cm-sidebar="true"] aside[class*="MainNav"] a[href="/admin/home"] {
+        display: none !important;
+        visibility: hidden !important;
+        opacity: 0 !important;
+        pointer-events: none !important;
+      }
+      /* Ensure brand/logo links stay visible even if href is /admin */
+      body[data-hide-cm-sidebar="pending"] [class*="NavBrand"] a[href="/admin"],
+      body[data-hide-cm-sidebar="pending"] [class*="Brand"] a[href="/admin"],
+      body[data-hide-cm-sidebar="true"] [class*="NavBrand"] a[href="/admin"],
+      body[data-hide-cm-sidebar="true"] [class*="Brand"] a[href="/admin"] {
+        display: inline-flex !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+        pointer-events: auto !important;
       }
     `;
     document.head.appendChild(style);
@@ -1196,14 +1236,17 @@ if (typeof window !== 'undefined') {
           href !== '/admin/content-manager/collection-types' &&
           href !== '/admin/content-manager/single-types';
         
-        // Check if this is the Home link
-        const isHomeLink = 
-          href === '/admin' || 
-          href === '/admin/home' || 
+        // Hide Home icon/menu entry for non-super users, but never treat brand/logo as Home.
+        const isBrandLink =
+          !!el.closest('[class*="NavBrand"]') || !!el.closest('[class*="Brand"]');
+        const isHomeLink = !isBrandLink && (
+          href === '/admin' ||
+          href === '/admin/home' ||
           (href.startsWith('/admin') && href.endsWith('/admin')) ||
-          text === 'home' || 
-          ariaLabel === 'home' || 
-          title === 'home';
+          text === 'home' ||
+          ariaLabel === 'home' ||
+          title === 'home'
+        );
         
         // Check if this is the Deploy/Cloud link
         const isDeployLink = 
@@ -1818,6 +1861,52 @@ if (typeof window !== 'undefined') {
     hideContentManagerSidebar().catch(() => {
       // Ignore errors
     });
+  };
+  
+  // Prevent Home menu item flicker for non-super users.
+  // This targets only sidebar/mobile Home entries and skips brand/logo links.
+  const enforceHomeHiddenForNonSuper = () => {
+    try {
+      const mode = document.body?.getAttribute('data-hide-cm-sidebar');
+      if (mode !== 'true' && mode !== 'pending') return;
+      
+      const links = document.querySelectorAll('a[href="/admin"], a[href="/admin/"], a[href="/admin/home"]');
+      links.forEach((link) => {
+        const isBrandLink =
+          !!link.closest('[class*="NavBrand"]') || !!link.closest('[class*="Brand"]');
+        if (isBrandLink) return;
+        
+        const isSidebarOrMenu =
+          !!link.closest('nav') ||
+          !!link.closest('aside') ||
+          !!link.closest('[role="menu"]') ||
+          !!link.closest('[role="menuitem"]') ||
+          !!link.closest('[class*="Popover"]') ||
+          !!link.closest('[class*="Dropdown"]');
+        if (!isSidebarOrMenu) return;
+        
+        link.style.setProperty('display', 'none', 'important');
+        link.style.setProperty('visibility', 'hidden', 'important');
+        link.style.setProperty('opacity', '0', 'important');
+        link.style.setProperty('pointer-events', 'none', 'important');
+        link.setAttribute('data-hidden-by-modules-sidebar', 'true');
+        
+        let parent = link.parentElement;
+        let depth = 0;
+        while (parent && depth < 4) {
+          if (parent.tagName === 'LI' || parent.classList.toString().includes('Nav')) {
+            parent.style.setProperty('display', 'none', 'important');
+            parent.style.setProperty('visibility', 'hidden', 'important');
+            parent.style.setProperty('opacity', '0', 'important');
+            parent.setAttribute('data-hidden-by-modules-sidebar', 'true');
+          }
+          parent = parent.parentElement;
+          depth += 1;
+        }
+      });
+    } catch (e) {
+      // Ignore DOM timing errors
+    }
   };
 
   // Run immediately and multiple times to catch early role detection
@@ -2485,6 +2574,159 @@ if (typeof window !== 'undefined') {
     }
   };
   
+  // Role-aware redirect target for logo/home clicks:
+  // - Super Admin -> Home page
+  // - Other admin roles -> All Modules
+  const getAdminHomeTargetByRole = () => {
+    const allModulesPath = '/admin/plugins/modules-sidebar/all-modules';
+    const superAdminHomePath = '/admin';
+    let roles = [];
+    
+    // Priority 1: in-memory roles populated by All Modules page
+    if (Array.isArray(window.__MODULES_SIDEBAR_ROLES__) && window.__MODULES_SIDEBAR_ROLES__.length > 0) {
+      roles = window.__MODULES_SIDEBAR_ROLES__;
+    }
+    
+    // Priority 2: session storage cache
+    if ((!roles || roles.length === 0)) {
+      try {
+        const stored = sessionStorage.getItem('__modules_sidebar_roles__');
+        if (stored) roles = JSON.parse(stored) || [];
+      } catch (e) {
+        // Ignore
+      }
+    }
+    
+    // Priority 3: Redux store
+    if ((!roles || roles.length === 0)) {
+      try {
+        const state = window.strapi?.store?.getState?.() || {};
+        const adminUser = state?.admin_app?.user;
+        const authUser = state?.auth?.user || state?.auth?.userInfo;
+        roles = adminUser?.roles || authUser?.roles || [];
+      } catch (e) {
+        // Ignore
+      }
+    }
+    
+    const isSuperAdmin = Array.isArray(roles) && roles.some((r) => {
+      const name = String(r?.name || r?.code || '').toLowerCase();
+      return name === 'super admin' || name.includes('super admin') || name.includes('strapi-super-admin');
+    });
+    
+    return isSuperAdmin ? superAdminHomePath : allModulesPath;
+  };
+  
+  const isLogoOrHomeAnchor = (anchor) => {
+    if (!anchor) return false;
+    const href = (anchor.getAttribute('href') || '').trim();
+    let anchorPath = '';
+    try {
+      anchorPath = new URL(anchor.href, window.location.origin).pathname || '';
+    } catch (e) {
+      anchorPath = href.split('?')[0].split('#')[0];
+    }
+    const ariaLabel = (anchor.getAttribute('aria-label') || '').toLowerCase();
+    const title = (anchor.getAttribute('title') || '').toLowerCase();
+    const text = (anchor.textContent || '').toLowerCase().trim();
+    const isHomeHref =
+      href === '/admin' ||
+      href === '/admin/' ||
+      href === '/admin/home' ||
+      anchorPath === '/admin' ||
+      anchorPath === '/admin/';
+    const isHomeByLabel = ariaLabel === 'home' || title === 'home' || text === 'home';
+    
+    // Strapi logo/brand link usually points to /admin and sits in main nav.
+    const isBrandLike = isHomeHref && (
+      anchor.closest('[class*="NavBrand"]') ||
+      anchor.closest('[class*="Brand"]') ||
+      anchor.closest('[class*="MainNav"]') ||
+      anchor.closest('nav')
+    );
+    
+    return isHomeHref || isHomeByLabel || isBrandLike;
+  };
+  
+  // Keep brand/logo clickable for all roles (some global hide rules target /admin links).
+  const ensureLogoIsClickable = () => {
+    const id = 'modules-sidebar-logo-clickable-fix';
+    if (document.getElementById(id)) return;
+    const style = document.createElement('style');
+    style.id = id;
+    style.textContent = `
+      nav a[href="/admin"],
+      nav a[href="/admin/"],
+      nav a[href="/admin/home"],
+      aside a[href="/admin"],
+      aside a[href="/admin/"],
+      aside a[href="/admin/home"],
+      [class*="NavBrand"] a,
+      [class*="Brand"] a {
+        display: inline-flex !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+        pointer-events: auto !important;
+      }
+    `;
+    document.head.appendChild(style);
+  };
+  
+  ensureLogoIsClickable();
+  
+  const forceBrandInteractive = () => {
+    const candidates = document.querySelectorAll(
+      '[class*="NavBrand"], [class*="Brand"], nav a[href="/admin"], nav a[href="/admin/"], nav a[href="/admin/home"], aside a[href="/admin"], aside a[href="/admin/"], aside a[href="/admin/home"]'
+    );
+    candidates.forEach((node) => {
+      if (!node || !node.style) return;
+      node.style.setProperty('display', 'inline-flex', 'important');
+      node.style.setProperty('visibility', 'visible', 'important');
+      node.style.setProperty('opacity', '1', 'important');
+      node.style.setProperty('pointer-events', 'auto', 'important');
+      node.removeAttribute('data-hidden-by-modules-sidebar');
+      
+      let parent = node.parentElement;
+      let depth = 0;
+      while (parent && depth < 4) {
+        parent.style?.setProperty('pointer-events', 'auto', 'important');
+        if (parent.hasAttribute('data-hidden-by-modules-sidebar')) {
+          parent.style?.setProperty('display', 'block', 'important');
+          parent.style?.setProperty('visibility', 'visible', 'important');
+          parent.style?.setProperty('opacity', '1', 'important');
+          parent.removeAttribute('data-hidden-by-modules-sidebar');
+        }
+        parent = parent.parentElement;
+        depth += 1;
+      }
+    });
+  };
+  
+  forceBrandInteractive();
+  setTimeout(forceBrandInteractive, 50);
+  setTimeout(forceBrandInteractive, 200);
+  setInterval(forceBrandInteractive, 1000);
+  
+  // Intercept logo/home clicks and route based on role immediately.
+  document.addEventListener('click', (event) => {
+    const target = event.target;
+    const anchor = target && target.closest ? target.closest('a') : null;
+    const brandContainer = target && target.closest
+      ? target.closest('[class*="NavBrand"], [class*="Brand"]')
+      : null;
+    
+    if (!anchor && !brandContainer) return;
+    if (anchor && !isLogoOrHomeAnchor(anchor) && !brandContainer) return;
+    
+    const destination = getAdminHomeTargetByRole();
+    const current = window.location.pathname;
+    if (destination && current !== destination) {
+      event.preventDefault();
+      event.stopPropagation();
+      window.location.assign(destination);
+    }
+  }, true);
+  
   // Deprecated: link visibility is controlled ONLY by body[data-hide-cm-sidebar] + CSS.
   // Keeping this as a no-op to avoid any blinking / late role side-effects.
   const markLinksAsHidden = () => {
@@ -2706,11 +2948,12 @@ if (typeof window !== 'undefined') {
       }
       
       const href = link.getAttribute('href') || '';
+      const isBrandLink =
+        !!link.closest('[class*="NavBrand"]') || !!link.closest('[class*="Brand"]');
       const isTargetLink = 
         (href.includes('/admin/content-manager') && !href.includes('/content-manager/collection-types') && !href.includes('/content-manager/single-types')) ||
         (href.includes('/content-manager') && !href.includes('/content-manager/collection-types') && !href.includes('/content-manager/single-types')) ||
-        href === '/admin' || 
-        href === '/admin/home' ||
+        (!isBrandLink && (href === '/admin' || href === '/admin/home')) ||
         href.includes('/plugins/cloud') ||
         href.includes('/deploy') ||
         href.includes('/settings') ||
@@ -2744,6 +2987,7 @@ if (typeof window !== 'undefined') {
   // This ensures Super Admin links are visible from the start
   markLinksAsHidden();
   runImmediate();
+  enforceHomeHiddenForNonSuper();
   
   // Also run markLinksAsHidden on an interval to catch new links
   // Reduced frequency to prevent conflicts and blinking
@@ -2757,9 +3001,11 @@ if (typeof window !== 'undefined') {
     requestAnimationFrame(() => {
       markLinksAsHidden();
       runHideLogic();
+      enforceHomeHiddenForNonSuper();
       requestAnimationFrame(() => {
         markLinksAsHidden();
         runHideLogic();
+        enforceHomeHiddenForNonSuper();
       });
     });
   }
@@ -2769,21 +3015,23 @@ if (typeof window !== 'undefined') {
     document.addEventListener('DOMContentLoaded', () => {
       markLinksAsHidden();
       runImmediate();
+      enforceHomeHiddenForNonSuper();
     });
   } else {
     markLinksAsHidden();
     runImmediate();
+    enforceHomeHiddenForNonSuper();
   }
   
   // Run when window loads (after all resources)
   window.addEventListener('load', () => {
     markLinksAsHidden();
     redirectIfNeeded(); // Check if redirect needed on page load
-    setTimeout(() => { markLinksAsHidden(); runHideLogic(); redirectIfNeeded(); }, 10);
-    setTimeout(() => { markLinksAsHidden(); runHideLogic(); redirectIfNeeded(); }, 50);
-    setTimeout(() => { markLinksAsHidden(); runHideLogic(); redirectIfNeeded(); }, 100);
-    setTimeout(() => { markLinksAsHidden(); runHideLogic(); redirectIfNeeded(); }, 200);
-    setTimeout(() => { markLinksAsHidden(); runHideLogic(); redirectIfNeeded(); }, 500);
+    setTimeout(() => { markLinksAsHidden(); runHideLogic(); enforceHomeHiddenForNonSuper(); redirectIfNeeded(); }, 10);
+    setTimeout(() => { markLinksAsHidden(); runHideLogic(); enforceHomeHiddenForNonSuper(); redirectIfNeeded(); }, 50);
+    setTimeout(() => { markLinksAsHidden(); runHideLogic(); enforceHomeHiddenForNonSuper(); redirectIfNeeded(); }, 100);
+    setTimeout(() => { markLinksAsHidden(); runHideLogic(); enforceHomeHiddenForNonSuper(); redirectIfNeeded(); }, 200);
+    setTimeout(() => { markLinksAsHidden(); runHideLogic(); enforceHomeHiddenForNonSuper(); redirectIfNeeded(); }, 500);
   });
   
   // Also run immediately when script loads (if DOM already ready)
@@ -2791,6 +3039,7 @@ if (typeof window !== 'undefined') {
     markLinksAsHidden();
     redirectIfNeeded(); // Check if redirect needed immediately
     runImmediate();
+    enforceHomeHiddenForNonSuper();
   }
   
   // Also check redirect on popstate (browser back/forward)
@@ -2799,7 +3048,10 @@ if (typeof window !== 'undefined') {
   });
   
   // Check redirect periodically (in case roles are detected late)
-  setInterval(redirectIfNeeded, 1000);
+  setInterval(() => {
+    redirectIfNeeded();
+    enforceHomeHiddenForNonSuper();
+  }, 500);
   
   // Run markLinksAsHidden on interval to catch new links
   // CRITICAL: Always run for Super Admin to ensure links stay visible
@@ -2900,6 +3152,7 @@ if (typeof window !== 'undefined') {
       setTimeout(() => {
         redirectIfNeeded();
         runHideLogic();
+        enforceHomeHiddenForNonSuper();
       }, 100);
     }
   }).observe(document, { subtree: true, childList: true });
