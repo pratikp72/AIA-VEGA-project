@@ -216,6 +216,7 @@ module.exports = ({ strapi }) => {
         contact_no: u.contact_no ?? '—',
         active: u.active !== false,
         photograph: mapPhotograph(u.photograph),
+        emp_photo_file: u.emp_photo_file ?? null,
       }));
       return {
         items,

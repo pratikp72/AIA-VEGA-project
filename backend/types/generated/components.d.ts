@@ -184,8 +184,7 @@ export interface QuizAnswer extends Struct.ComponentSchema {
       ['Multiple_choice', 'Multiple_select']
     > &
       Schema.Attribute.Required;
-    selected_answer_for_multiChoice: Schema.Attribute.String &
-      Schema.Attribute.Required;
+    selected_answer_for_multiChoice: Schema.Attribute.String;
     selected_answer_for_multiSelect: Schema.Attribute.JSON;
   };
 }
@@ -246,7 +245,7 @@ export interface QuizQuestion extends Struct.ComponentSchema {
     question_text: Schema.Attribute.Text &
       Schema.Attribute.Required &
       Schema.Attribute.SetMinMaxLength<{
-        maxLength: 100;
+        maxLength: 500;
       }>;
     question_type: Schema.Attribute.Enumeration<
       ['Multiple_choice', 'Multiple_select']
@@ -324,9 +323,8 @@ export interface RoutesBusRoute extends Struct.ComponentSchema {
     route_id: Schema.Attribute.String &
       Schema.Attribute.Required &
       Schema.Attribute.Unique;
-    route_img: Schema.Attribute.Media<'images'> & Schema.Attribute.Required;
+    route_img: Schema.Attribute.Media<'images'>;
     route_name: Schema.Attribute.String &
-      Schema.Attribute.Required &
       Schema.Attribute.SetMinMaxLength<{
         maxLength: 100;
       }>;
@@ -339,12 +337,10 @@ export interface RoutesBusStop extends Struct.ComponentSchema {
     displayName: 'Bus stop';
   };
   attributes: {
-    bus_shifts: Schema.Attribute.Component<'routes.sift', true> &
-      Schema.Attribute.Required;
-    bus_stop_location_link: Schema.Attribute.String & Schema.Attribute.Required;
+    bus_shifts: Schema.Attribute.Component<'routes.sift', true>;
+    bus_stop_location_link: Schema.Attribute.String;
     stop_id: Schema.Attribute.String & Schema.Attribute.Required;
     stop_name: Schema.Attribute.String &
-      Schema.Attribute.Required &
       Schema.Attribute.SetMinMaxLength<{
         maxLength: 100;
       }>;
@@ -358,11 +354,10 @@ export interface RoutesSift extends Struct.ComponentSchema {
   };
   attributes: {
     shift_name: Schema.Attribute.String &
-      Schema.Attribute.Required &
       Schema.Attribute.SetMinMaxLength<{
         maxLength: 50;
       }>;
-    shift_time: Schema.Attribute.Time & Schema.Attribute.Required;
+    shift_time: Schema.Attribute.Time;
   };
 }
 
@@ -380,8 +375,7 @@ export interface RoutesUnit extends Struct.ComponentSchema {
     contact: Schema.Attribute.String & Schema.Attribute.Required;
     hr_manager: Schema.Attribute.String & Schema.Attribute.Required;
     note: Schema.Attribute.RichText;
-    routes: Schema.Attribute.Component<'routes.bus-route', true> &
-      Schema.Attribute.Required;
+    routes: Schema.Attribute.Component<'routes.bus-route', true>;
     site_manager: Schema.Attribute.String & Schema.Attribute.Required;
     unit_img: Schema.Attribute.Media<'images', true> &
       Schema.Attribute.Required;

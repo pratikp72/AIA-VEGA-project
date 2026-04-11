@@ -87,15 +87,7 @@ function excelSerialToIso(value, fallback = '1970-01-01') {
   return fallback;
 }
 
-function generateFallbackEmail(row) {
-  const name = safeString(row[COL.NAME], 'unknown')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '.')
-    .replace(/^\.+|\.+$/g, '')
-    .slice(0, 40);
-  const userId = safeString(row[COL.USER_ID], '').toLowerCase().replace(/\s+/g, '') || 'emp';
-  return `${userId}.${name}@vega.internal`;
-}
+
 
 async function getEmployeeRoleId(strapi) {
   const role =
@@ -182,15 +174,41 @@ async function syncVegaEmployees(strapi) {
 
     for (const row of rows) {
       try {
+        const empId = safeString(row[COL.USER_ID], '');
         const rawEmail = safeString(row[COL.EMAIL], '');
-        const email = normalizeEmail(rawEmail) || generateFallbackEmail(row);
+        const email = normalizeEmail(rawEmail);
+        const hasEmpId = Boolean(empId && empId !== '-');
 
-        const existing = await strapi.db.query(USER_UID).findOne({
-          where: { email },
-          select: ['id', 'username'],
-        });
+        if (!hasEmpId && !email) {
+          strapi.log.warn(`[vega-sync] Skipping ${row[COL.USER_ID] || row[COL.NAME] || 'unknown'}: missing both emp_id and email`);
+          console.log(`[vega-sync]   SKIPPED  ${String(row[COL.USER_ID] || '').padEnd(8)} | no emp_id/email | ${row[COL.NAME] || 'unknown'}`);
+          continue;
+        }
 
-        const name = safeString(row[COL.NAME], email.split('@')[0]);
+        let existing = null;
+        if (hasEmpId) {
+          existing = await strapi.db.query(USER_UID).findOne({
+            where: { emp_id: empId },
+            select: ['id', 'username', 'email'],
+          });
+        }
+
+        // Fallback: match by email when emp_id lookup misses.
+        if (!existing && email) {
+          existing = await strapi.db.query(USER_UID).findOne({
+            where: { email },
+            select: ['id', 'username', 'email'],
+          });
+        }
+
+        const resolvedEmail = email || normalizeEmail(existing?.email);
+        if (!resolvedEmail) {
+          strapi.log.warn(`[vega-sync] Skipping ${row[COL.USER_ID] || row[COL.NAME] || 'unknown'}: no usable email to write`);
+          console.log(`[vega-sync]   SKIPPED  ${String(row[COL.USER_ID] || '').padEnd(8)} | no usable email | ${row[COL.NAME] || 'unknown'}`);
+          continue;
+        }
+
+        const name = safeString(row[COL.NAME], resolvedEmail.split('@')[0]);
         const username = await ensureUniqueUsername(strapi, name, existing?.id);
 
         const statusRaw = String(row[COL.STATUS] || '').trim().toUpperCase();
@@ -198,7 +216,7 @@ async function syncVegaEmployees(strapi) {
 
         const userData = {
           username,
-          email,
+          email: resolvedEmail,
           provider: 'local',
           confirmed: true,
           blocked: !isActive,
@@ -227,17 +245,17 @@ async function syncVegaEmployees(strapi) {
         if (existing) {
           await strapi.db.query(USER_UID).update({ where: { id: existing.id }, data: userData });
           updatedCount += 1;
-          console.log(`[vega-sync]   UPDATED  ${String(row[COL.USER_ID]).padEnd(8)} | ${isActive ? 'ACTIVE  ' : 'INACTIVE'} | ${name} | ${email}`);
+          console.log(`[vega-sync]   UPDATED  ${String(row[COL.USER_ID]).padEnd(8)} | ${isActive ? 'ACTIVE  ' : 'INACTIVE'} | ${name} | ${resolvedEmail}`);
         } else {
           await strapi.db.query(USER_UID).create({ data: { ...userData, password: passwordHash } });
           createdCount += 1;
-          console.log(`[vega-sync]   CREATED  ${String(row[COL.USER_ID]).padEnd(8)} | ${isActive ? 'ACTIVE  ' : 'INACTIVE'} | ${name} | ${email}`);
+          console.log(`[vega-sync]   CREATED  ${String(row[COL.USER_ID]).padEnd(8)} | ${isActive ? 'ACTIVE  ' : 'INACTIVE'} | ${name} | ${resolvedEmail}`);
         }
 
         try {
           await ensureDepartmentForUser(strapi, userData.department, 'Vega');
         } catch (err) {
-          strapi.log.warn(`[vega-sync] ensureDepartmentForUser failed for ${email}: ${err?.message}`);
+          strapi.log.warn(`[vega-sync] ensureDepartmentForUser failed for ${resolvedEmail}: ${err?.message}`);
         }
 
         try {
@@ -245,7 +263,7 @@ async function syncVegaEmployees(strapi) {
             await ensureWorkLocationForUser(strapi, userData.working_location, 'Vega');
           }
         } catch (err) {
-          strapi.log.warn(`[vega-sync] ensureWorkLocationForUser failed for ${email}: ${err?.message}`);
+          strapi.log.warn(`[vega-sync] ensureWorkLocationForUser failed for ${resolvedEmail}: ${err?.message}`);
         }
       } catch (rowErr) {
         errorCount += 1;
