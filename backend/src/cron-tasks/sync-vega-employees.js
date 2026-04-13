@@ -131,12 +131,17 @@ async function uploadVegaPhoto(strapi, sharingUrl, username, accessToken) {
   const { url, headers } = await resolveSharePointDownloadUrl(raw, accessToken);
 
   const response = await fetch(url, { headers, redirect: 'follow' });
-  if (!response.ok) throw new Error(`Photo download failed: HTTP ${response.status}`);
+  if (!response.ok) throw new Error(`Photo download failed: HTTP ${response.status} from ${url}`);
+
+  const contentType = response.headers.get('content-type') || 'image/jpeg';
+  // If SharePoint returns HTML (redirect to login page), bail out
+  if (contentType.includes('text/html')) {
+    throw new Error(`Photo download returned HTML (not an image) — SharePoint may require re-auth`);
+  }
 
   const bytes = Buffer.from(await response.arrayBuffer());
   if (!bytes.length) throw new Error('Photo download returned empty file');
 
-  const contentType = response.headers.get('content-type') || 'image/jpeg';
   const extMap = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp', 'image/gif': '.gif' };
   const ext = extMap[contentType.split(';')[0].trim()] || '.jpg';
   const fileName = `vega_${safeString(username, 'employee')}_${Date.now()}${ext}`;
@@ -144,10 +149,22 @@ async function uploadVegaPhoto(strapi, sharingUrl, username, accessToken) {
   await fs.writeFile(tmpFilePath, bytes);
 
   try {
-    const { size: fileSize } = await fs.stat(tmpFilePath);
+    // Strapi v5 upload service expects a file object with these exact fields
+    const fileInfo = {
+      name: fileName,
+      alternativeText: safeString(username, 'employee'),
+      caption: '',
+      folder: null,
+    };
+    const fileData = {
+      path: tmpFilePath,
+      name: fileName,
+      type: contentType,
+      size: bytes.length / 1000, // Strapi expects size in KB
+    };
     const uploaded = await strapi.plugin('upload').service('upload').upload({
-      data: { fileInfo: { name: fileName, alternativeText: safeString(username, 'employee') } },
-      files: [{ path: tmpFilePath, name: fileName, type: contentType, size: fileSize }],
+      data: { fileInfo },
+      files: fileData,
     });
     if (!Array.isArray(uploaded) || !uploaded[0]?.id) throw new Error('Upload returned no metadata');
     return uploaded[0].id;
