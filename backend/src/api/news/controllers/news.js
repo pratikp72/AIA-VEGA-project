@@ -49,12 +49,14 @@ module.exports = createCoreController('api::news.news', ({ strapi }) => ({
   async find(ctx) {
     try {
       const userCompany = await getUserCompany(strapi, ctx.state?.user?.id);
+      const query = ctx.query || {};
+      const page = Math.max(1, Number(query.page || query['pagination[page]'] || 1) || 1);
+      const pageSize = Math.max(1, Math.min(100, Number(query.pageSize || query['pagination[pageSize]'] || 9) || 9));
 
       const where = { publishedAt: { $notNull: true }, active: 'published' };
-      const q = ctx.query || {};
-      const filters = q.filters && typeof q.filters === 'object' ? q.filters : {};
-      const catName = q['filters[news_category][name][$eq]'] ?? filters['news_category']?.name?.$eq;
-      const catId = q['filters[news_category][id][$eq]'] ?? filters['news_category']?.id?.$eq;
+      const filters = query.filters && typeof query.filters === 'object' ? query.filters : {};
+      const catName = query['filters[news_category][name][$eq]'] ?? filters['news_category']?.name?.$eq;
+      const catId = query['filters[news_category][id][$eq]'] ?? filters['news_category']?.id?.$eq;
       if (catName) {
         where.news_category = { name: catName };
       } else if (catId != null) {
@@ -62,17 +64,23 @@ module.exports = createCoreController('api::news.news', ({ strapi }) => ({
         if (!Number.isNaN(id)) where.news_category = { id };
       }
 
-      const newsItems = await strapi.db.query('api::news.news').findMany({
-        populate: NEWS_POPULATE,
-        where,
-        orderBy: { publishedAt: 'desc' },
-      });
+      const [newsItems, total] = await Promise.all([
+        strapi.db.query('api::news.news').findMany({
+          populate: NEWS_POPULATE,
+          where,
+          orderBy: { publishedAt: 'desc' },
+          offset: (page - 1) * pageSize,
+          limit: pageSize,
+        }),
+        strapi.db.query('api::news.news').count({ where }),
+      ]);
 
       const filtered = applyCompanyFilter(newsItems, userCompany);
+      const pageCount = Math.max(1, Math.ceil(total / pageSize));
 
       ctx.body = {
         data: filtered,
-        meta: { pagination: { page: 1, pageSize: filtered.length, pageCount: 1, total: filtered.length } },
+        meta: { pagination: { page, pageSize, pageCount, total } },
       };
     } catch (error) {
       strapi.log.error('News find error:', error);
