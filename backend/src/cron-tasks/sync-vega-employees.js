@@ -1,5 +1,8 @@
 'use strict';
 
+const fs = require('node:fs/promises');
+const os = require('node:os');
+const path = require('node:path');
 const crypto = require('node:crypto');
 const bcrypt = require('bcryptjs');
 const { getAccessToken } = require('../utils/vega-graph-auth');
@@ -10,7 +13,7 @@ const USER_UID = 'plugin::users-permissions.user';
 const ROLE_UID = 'plugin::users-permissions.role';
 
 // Column indices in the Excel sheet (0-based)
-// SR.NO | STATUS | USER ID | NAME | EMPLOYMENT TYPE | EMAIL ID | DOB | AGE | CONTACT NO. | DOJ | EXP WITH VEGA | CONTRACT VALIDITY | JOB AREA | DESIGNATION | HOD | Payroll Office | Work Location | Region
+// SR.NO | STATUS | USER ID | NAME | EMPLOYMENT TYPE | EMAIL ID | DOB | AGE | CONTACT NO. | DOJ | EXP WITH VEGA | CONTRACT VALIDITY | JOB AREA | DESIGNATION | HOD | Payroll Office | Work Location | Region | Image
 const COL = {
   SR_NO: 0,
   STATUS: 1,
@@ -30,6 +33,7 @@ const COL = {
   PAYROLL_OFFICE: 15,
   WORK_LOCATION: 16,
   REGION: 17,
+  IMAGE: 18,
 };
 
 let isRunning = false;
@@ -105,6 +109,52 @@ async function ensureUniqueUsername(strapi, desired, currentUserId) {
   return `${base.slice(0, 52)}_${crypto.randomBytes(3).toString('hex')}`;
 }
 
+// ── Photo helpers ─────────────────────────────────────────────────────────────
+
+/**
+ * Convert a SharePoint sharing URL (the :i:/g/personal/... format) to a
+ * Graph API download URL using the /shares/{encodedUrl}/driveItem/content endpoint.
+ */
+async function resolveSharePointDownloadUrl(sharingUrl, accessToken) {
+  // Encode the sharing URL as base64url (no padding) per Graph API docs
+  const encoded = Buffer.from(sharingUrl).toString('base64')
+    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  const shareToken = `u!${encoded}`;
+  const url = `https://graph.microsoft.com/v1.0/shares/${shareToken}/driveItem/content`;
+  return { url, headers: { Authorization: `Bearer ${accessToken}` } };
+}
+
+async function uploadVegaPhoto(strapi, sharingUrl, username, accessToken) {
+  const raw = String(sharingUrl || '').trim();
+  if (!raw || !raw.startsWith('http')) return null;
+
+  const { url, headers } = await resolveSharePointDownloadUrl(raw, accessToken);
+
+  const response = await fetch(url, { headers, redirect: 'follow' });
+  if (!response.ok) throw new Error(`Photo download failed: HTTP ${response.status}`);
+
+  const bytes = Buffer.from(await response.arrayBuffer());
+  if (!bytes.length) throw new Error('Photo download returned empty file');
+
+  const contentType = response.headers.get('content-type') || 'image/jpeg';
+  const extMap = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp', 'image/gif': '.gif' };
+  const ext = extMap[contentType.split(';')[0].trim()] || '.jpg';
+  const fileName = `vega_${safeString(username, 'employee')}_${Date.now()}${ext}`;
+  const tmpFilePath = path.join(os.tmpdir(), fileName);
+  await fs.writeFile(tmpFilePath, bytes);
+
+  try {
+    const uploaded = await strapi.plugin('upload').service('upload').upload({
+      data: { fileInfo: { name: fileName, alternativeText: safeString(username, 'employee') } },
+      files: { path: tmpFilePath, name: fileName, type: contentType, size: bytes.length },
+    });
+    if (!Array.isArray(uploaded) || !uploaded[0]?.id) throw new Error('Upload returned no metadata');
+    return uploaded[0].id;
+  } finally {
+    await fs.unlink(tmpFilePath).catch(() => {});
+  }
+}
+
 // ── MS Graph fetch ────────────────────────────────────────────────────────────
 
 async function fetchExcelRows(strapi) {
@@ -136,10 +186,11 @@ async function fetchExcelRows(strapi) {
   const rows = data?.values || [];
 
   // Skip header row only — sync all statuses
-  return rows.slice(1).filter((row) => {
-    // Skip completely empty rows
+  const filtered = rows.slice(1).filter((row) => {
     return row.some((cell) => String(cell || '').trim() !== '');
   });
+
+  return { rows: filtered, accessToken };
 }
 
 // ── main sync ─────────────────────────────────────────────────────────────────
@@ -168,7 +219,7 @@ async function syncVegaEmployees(strapi) {
 
     strapi.log.info('[vega-sync] fetching Excel data from MS Graph...');
     console.log('\n[vega-sync] ▶ Fetching Vega employee data from OneDrive Excel...');
-    const rows = await fetchExcelRows();
+    const { rows, accessToken } = await fetchExcelRows(strapi);
     strapi.log.info(`[vega-sync] ${rows.length} ACTIVE rows to process`);
     console.log(`[vega-sync] ✔ ${rows.length} ACTIVE employees found in sheet\n`);
 
@@ -249,6 +300,32 @@ async function syncVegaEmployees(strapi) {
           description: '',
         };
 
+        // Upload photo if SharePoint URL present and user doesn't already have one
+        const sharingUrl = safeString(row[COL.IMAGE], '');
+        if (sharingUrl && sharingUrl !== '-' && sharingUrl.startsWith('http')) {
+          // Check if user already has a photograph via populate (it's a media relation)
+          let hasPhoto = false;
+          if (existing) {
+            const withPhoto = await strapi.db.query(USER_UID).findOne({
+              where: { id: existing.id },
+              populate: ['photograph'],
+            });
+            hasPhoto = Boolean(withPhoto?.photograph?.id);
+          }
+          if (!hasPhoto) {
+            try {
+              const photoId = await uploadVegaPhoto(strapi, sharingUrl, name, accessToken);
+              if (photoId) {
+                userData.photograph = photoId;
+                console.log(`[vega-sync]   PHOTO    ${String(row[COL.USER_ID]).padEnd(8)} | uploaded id=${photoId}`);
+              }
+            } catch (photoErr) {
+              strapi.log.warn(`[vega-sync] Photo upload failed for ${name}: ${photoErr?.message}`);
+              console.log(`[vega-sync]   PHOTO ⚠  ${String(row[COL.USER_ID]).padEnd(8)} | ${photoErr?.message}`);
+            }
+          }
+        }
+
         if (existing) {
           await strapi.db.query(USER_UID).update({ where: { id: existing.id }, data: userData });
           updatedCount += 1;
@@ -262,7 +339,7 @@ async function syncVegaEmployees(strapi) {
         try {
           await ensureDepartmentForUser(strapi, userData.department, 'Vega');
         } catch (err) {
-          strapi.log.warn(`[vega-sync] ensureDepartmentForUser failed for ${resolvedEmail}: ${err?.message}`);
+          strapi.log.warn(`[vega-sync] ensureDepartmentForUser failed for ${name}: ${err?.message}`);
         }
 
         try {
@@ -270,7 +347,7 @@ async function syncVegaEmployees(strapi) {
             await ensureWorkLocationForUser(strapi, userData.working_location, 'Vega');
           }
         } catch (err) {
-          strapi.log.warn(`[vega-sync] ensureWorkLocationForUser failed for ${resolvedEmail}: ${err?.message}`);
+          strapi.log.warn(`[vega-sync] ensureWorkLocationForUser failed for ${name}: ${err?.message}`);
         }
       } catch (rowErr) {
         errorCount += 1;
