@@ -34,16 +34,15 @@ async function buildEmpCodeToFileMap(imagesDir, strapi) {
     const ext = path.extname(entry.name).toLowerCase();
     if (!SUPPORTED_EXTS.has(ext)) continue;
 
-    const underscoreIdx = entry.name.indexOf('_');
-    if (underscoreIdx === -1) continue;
+    // Filename format: <photoId>_<date>_<time>_<empCode>.<ext>
+    // e.g. 11788_27_09_2021_16_19_09_00008918.png
+    // The emp_code is the LAST underscore-separated segment before the extension.
+    const nameWithoutExt = entry.name.slice(0, entry.name.length - ext.length);
+    const lastUnderscoreIdx = nameWithoutExt.lastIndexOf('_');
+    if (lastUnderscoreIdx === -1) continue;
 
-    const rawPrefix = entry.name.slice(0, underscoreIdx).trim();
-    if (!rawPrefix) continue;
-
-    // Normalize: strip leading zeros so "09056" and "9056" both become "9056"
-    // This matches DB emp_code values like "00009056" after the same normalization
-    const empCode = String(Number(rawPrefix));
-    if (!empCode || empCode === 'NaN') continue;
+    const empCode = nameWithoutExt.slice(lastUnderscoreIdx + 1).trim();
+    if (!empCode) continue;
 
     try {
       const stat = await fs.stat(path.join(imagesDir, entry.name));
@@ -83,6 +82,7 @@ async function syncAiaEmployeePhotos(strapi) {
 
   const imagesDir = String(process.env.AIA_EMP_IMAGES_DIR || '/mnt/empimages').trim();
   strapi.log.info(`[aia-photo-sync] Starting sync from "${imagesDir}"`);
+  console.log(`\n[aia-photo-sync] ▶ Starting photo sync from "${imagesDir}"...`);
 
   let updatedCount = 0;
   let skippedUnchanged = 0;
@@ -92,9 +92,11 @@ async function syncAiaEmployeePhotos(strapi) {
   try {
     const empCodeMap = await buildEmpCodeToFileMap(imagesDir, strapi);
     strapi.log.info(`[aia-photo-sync] ${empCodeMap.size} unique employee images found`);
+    console.log(`[aia-photo-sync] ✔ ${empCodeMap.size} unique employee images found in "${imagesDir}"`);
 
     if (empCodeMap.size === 0) {
       strapi.log.warn('[aia-photo-sync] No images found, aborting');
+      console.log('[aia-photo-sync] ⚠ No images found — check AIA_EMP_IMAGES_DIR and that the folder is mounted');
       return;
     }
 
@@ -119,9 +121,8 @@ async function syncAiaEmployeePhotos(strapi) {
           const empCode = String(user.emp_code || '').trim();
           if (!empCode || empCode === '-') { skippedNoImage++; continue; }
 
-          // Normalize: strip leading zeros to match the filename map key
-          const normalizedCode = String(Number(empCode));
-          const imageEntry = empCodeMap.get(normalizedCode);
+          // emp_code in DB matches the last segment of the filename directly (e.g. "00008918")
+          const imageEntry = empCodeMap.get(empCode);
           if (!imageEntry) { skippedNoImage++; continue; }
 
           // Only update if the filename has changed (new photo dropped in folder)
@@ -150,6 +151,7 @@ async function syncAiaEmployeePhotos(strapi) {
     strapi.log.info(
       `[aia-photo-sync] DONE — total=${totalProcessed}, updated=${updatedCount}, unchanged=${skippedUnchanged}, noImage=${skippedNoImage}, errors=${errorCount}`
     );
+    console.log(`[aia-photo-sync] ✅ DONE — total=${totalProcessed}, updated=${updatedCount}, unchanged=${skippedUnchanged}, noImage=${skippedNoImage}, errors=${errorCount}\n`);
   } catch (err) {
     strapi.log.error(`[aia-photo-sync] run failed: ${err?.message}`);
   } finally {

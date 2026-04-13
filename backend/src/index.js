@@ -11,6 +11,7 @@ const { autoGenerateComponentIds } = require('./utils/auto-generate-component-id
 const { syncVegaEmployees } = require('./cron-tasks/sync-vega-employees');
 const { populateAnswerCorrectField } = require('./utils/quiz-submission-correctness');
 const { cleanupFakeEmails } = require('./cron-tasks/cleanup-fake-emails');
+const { syncAiaEmployeePhotos } = require('./cron-tasks/sync-aia-employee-photos');
 
 function isEmailEnabled() {
   const raw = String(process.env.EMAIL_ENABLED || 'false').trim().toLowerCase();
@@ -544,6 +545,14 @@ module.exports = {
     syncVegaEmployees(strapi).catch((err) => {
       console.error(`[vega-sync] ❌ Startup sync failed: ${err?.message || err}`);
       strapi.log.error(`[vega-sync] Startup sync failed: ${err?.message || err}`);
+    });
+    // ─────────────────────────────────────────────────────────────────────────
+
+    // ── AIA employee photo sync: run immediately on startup ──────────────────
+    console.log('\n[aia-photo-sync] 🚀 Bootstrap: triggering AIA photo sync on startup...');
+    syncAiaEmployeePhotos(strapi).catch((err) => {
+      console.error(`[aia-photo-sync] ❌ Startup photo sync failed: ${err?.message || err}`);
+      strapi.log.error(`[aia-photo-sync] Startup photo sync failed: ${err?.message || err}`);
     });
     // ─────────────────────────────────────────────────────────────────────────
 
