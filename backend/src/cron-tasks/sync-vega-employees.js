@@ -340,6 +340,7 @@ async function syncVegaEmployees(strapi) {
             } catch (photoErr) {
               strapi.log.warn(`[vega-sync] Photo upload failed for ${name}: ${photoErr?.message}`);
               console.log(`[vega-sync]   PHOTO ⚠  ${String(row[COL.USER_ID]).padEnd(8)} | ${photoErr?.message}`);
+              console.log(`[vega-sync]   PHOTO STACK: ${photoErr?.stack?.split('\n').slice(0,3).join(' | ')}`);
             }
           }
         }
