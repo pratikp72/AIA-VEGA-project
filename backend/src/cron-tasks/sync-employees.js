@@ -360,9 +360,10 @@ async function syncEmployeesFromHrms(strapi) {
           }
 
           // Fallback: match by email when emp_code lookup misses.
+          // Only match AIA users — don't steal a Vega user that shares the same email.
           if (!existing && email) {
             existing = await strapi.db.query(USER_UID).findOne({
-              where: { email },
+              where: { email, company: 'AIA' },
               select: ['id', 'username', 'email'],
             });
           }

@@ -287,9 +287,10 @@ async function syncVegaEmployees(strapi) {
         }
 
         // Fallback: match by email when emp_id lookup misses.
+        // Only match Vega users — don't steal an AIA user that shares the same email.
         if (!existing && email) {
           existing = await strapi.db.query(USER_UID).findOne({
-            where: { email },
+            where: { email, company: 'Vega' },
             select: ['id', 'username', 'email'],
           });
         }
