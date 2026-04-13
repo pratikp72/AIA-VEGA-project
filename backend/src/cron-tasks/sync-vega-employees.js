@@ -144,9 +144,10 @@ async function uploadVegaPhoto(strapi, sharingUrl, username, accessToken) {
   await fs.writeFile(tmpFilePath, bytes);
 
   try {
+    const { size: fileSize } = await fs.stat(tmpFilePath);
     const uploaded = await strapi.plugin('upload').service('upload').upload({
       data: { fileInfo: { name: fileName, alternativeText: safeString(username, 'employee') } },
-      files: { path: tmpFilePath, name: fileName, type: contentType, size: bytes.length },
+      files: [{ path: tmpFilePath, name: fileName, type: contentType, size: fileSize }],
     });
     if (!Array.isArray(uploaded) || !uploaded[0]?.id) throw new Error('Upload returned no metadata');
     return uploaded[0].id;
