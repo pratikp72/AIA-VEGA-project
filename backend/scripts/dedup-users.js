@@ -225,7 +225,42 @@ async function dedupByEmail(client) {
   return deletedTotal;
 }
 
-// ── ghost user deletion ───────────────────────────────────────────────────────
+/**
+ * For Vega users that have a fake @vega.internal email but a valid emp_id,
+ * clear the fake email (set to null) so they are no longer polluting the list.
+ * These are real employees whose email was never provided in the Excel.
+ */
+async function clearFakeEmailsOnRealVegaUsers(client) {
+  const res = await client.query(`
+    SELECT id, email, username
+    FROM up_users
+    WHERE company = 'Vega'
+      AND lower(email) LIKE '%@vega.internal'
+      AND emp_id IS NOT NULL
+      AND trim(emp_id) != ''
+      AND trim(emp_id) != '-'
+    ORDER BY id
+  `);
+
+  if (!res.rows.length) {
+    console.log('[dedup][vega-fake-email] no real Vega users with fake emails found');
+    return 0;
+  }
+
+  console.log(`[dedup][vega-fake-email] found ${res.rows.length} real Vega user(s) with fake emails — clearing email`);
+  for (const u of res.rows) {
+    console.log(`  CLEAR email id=${u.id} emp_id set, email=${u.email} username=${u.username}`);
+  }
+
+  if (!DRY_RUN) {
+    const ids = res.rows.map((u) => u.id);
+    await client.query(`UPDATE up_users SET email = NULL WHERE id = ANY($1)`, [ids]);
+  }
+
+  return res.rows.length;
+}
+
+
 
 /**
  * Delete users that have a fake email AND no valid emp_code (AIA) or emp_id (Vega).
@@ -316,6 +351,9 @@ async function main() {
 
     console.log('\n── Ghost users (fake email + no emp_code/emp_id) ─────────────');
     total += await deleteGhostUsers(client);
+
+    console.log('\n── Clear fake emails on real Vega users (have emp_id) ────────');
+    total += await clearFakeEmailsOnRealVegaUsers(client);
 
     console.log('\n── AIA duplicates (by emp_code) ──────────────────────────────');
     total += await dedupByField(client, 'emp_code', 'AIA');

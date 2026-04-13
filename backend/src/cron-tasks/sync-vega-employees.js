@@ -202,13 +202,20 @@ async function syncVegaEmployees(strapi) {
         }
 
         const resolvedEmail = email || normalizeEmail(existing?.email);
-        if (!resolvedEmail) {
-          strapi.log.warn(`[vega-sync] Skipping ${row[COL.USER_ID] || row[COL.NAME] || 'unknown'}: no usable email to write`);
-          console.log(`[vega-sync]   SKIPPED  ${String(row[COL.USER_ID] || '').padEnd(8)} | no usable email | ${row[COL.NAME] || 'unknown'}`);
+        // If the only email we have is a fake placeholder, don't preserve it —
+        // clear it so the user must log in via emp_id instead.
+        const isFakePlaceholder = resolvedEmail && (
+          resolvedEmail.endsWith('@vega.internal') || resolvedEmail.endsWith('@aia.internal')
+        );
+        const finalEmail = isFakePlaceholder ? null : resolvedEmail;
+
+        if (!finalEmail && !hasEmpId) {
+          strapi.log.warn(`[vega-sync] Skipping ${row[COL.USER_ID] || row[COL.NAME] || 'unknown'}: no usable email or emp_id`);
+          console.log(`[vega-sync]   SKIPPED  ${String(row[COL.USER_ID] || '').padEnd(8)} | no emp_id/email | ${row[COL.NAME] || 'unknown'}`);
           continue;
         }
 
-        const name = safeString(row[COL.NAME], resolvedEmail.split('@')[0]);
+        const name = safeString(row[COL.NAME], finalEmail ? finalEmail.split('@')[0] : safeString(row[COL.USER_ID], 'vega_employee'));
         const username = await ensureUniqueUsername(strapi, name, existing?.id);
 
         const statusRaw = String(row[COL.STATUS] || '').trim().toUpperCase();
@@ -216,7 +223,7 @@ async function syncVegaEmployees(strapi) {
 
         const userData = {
           username,
-          email: resolvedEmail,
+          email: finalEmail,
           provider: 'local',
           confirmed: true,
           blocked: !isActive,
@@ -245,11 +252,11 @@ async function syncVegaEmployees(strapi) {
         if (existing) {
           await strapi.db.query(USER_UID).update({ where: { id: existing.id }, data: userData });
           updatedCount += 1;
-          console.log(`[vega-sync]   UPDATED  ${String(row[COL.USER_ID]).padEnd(8)} | ${isActive ? 'ACTIVE  ' : 'INACTIVE'} | ${name} | ${resolvedEmail}`);
+          console.log(`[vega-sync]   UPDATED  ${String(row[COL.USER_ID]).padEnd(8)} | ${isActive ? 'ACTIVE  ' : 'INACTIVE'} | ${name} | ${finalEmail || '(no email)'}`);
         } else {
           await strapi.db.query(USER_UID).create({ data: { ...userData, password: passwordHash } });
           createdCount += 1;
-          console.log(`[vega-sync]   CREATED  ${String(row[COL.USER_ID]).padEnd(8)} | ${isActive ? 'ACTIVE  ' : 'INACTIVE'} | ${name} | ${resolvedEmail}`);
+          console.log(`[vega-sync]   CREATED  ${String(row[COL.USER_ID]).padEnd(8)} | ${isActive ? 'ACTIVE  ' : 'INACTIVE'} | ${name} | ${finalEmail || '(no email)'}`);
         }
 
         try {

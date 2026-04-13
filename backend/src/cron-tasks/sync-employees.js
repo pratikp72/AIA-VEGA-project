@@ -206,19 +206,20 @@ async function uploadPhotograph(strapi, photoUrl, username) {
 }
 
 function buildUserData(record, roleId, usernameOverride, emailOverride) {
+  const hasExitDate = Boolean(record.Exit_Date);
   return {
     username: usernameOverride,
     email: emailOverride,
     provider: 'local',
     confirmed: true,
-    blocked: false,
+    blocked: hasExitDate,
     role: roleId,
     joining_date: normalizeDate(record.Date_Of_Joining),
     date_of_birth: normalizeDate(record.Date_Of_Birth),
     contact_no: safeString(record.Mobile_No),
     company: 'AIA',
     branch: safeString(record.Branch),
-    exit_date: record.Exit_Date ? normalizeDate(record.Exit_Date, null) : null,
+    exit_date: hasExitDate ? normalizeDate(record.Exit_Date, null) : null,
     designation: safeString(record.Designation),
     department: safeString(record.Department),
     emp_code: safeString(record.Emp_Code),
@@ -226,7 +227,7 @@ function buildUserData(record, roleId, usernameOverride, emailOverride) {
     age: 0,
     working_location: '-',
     employment_type: '-',
-    active: true,
+    active: !hasExitDate,
     emp_id: '-',
     HOD: '-',
     payroll_office: '-',
