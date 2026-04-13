@@ -368,13 +368,9 @@ async function syncEmployeesFromHrms(strapi) {
             });
           }
 
-          const resolvedEmail = email || normalizeEmail(existing?.email);
-          if (!resolvedEmail) {
-            strapi.log.warn(`[employee-sync] Skipping ${record?.Emp_Code || record?.Emp_Name || 'unknown'}: no usable email to write`);
-            continue;
-          }
+          const resolvedEmail = email || normalizeEmail(existing?.email) || null;
 
-          const preferredUsername = safeString(record?.Emp_Name, resolvedEmail.split('@')[0]);
+          const preferredUsername = safeString(record?.Emp_Name, empCode || 'employee');
           const username = await ensureUniqueUsername(strapi, preferredUsername, existing?.id);
           const userData = buildUserData(record, roleId, username, resolvedEmail);
 
@@ -397,8 +393,6 @@ async function syncEmployeesFromHrms(strapi) {
             pageCreated += 1;
           }
 
-          // Sync path uses db.query directly (bypasses Content Manager middlewares),
-          // so ensure taxonomy entities here as well.
           try {
             await ensureDepartmentForUser(strapi, userData.department, userData.company);
           } catch (deptErr) {
