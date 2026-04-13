@@ -190,22 +190,44 @@ async function fetchExcelRows(strapi) {
   console.log('[vega-sync] access token obtained ✔');
 
   const encodedSheet = encodeURIComponent(worksheet);
-  const url = `https://graph.microsoft.com/v1.0/drives/${driveId}/items/${itemId}/workbook/worksheets/${encodedSheet}/usedRange(valuesOnly=true)?$select=values`;
+  const baseUrl = `https://graph.microsoft.com/v1.0/drives/${driveId}/items/${itemId}/workbook/worksheets/${encodedSheet}`;
+  const headers = { Authorization: `Bearer ${accessToken}`, Accept: 'application/json' };
 
-  const response = await fetch(url, {
-    headers: { Authorization: `Bearer ${accessToken}`, Accept: 'application/json' },
-  });
+  // Fetch cell values
+  const valuesRes = await fetch(`${baseUrl}/usedRange(valuesOnly=true)?$select=values`, { headers });
+  if (!valuesRes.ok) {
+    const text = await valuesRes.text().catch(() => '');
+    throw new Error(`[vega-sync] Graph API failed (${valuesRes.status}): ${text.slice(0, 300)}`);
+  }
+  const valuesData = await valuesRes.json();
+  const rows = valuesData?.values || [];
 
-  if (!response.ok) {
-    const text = await response.text().catch(() => '');
-    throw new Error(`[vega-sync] Graph API failed (${response.status}): ${text.slice(0, 300)}`);
+  // Fetch formulas to extract HYPERLINK() URLs from the Image column (S)
+  // Cells with hyperlinks have formula: =HYPERLINK("url","display text")
+  const formulaRes = await fetch(`${baseUrl}/usedRange?$select=formulas`, { headers });
+  let formulaRows = [];
+  if (formulaRes.ok) {
+    const formulaData = await formulaRes.json();
+    formulaRows = formulaData?.formulas || [];
   }
 
-  const data = await response.json();
-  const rows = data?.values || [];
+  // Merge: for each row, if the Image column (18) has a HYPERLINK formula, extract the URL
+  const hyperlinkRegex = /^=HYPERLINK\("([^"]+)"/i;
+  const merged = rows.map((row, i) => {
+    const formulaRow = formulaRows[i] || [];
+    const imageFormula = String(formulaRow[COL.IMAGE] || '');
+    const match = imageFormula.match(hyperlinkRegex);
+    if (match) {
+      // Replace the cell value with the actual URL from the hyperlink
+      const newRow = [...row];
+      newRow[COL.IMAGE] = match[1];
+      return newRow;
+    }
+    return row;
+  });
 
   // Skip header row only — sync all statuses
-  const filtered = rows.slice(1).filter((row) => {
+  const filtered = merged.slice(1).filter((row) => {
     return row.some((cell) => String(cell || '').trim() !== '');
   });
 
