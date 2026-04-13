@@ -1,4 +1,6 @@
-import React, { useEffect, useMemo, useState } from 'react';
+// @ts-nocheck
+
+import React, { useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { Layouts, getFetchClient } from '@strapi/strapi/admin';
 import { Box, Flex, Loader, SingleSelect, SingleSelectOption, Typography } from '@strapi/design-system';
@@ -7,25 +9,38 @@ import DataTable from '../../../../analytics-dashboard/admin/src/components/Data
 const PAGE_SIZE = 10;
 const COMPANIES = ['AIA', 'Vega'];
 
+function parseCompanyFromSearch(search) {
+  const p = new URLSearchParams(search);
+  const raw = p.get('company');
+  if (!raw) return COMPANIES[0];
+  const hit = COMPANIES.find((x) => x.toLowerCase() === String(raw).trim().toLowerCase());
+  return hit || COMPANIES[0];
+}
+
+function parseCourseIdFromSearch(search) {
+  const p = new URLSearchParams(search);
+  return String(p.get('courseId') || '').trim();
+}
+
 export default function FeedbackSubmissionsPage() {
   const { get } = getFetchClient();
   const location = useLocation();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [company, setCompany] = useState(() => {
-    const p = new URLSearchParams(location.search);
-    const c = p.get('company');
-    return COMPANIES.includes(c) ? c : COMPANIES[0];
-  });
-  const [courseId, setCourseId] = useState(() => {
-    const p = new URLSearchParams(location.search);
-    return p.get('courseId') || '';
-  });
+  const [company, setCompany] = useState(() => parseCompanyFromSearch(location.search));
+  const [courseId, setCourseId] = useState(() => parseCourseIdFromSearch(location.search));
   const [courses, setCourses] = useState([]);
   const [rows, setRows] = useState([]);
   const [columns, setColumns] = useState([]);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(PAGE_SIZE);
+
+  useLayoutEffect(() => {
+    const nextCompany = parseCompanyFromSearch(location.search);
+    const nextCourseId = parseCourseIdFromSearch(location.search);
+    setCompany((prev) => (prev !== nextCompany ? nextCompany : prev));
+    setCourseId((prev) => (prev !== nextCourseId ? nextCourseId : prev));
+  }, [location.search]);
 
   const fetchCourses = async (nextCompany) => {
     if (!nextCompany) {

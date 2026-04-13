@@ -1,9 +1,4 @@
-/**
- * My Notifications – list of admin notifications.
- * Quiz reattempt notifications are clickable and redirect to Quiz Reattempt Requests page.
- * Quiz submitted notifications redirect to Quiz Submission Admin page.
- * Feedback submitted notifications redirect to Feedback Submission Admin page.
- */
+
 // @ts-nocheck
 
 import React, { useState, useEffect, useRef } from "react";
@@ -21,6 +16,24 @@ const QUIZ_REATTEMPT_TYPES = [
 const PROFILE_EDIT_REQUEST_TYPE = "profile_edit_request";
 const QUIZ_SUBMITTED_TYPE = "quiz_submitted";
 const FEEDBACK_SUBMITTED_TYPE = "feedback_submitted";
+const SUBMISSION_ADMIN_COMPANIES = ["AIA", "Vega"];
+
+function canonicalSubmissionCompany(raw) {
+  if (raw == null || raw === "") return null;
+  const s = String(raw).trim().toLowerCase();
+  const hit = SUBMISSION_ADMIN_COMPANIES.find((x) => x.toLowerCase() === s);
+  return hit || null;
+}
+
+function submissionAdminSearchFromMeta(meta) {
+  const params = new URLSearchParams();
+  const company = canonicalSubmissionCompany(meta?.company);
+  if (company) params.set("company", company);
+  const courseId = String(meta?.courseDocumentId || meta?.courseId || "").trim();
+  if (courseId) params.set("courseId", courseId);
+  const qs = params.toString();
+  return qs ? `?${qs}` : "";
+}
 
 function formatDate(dateString) {
   if (!dateString) return "—";
@@ -117,11 +130,11 @@ export default function AdminNotificationsPage() {
       return;
     }
     if (type === QUIZ_SUBMITTED_TYPE) {
-      navigate("/plugins/quiz-submission-admin");
+      navigate(`/plugins/quiz-submission-admin${submissionAdminSearchFromMeta(notification?.meta)}`);
       return;
     }
     if (type === FEEDBACK_SUBMITTED_TYPE) {
-      navigate("/plugins/feedback-submission-admin");
+      navigate(`/plugins/feedback-submission-admin${submissionAdminSearchFromMeta(notification?.meta)}`);
     }
   };
 
