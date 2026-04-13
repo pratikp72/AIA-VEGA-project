@@ -131,12 +131,11 @@ async function uploadVegaPhoto(strapi, sharingUrl, username, accessToken) {
   const { url, headers } = await resolveSharePointDownloadUrl(raw, accessToken);
 
   const response = await fetch(url, { headers, redirect: 'follow' });
-  if (!response.ok) throw new Error(`Photo download failed: HTTP ${response.status} from ${url}`);
+  if (!response.ok) throw new Error(`Photo download failed: HTTP ${response.status}`);
 
   const contentType = response.headers.get('content-type') || 'image/jpeg';
-  // If SharePoint returns HTML (redirect to login page), bail out
   if (contentType.includes('text/html')) {
-    throw new Error(`Photo download returned HTML (not an image) — SharePoint may require re-auth`);
+    throw new Error(`Photo download returned HTML — SharePoint auth may have expired`);
   }
 
   const bytes = Buffer.from(await response.arrayBuffer());
@@ -144,34 +143,36 @@ async function uploadVegaPhoto(strapi, sharingUrl, username, accessToken) {
 
   const extMap = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp', 'image/gif': '.gif' };
   const ext = extMap[contentType.split(';')[0].trim()] || '.jpg';
-  const fileName = `vega_${safeString(username, 'employee')}_${Date.now()}${ext}`;
-  const tmpFilePath = path.join(os.tmpdir(), fileName);
-  await fs.writeFile(tmpFilePath, bytes);
+  const safeName = safeString(username, 'employee').replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 40);
+  const fileName = `vega_${safeName}_${Date.now()}${ext}`;
 
-  try {
-    // Strapi v5 upload service expects a file object with these exact fields
-    const fileInfo = {
+  // Write to Strapi's public uploads directory directly
+  const uploadsDir = path.join(process.cwd(), 'public', 'uploads');
+  await fs.mkdir(uploadsDir, { recursive: true });
+  const destPath = path.join(uploadsDir, fileName);
+  await fs.writeFile(destPath, bytes);
+
+  // Create the file record in Strapi's files table directly
+  const fileRecord = await strapi.db.query('plugin::upload.file').create({
+    data: {
       name: fileName,
       alternativeText: safeString(username, 'employee'),
       caption: '',
-      folder: null,
-    };
-    const fileData = {
-      path: tmpFilePath,
-      filepath: tmpFilePath,
-      name: fileName,
-      type: contentType,
-      size: bytes.length / 1000, // Strapi expects size in KB
-    };
-    const uploaded = await strapi.plugin('upload').service('upload').upload({
-      data: { fileInfo },
-      files: fileData,
-    });
-    if (!Array.isArray(uploaded) || !uploaded[0]?.id) throw new Error('Upload returned no metadata');
-    return uploaded[0].id;
-  } finally {
-    await fs.unlink(tmpFilePath).catch(() => {});
-  }
+      width: null,
+      height: null,
+      formats: null,
+      hash: fileName.replace(ext, ''),
+      ext,
+      mime: contentType.split(';')[0].trim(),
+      size: Math.round(bytes.length / 1000 * 100) / 100,
+      url: `/uploads/${fileName}`,
+      provider: 'local',
+      provider_metadata: null,
+      folderPath: '/',
+    },
+  });
+
+  return fileRecord?.id || null;
 }
 
 // ── MS Graph fetch ────────────────────────────────────────────────────────────
