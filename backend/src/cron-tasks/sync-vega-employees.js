@@ -158,6 +158,7 @@ async function uploadVegaPhoto(strapi, sharingUrl, username, accessToken) {
     };
     const fileData = {
       path: tmpFilePath,
+      filepath: tmpFilePath,
       name: fileName,
       type: contentType,
       size: bytes.length / 1000, // Strapi expects size in KB
