@@ -1,7 +1,4 @@
-/**
- * My Notifications – list of admin notifications.
- * Quiz reattempt notifications are clickable and redirect to Quiz Reattempt Requests page.
- */
+
 // @ts-nocheck
 
 import React, { useState, useEffect, useRef } from "react";
@@ -17,6 +14,26 @@ const QUIZ_REATTEMPT_TYPES = [
 ];
 
 const PROFILE_EDIT_REQUEST_TYPE = "profile_edit_request";
+const QUIZ_SUBMITTED_TYPE = "quiz_submitted";
+const FEEDBACK_SUBMITTED_TYPE = "feedback_submitted";
+const SUBMISSION_ADMIN_COMPANIES = ["AIA", "Vega"];
+
+function canonicalSubmissionCompany(raw) {
+  if (raw == null || raw === "") return null;
+  const s = String(raw).trim().toLowerCase();
+  const hit = SUBMISSION_ADMIN_COMPANIES.find((x) => x.toLowerCase() === s);
+  return hit || null;
+}
+
+function submissionAdminSearchFromMeta(meta) {
+  const params = new URLSearchParams();
+  const company = canonicalSubmissionCompany(meta?.company);
+  if (company) params.set("company", company);
+  const courseId = String(meta?.courseDocumentId || meta?.courseId || "").trim();
+  if (courseId) params.set("courseId", courseId);
+  const qs = params.toString();
+  return qs ? `?${qs}` : "";
+}
 
 function formatDate(dateString) {
   if (!dateString) return "—";
@@ -110,11 +127,21 @@ export default function AdminNotificationsPage() {
     }
     if (type === PROFILE_EDIT_REQUEST_TYPE) {
       navigate("/plugins/profile-edit-requests");
+      return;
+    }
+    if (type === QUIZ_SUBMITTED_TYPE) {
+      navigate(`/plugins/quiz-submission-admin${submissionAdminSearchFromMeta(notification?.meta)}`);
+      return;
+    }
+    if (type === FEEDBACK_SUBMITTED_TYPE) {
+      navigate(`/plugins/feedback-submission-admin${submissionAdminSearchFromMeta(notification?.meta)}`);
     }
   };
 
   const isQuizReattempt = (n) => QUIZ_REATTEMPT_TYPES.includes(n?.type || "");
   const isProfileEditRequest = (n) => getNormalizedType(n) === PROFILE_EDIT_REQUEST_TYPE;
+  const isQuizSubmitted = (n) => n?.type === QUIZ_SUBMITTED_TYPE;
+  const isFeedbackSubmitted = (n) => n?.type === FEEDBACK_SUBMITTED_TYPE;
 
   return (
     <Layouts.Root>
@@ -155,8 +182,8 @@ export default function AdminNotificationsPage() {
               borderStyle="solid"
             >
               {notifications.map((n) => {
-                const clickable = isQuizReattempt(n) || isProfileEditRequest(n);
-                const isQuizSubmit = n.type === "quiz_submitted";
+                const clickable = isQuizReattempt(n) || isProfileEditRequest(n) || isQuizSubmitted(n) || isFeedbackSubmitted(n);
+                const isQuizSubmit = n.type === QUIZ_SUBMITTED_TYPE;
                 const hasPassed = n.meta?.passed;
                 const score = n.meta?.score;
                 return (
@@ -198,6 +225,10 @@ export default function AdminNotificationsPage() {
                         <Typography variant="pi" textColor="primary600">
                           {isProfileEditRequest(n)
                             ? "Click to open Profile Edit Requests →"
+                            : isQuizSubmitted(n)
+                            ? "Click to open Quiz Submissions →"
+                            : isFeedbackSubmitted(n)
+                            ? "Click to open Feedback Submissions →"
                             : "Click to open Quiz Reattempt Requests →"}
                         </Typography>
                       )}

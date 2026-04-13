@@ -1,3 +1,4 @@
+// @ts-nocheck
 'use strict';
 
 /**
@@ -41,25 +42,36 @@ module.exports = (strapi) => {
       }
     }
 
-    // Resolve courseTitle from courseId (numeric id or documentId)
-    if (out.courseId != null && out.courseId !== '' && !out.courseTitle) {
+    // Resolve courseTitle, company, courseDocumentId from courseId (numeric id or documentId)
+    if (out.courseId != null && out.courseId !== '') {
       try {
         const courseId = Number(out.courseId);
         let courseRow = null;
         if (!Number.isNaN(courseId)) {
           courseRow = await strapi.db.query('api::course.course').findOne({
             where: { id: courseId },
-            select: ['id', 'title'],
+            populate: ['company'],
           });
         }
         if (!courseRow && String(out.courseId)) {
           courseRow = await strapi.db.query('api::course.course').findOne({
             where: { documentId: String(out.courseId) },
-            select: ['id', 'documentId', 'title'],
+            populate: ['company'],
           });
         }
-        if (courseRow?.title) {
+        if (courseRow?.title && !out.courseTitle) {
           out.courseTitle = courseRow.title;
+        }
+        if (courseRow?.documentId && !out.courseDocumentId) {
+          out.courseDocumentId = courseRow.documentId;
+        }
+        if (!out.company && courseRow) {
+          const companies = Array.isArray(courseRow.company)
+            ? courseRow.company
+            : courseRow.company
+              ? [courseRow.company]
+              : [];
+          if (companies[0]?.name) out.company = companies[0].name;
         }
       } catch (err) {
         strapi.log.warn('[notification] enrichMeta course error:', err?.message || err);

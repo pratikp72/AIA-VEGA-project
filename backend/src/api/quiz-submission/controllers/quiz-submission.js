@@ -444,6 +444,7 @@ module.exports = createCoreController(
                   },
                 },
               },
+              company: true,
             },
           }),
           strapi.db
@@ -664,7 +665,10 @@ module.exports = createCoreController(
             } catch {}
 
             const courseTitle = course?.title || null;
-            const meta = { courseId, userId, score, passed, courseTitle, userName };
+            const courseDocumentId = course?.documentId || null;
+            const companyCandidates = Array.isArray(course?.company) ? course.company : course?.company ? [course.company] : [];
+            const company = companyCandidates[0]?.name || null;
+            const meta = { courseId, userId, score, passed, courseTitle, userName, courseDocumentId, company };
             await notifUtil.sendNotification(
               "quiz_submitted",
               "Quiz Submitted",

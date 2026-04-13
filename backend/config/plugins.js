@@ -40,6 +40,22 @@ module.exports = ({ env }) => ({
   },
 
   /**
+   * Local plugin: Quiz Submission
+   */
+  'quiz-submission-admin': {
+    enabled: true,
+    resolve: './src/plugins/quiz-submission-admin',
+  },
+
+  /**
+   * Local plugin: Feedback Submission
+   */
+  'feedback-submission-admin': {
+    enabled: true,
+    resolve: './src/plugins/feedback-submission-admin',
+  },
+
+  /**
    * 📧 Email Provider (Nodemailer)
    */
   email: {

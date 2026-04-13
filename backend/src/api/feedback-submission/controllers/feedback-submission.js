@@ -132,7 +132,7 @@ module.exports = createCoreController("api::feedback-submission.feedback-submiss
       populatedEntry = await strapi.db.query("api::feedback-submission.feedback-submission").findOne({
         where: { id: entryId },
         populate: {
-          course: { select: ['id', 'documentId', 'title', 'publishedAt'] },
+          course: { select: ['id', 'documentId', 'title', 'publishedAt'], populate: { company: { select: ['name'] } } },
           users_permissions_user: { select: ['id', 'email', 'username'] },
         },
       });
@@ -145,7 +145,7 @@ module.exports = createCoreController("api::feedback-submission.feedback-submiss
         populatedEntry = await strapi.db.query("api::feedback-submission.feedback-submission").findOne({
           where: { id: entryId },
           populate: {
-            course: { select: ['id', 'documentId', 'title', 'publishedAt'] },
+            course: { select: ['id', 'documentId', 'title', 'publishedAt'], populate: { company: { select: ['name'] } } },
             users_permissions_user: { select: ['id', 'email', 'username'] },
           },
         });
@@ -164,7 +164,12 @@ module.exports = createCoreController("api::feedback-submission.feedback-submiss
     }
 
     try {
-      const meta = { courseId, userId };
+      const feedbackCourse = populatedEntry?.course || null;
+      const feedbackCourseDocumentId = feedbackCourse?.documentId || null;
+      const feedbackCourseTitle = feedbackCourse?.title || courseTitle || null;
+      const feedbackCompanyCandidates = Array.isArray(feedbackCourse?.company) ? feedbackCourse.company : feedbackCourse?.company ? [feedbackCourse.company] : [];
+      const feedbackCompany = feedbackCompanyCandidates[0]?.name || null;
+      const meta = { courseId, userId, courseDocumentId: feedbackCourseDocumentId, company: feedbackCompany, courseTitle: feedbackCourseTitle };
       // @ts-ignore
       const notifUtil = strapi.utils?.notification;
       if (notifUtil) {

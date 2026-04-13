@@ -1809,23 +1809,6 @@ module.exports = ({ strapi }) => {
     const realtimeByCoursePersonal = await this._getRealtimeLearningMinutesByCourse(params, userId);
     let courseProgressWithRealtime = this._mergeRealtimeMinutesIntoCourseRows(courseProgress, realtimeByCoursePersonal);
     courseProgressWithRealtime = this._applyRealtimeToSelectedCourseRows(courseProgressWithRealtime, params.courseId, realtimeByCoursePersonal);
-    const hasPersonalTimeRow = courseProgressWithRealtime.some((row) => (Number(row.timeSpentMinutes) || 0) > 0);
-    if (!hasPersonalTimeRow && realtimeByCoursePersonal.totalMinutes > 0) {
-      courseProgressWithRealtime = [{
-        courseId: 'realtime-unmapped',
-        courseTitle: 'Realtime Learning (Unmapped Course)',
-        courseCategory: 'Other',
-        status: 'In_progress',
-        percentage: 0,
-        timeSpentMinutes: realtimeByCoursePersonal.totalMinutes,
-        completedAt: null,
-        certificateIssued: false,
-        quizPassed: false,
-        feedbackGiven: false,
-        feedbackPending: false,
-        inactiveDays: 0,
-      }];
-    }
     const totalTimeFromRows = courseProgressWithRealtime.reduce((sum, row) => sum + (Number(row.timeSpentMinutes) || 0), 0);
     totalTimeSpent = Math.max(totalTimeSpent, Math.round(totalTimeFromRows * 10) / 10);
 
@@ -2578,10 +2561,9 @@ module.exports = ({ strapi }) => {
         if (!status) return;
         statusCounts[status] = (statusCounts[status] || 0) + 1;
       });
-      const showStatusCount = !params.courseId;
       const courseStatus = statusOrder
         .filter((s) => statusCounts[s] > 0)
-        .map((s) => (showStatusCount ? `${s}: ${statusCounts[s]}` : s))
+        .map((s) => s)
         .join(', ') || '—';
       const coursesEnrolled = progs.length;
       const totalTimeSpent = progs.reduce((sum, p) => {
@@ -2944,10 +2926,9 @@ module.exports = ({ strapi }) => {
         if (!status) return;
         statusCounts[status] = (statusCounts[status] || 0) + 1;
       });
-      const showStatusCount = !params.courseId;
       const courseStatus = statusOrder
         .filter((s) => statusCounts[s] > 0)
-        .map((s) => (showStatusCount ? `${s}: ${statusCounts[s]}` : s))
+        .map((s) => s)
         .join(', ') || '—';
       const coursesEnrolled = progs.length;
       const totalTimeSpent = progs.reduce((sum, p) => {
