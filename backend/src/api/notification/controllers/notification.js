@@ -71,6 +71,7 @@ module.exports = createCoreController('api::notification.notification', ({ strap
   /**
    * Get all notifications (read + unread) for the current user.
    * GET /api/notifications/me/all
+   * Query params: page (1-based), pageSize (default 20, max 100)
    */
   async myAll(ctx) {
     let user = ctx.state.user;
@@ -81,28 +82,40 @@ module.exports = createCoreController('api::notification.notification', ({ strap
       return ctx.unauthorized('Authentication required');
     }
 
-    const limit = Math.min(Number(ctx.query?.limit) || 100, 500);
-    const offsetRaw = Number(ctx.query?.offset);
-    const offset = Number.isFinite(offsetRaw) && offsetRaw > 0 ? offsetRaw : 0;
     const userId = Number(user.id);
     if (!Number.isFinite(userId)) {
       return ctx.unauthorized('Invalid user');
     }
 
-    const notifications = await strapi.db
-      .query('api::notification.notification')
-      .findMany({
-        where: { toUser: userId },
+    const pageSize = Math.min(Math.max(Number(ctx.query?.pageSize) || 20, 1), 100);
+    const page     = Math.max(Number(ctx.query?.page) || 1, 1);
+    const offset   = (page - 1) * pageSize;
+
+    const where = { toUser: userId };
+
+    const [notifications, total] = await Promise.all([
+      strapi.db.query('api::notification.notification').findMany({
+        where,
         orderBy: { createdAt: 'desc' },
-        limit,
+        limit: pageSize,
         offset,
-      });
+      }),
+      strapi.db.query('api::notification.notification').count({ where }),
+    ]);
 
     ctx.send({
       data: (notifications || []).map((n) => ({
         ...n,
         id: n.id ?? n.documentId,
       })),
+      meta: {
+        pagination: {
+          page,
+          pageSize,
+          total,
+          pageCount: Math.ceil(total / pageSize),
+        },
+      },
     });
   },
 

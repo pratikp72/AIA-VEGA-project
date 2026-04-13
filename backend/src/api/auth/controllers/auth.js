@@ -75,10 +75,11 @@ module.exports = {
             'username',
             'emp_code',
             'emp_id',
-            'is_first_login',   
+            'company',
+            'is_first_login',
             'blocked',
             'active',
-            'password',         
+            'password',
           ],
         })) ||
         (await userQuery.findOne({
@@ -89,7 +90,8 @@ module.exports = {
             'username',
             'emp_code',
             'emp_id',
-            'is_first_login',   
+            'company',
+            'is_first_login',
             'blocked',
             'active',
             'password',
