@@ -96,17 +96,23 @@ module.exports = createCoreController('api::gallery-item.gallery-item', ({ strap
     }
 
     // ---- 3) Populate relations/media so frontend has URLs & company name ----
-    const populate = ['image', 'video', 'company'];
+    const populate = {
+      image: true,
+      video: true,
+      company: true,
+    };
 
+    // entityService handles relation JOIN deduplication correctly (db.query with
+    // relation filters causes duplicate rows due to raw SQL JOINs).
     const [entities, total] = await Promise.all([
-      strapi.db.query('api::gallery-item.gallery-item').findMany({
-        where: filters,
-        orderBy: sort,
-        offset: (pageNum - 1) * pageSizeNum,
-        limit: pageSizeNum,
+      strapi.entityService.findMany('api::gallery-item.gallery-item', {
+        filters,
+        sort: /** @type {any} */ (sort),
         populate,
+        start: (pageNum - 1) * pageSizeNum,
+        limit: pageSizeNum,
       }),
-      strapi.db.query('api::gallery-item.gallery-item').count({ where: filters }),
+      strapi.entityService.count('api::gallery-item.gallery-item', { filters }),
     ]);
 
     const pageCount = Math.max(1, Math.ceil(total / pageSizeNum));
