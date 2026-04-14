@@ -8,12 +8,14 @@ const { createCoreController } = require('@strapi/strapi').factories;
 
 module.exports = createCoreController('api::gallery-item.gallery-item', ({ strapi }) => ({
   async findFiltered(ctx) {
-    const { company, type, sortBy, search, date } = ctx.query;
+    const { company, type, sortBy, search, date, page, pageSize } = ctx.query;
     const companyQuery = company != null ? String(company) : '';
     const typeQuery = type != null ? String(type) : '';
     const sortByQuery = sortBy != null ? String(sortBy) : '';
     const searchQuery = search != null ? String(search) : '';
     const dateQuery = date != null ? String(date) : '';
+    const pageNum = Math.max(1, Number(page) || 1);
+    const pageSizeNum = Math.max(1, Math.min(100, Number(pageSize) || 24));
 
     // ---- 1) Build filters ----
     /** @type {any} */
@@ -94,20 +96,31 @@ module.exports = createCoreController('api::gallery-item.gallery-item', ({ strap
     }
 
     // ---- 3) Populate relations/media so frontend has URLs & company name ----
-    const populate = {
-      image: true,
-      video: true,
-      company: true, // or { fields: ['name'] } if you want only name
+    const populate = ['image', 'video', 'company'];
+
+    const [entities, total] = await Promise.all([
+      strapi.db.query('api::gallery-item.gallery-item').findMany({
+        where: filters,
+        orderBy: sort,
+        offset: (pageNum - 1) * pageSizeNum,
+        limit: pageSizeNum,
+        populate,
+      }),
+      strapi.db.query('api::gallery-item.gallery-item').count({ where: filters }),
+    ]);
+
+    const pageCount = Math.max(1, Math.ceil(total / pageSizeNum));
+
+    ctx.body = {
+      data: entities,
+      meta: {
+        pagination: {
+          page: pageNum,
+          pageSize: pageSizeNum,
+          pageCount,
+          total,
+        },
+      },
     };
-
-    // ---- 4) Query Strapi ----
-    const entities = await strapi.entityService.findMany('api::gallery-item.gallery-item', {
-      filters,
-      sort: /** @type {any} */ (sort),
-      populate,
-    });
-
-    // ---- 5) Return in standard { data: [...] } format ----
-    ctx.body = { data: entities };
   },
 }));
