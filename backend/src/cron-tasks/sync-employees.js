@@ -5,7 +5,6 @@
 const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
-const crypto = require('node:crypto');
 const bcrypt = require('bcryptjs');
 const { getEmployeeApiToken } = require('./get-employee-api-token');
 const { ensureDepartmentForUser } = require('../utils/ensure-department-for-user');
@@ -164,20 +163,8 @@ async function getEmployeeRoleId(strapi) {
   return role.id;
 }
 
-async function ensureUniqueUsername(strapi, desiredUsername, currentUserId) {
-  const base = safeString(desiredUsername, 'employee').slice(0, 60);
-  // If updating existing user, just return the base — no need to check uniqueness
-  if (currentUserId) return base;
-
-  // For new users, do a single check only
-  const existing = await strapi.db.query(USER_UID).findOne({
-    where: { username: base },
-    select: ['id'],
-  });
-  if (!existing) return base;
-
-  // Collision — append random suffix once
-  return `${base.slice(0, 52)}_${crypto.randomBytes(3).toString('hex')}`;
+function buildUsername(desiredUsername) {
+  return safeString(desiredUsername, 'employee').slice(0, 60);
 }
 
 async function uploadPhotograph(strapi, photoUrl, username) {
@@ -346,8 +333,8 @@ async function syncEmployeesFromHrms(strapi) {
           const email = normalizeEmail(record?.Work_Email);
           const hasEmpCode = Boolean(empCode && empCode !== '-');
 
-          if (!hasEmpCode && !email) {
-            strapi.log.warn(`[employee-sync] Skipping ${record?.Emp_Code || record?.Emp_Name || 'unknown'}: missing both Emp_Code and Work_Email`);
+          if (!hasEmpCode) {
+            strapi.log.warn(`[employee-sync] Skipping ${record?.Emp_Code || record?.Emp_Name || 'unknown'}: missing Emp_Code`);
             continue;
           }
 
@@ -359,19 +346,10 @@ async function syncEmployeesFromHrms(strapi) {
             });
           }
 
-          // Fallback: match by email when emp_code lookup misses.
-          // Only match AIA users — don't steal a Vega user that shares the same email.
-          if (!existing && email) {
-            existing = await strapi.db.query(USER_UID).findOne({
-              where: { email, company: 'AIA' },
-              select: ['id', 'username', 'email'],
-            });
-          }
-
           const resolvedEmail = email || normalizeEmail(existing?.email) || null;
 
           const preferredUsername = safeString(record?.Emp_Name, empCode || 'employee');
-          const username = await ensureUniqueUsername(strapi, preferredUsername, existing?.id);
+          const username = buildUsername(preferredUsername);
           const userData = buildUserData(record, roleId, username, resolvedEmail);
 
           const photoUrl = resolvePhotoUrl(record?.Photograph, baseUrl);

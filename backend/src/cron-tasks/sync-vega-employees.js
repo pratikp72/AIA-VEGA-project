@@ -1,9 +1,9 @@
+// @ts-nocheck
 'use strict';
 
 const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
-const crypto = require('node:crypto');
 const bcrypt = require('bcryptjs');
 const { getAccessToken } = require('../utils/vega-graph-auth');
 const { ensureDepartmentForUser } = require('../utils/ensure-department-for-user');
@@ -51,6 +51,10 @@ function safeString(value, fallback = '-') {
 function normalizeEmail(value) {
   const email = String(value || '').trim().toLowerCase();
   return email || null;
+}
+
+function isLegacySyntheticEmpId(value) {
+  return /^emp\d+$/i.test(String(value || '').trim());
 }
 
 /**
@@ -101,12 +105,8 @@ async function getEmployeeRoleId(strapi) {
   return role.id;
 }
 
-async function ensureUniqueUsername(strapi, desired, currentUserId) {
-  const base = safeString(desired, 'vega_employee').slice(0, 60);
-  if (currentUserId) return base;
-  const existing = await strapi.db.query(USER_UID).findOne({ where: { username: base }, select: ['id'] });
-  if (!existing) return base;
-  return `${base.slice(0, 52)}_${crypto.randomBytes(3).toString('hex')}`;
+function buildUsername(desired) {
+  return safeString(desired, 'vega_employee').slice(0, 60);
 }
 
 // ── Photo helpers ─────────────────────────────────────────────────────────────
@@ -272,9 +272,39 @@ async function syncVegaEmployees(strapi) {
         const email = normalizeEmail(rawEmail);
         const hasEmpId = Boolean(empId && empId !== '-');
 
-        if (!hasEmpId && !email) {
-          strapi.log.warn(`[vega-sync] Skipping ${row[COL.USER_ID] || row[COL.NAME] || 'unknown'}: missing both emp_id and email`);
-          console.log(`[vega-sync]   SKIPPED  ${String(row[COL.USER_ID] || '').padEnd(8)} | no emp_id/email | ${row[COL.NAME] || 'unknown'}`);
+        if (!hasEmpId) {
+          const rawName = String(row[COL.NAME] || '').trim();
+          let legacyUser = null;
+
+          if (email) {
+            legacyUser = await strapi.db.query(USER_UID).findOne({
+              where: { company: 'Vega', email },
+              select: ['id', 'emp_id', 'username', 'email'],
+            });
+          }
+
+          if (!legacyUser && rawName) {
+            legacyUser = await strapi.db.query(USER_UID).findOne({
+              where: { company: 'Vega', username: rawName },
+              select: ['id', 'emp_id', 'username', 'email'],
+            });
+          }
+
+          if (legacyUser?.id && isLegacySyntheticEmpId(legacyUser.emp_id)) {
+            await strapi.db.query(USER_UID).update({
+              where: { id: legacyUser.id },
+              data: { emp_id: '-' },
+            });
+            strapi.log.info(
+              `[vega-sync] Cleared legacy synthetic emp_id (${legacyUser.emp_id}) for ${legacyUser.username || rawName || legacyUser.email || 'unknown'}`
+            );
+            console.log(
+              `[vega-sync]   FIXED    ${String(legacyUser.emp_id).padEnd(8)} | cleared synthetic emp_id for ${legacyUser.username || rawName || 'unknown'}`
+            );
+          }
+
+          strapi.log.warn(`[vega-sync] Skipping ${row[COL.USER_ID] || row[COL.NAME] || 'unknown'}: missing emp_id`);
+          console.log(`[vega-sync]   SKIPPED  ${String(row[COL.USER_ID] || '').padEnd(8)} | no emp_id | ${row[COL.NAME] || 'unknown'}`);
           continue;
         }
 
@@ -282,15 +312,6 @@ async function syncVegaEmployees(strapi) {
         if (hasEmpId) {
           existing = await strapi.db.query(USER_UID).findOne({
             where: { emp_id: empId },
-            select: ['id', 'username', 'email'],
-          });
-        }
-
-        // Fallback: match by email when emp_id lookup misses.
-        // Only match Vega users — don't steal an AIA user that shares the same email.
-        if (!existing && email) {
-          existing = await strapi.db.query(USER_UID).findOne({
-            where: { email, company: 'Vega' },
             select: ['id', 'username', 'email'],
           });
         }
@@ -303,14 +324,8 @@ async function syncVegaEmployees(strapi) {
         );
         const finalEmail = isFakePlaceholder ? null : resolvedEmail;
 
-        if (!finalEmail && !hasEmpId) {
-          strapi.log.warn(`[vega-sync] Skipping ${row[COL.USER_ID] || row[COL.NAME] || 'unknown'}: no usable email or emp_id`);
-          console.log(`[vega-sync]   SKIPPED  ${String(row[COL.USER_ID] || '').padEnd(8)} | no emp_id/email | ${row[COL.NAME] || 'unknown'}`);
-          continue;
-        }
-
         const name = safeString(row[COL.NAME], finalEmail ? finalEmail.split('@')[0] : safeString(row[COL.USER_ID], 'vega_employee'));
-        const username = await ensureUniqueUsername(strapi, name, existing?.id);
+        const username = buildUsername(name);
 
         const statusRaw = String(row[COL.STATUS] || '').trim().toUpperCase();
         const isActive = statusRaw === 'ACTIVE';
