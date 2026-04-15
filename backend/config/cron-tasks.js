@@ -1,3 +1,4 @@
+// @ts-nocheck
 'use strict';
 
 const { syncEmployeesFromHrms } = require('../src/cron-tasks/sync-employees');
@@ -11,7 +12,7 @@ module.exports = {
       await syncEmployeesFromHrms(strapi);
     },
     options: {
-      rule: '*/10 * * * *',
+      rule: '0 0 14 * * *',
     },
   },
 
@@ -21,7 +22,7 @@ module.exports = {
       await syncVegaEmployees(strapi);
     },
     options: {
-      rule: '*/10 * * * *',
+      rule: '0 0 14 * * *',
     },
   },
 
@@ -32,7 +33,7 @@ module.exports = {
       await syncAiaEmployeePhotos(strapi);
     },
     options: {
-      rule: '0 2 * * *',
+      rule: '0 0 14 * * *',
     },
   },
 };

@@ -1,3 +1,4 @@
+// @ts-nocheck
 'use strict';
 
 /**
@@ -77,10 +78,15 @@ module.exports = ({ strapi }) => {
         const data = await service.getLearningGlobal(params) || emptyLearning();
         try {
           data.quiz = await service.getQuizGlobal(params);
-          if (data.kpis) data.kpis.avgQuizScore = data.quiz?.avgScore ?? 0;
+          // Keep avgQuizScore from getLearningGlobal(), which already applies all
+          // learning-global filters (company/department/location/category/etc.).
+          // getQuizGlobal() currently supports a narrower filter set.
+          if (data.kpis && (data.kpis.avgQuizScore == null || Number.isNaN(Number(data.kpis.avgQuizScore)))) {
+            data.kpis.avgQuizScore = data.quiz?.avgScore ?? 0;
+          }
         } catch (quizError) {
           data.quiz = { passRate: 0, avgScore: 0, totalAttempts: 0, passed: 0, failed: 0 };
-          if (data.kpis) data.kpis.avgQuizScore = 0;
+          if (data.kpis && data.kpis.avgQuizScore == null) data.kpis.avgQuizScore = 0;
         }
         try {
           const liveParams = {
