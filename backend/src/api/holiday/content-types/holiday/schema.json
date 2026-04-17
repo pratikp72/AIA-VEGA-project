@@ -22,9 +22,12 @@
     },
     "active": {
       "type": "enumeration",
-      "enum": ["published", "unpublished"],
+      "required": true,
       "default": "published",
-      "required": true
+      "enum": [
+        "published",
+        "unpublished"
+      ]
     },
     "companies": {
       "type": "relation",
@@ -36,7 +39,25 @@
       "type": "relation",
       "relation": "manyToMany",
       "target": "api::work-location.work-location",
+      "conditions": {
+        "visible": {
+          "==": [
+            {
+              "var": "holiday_for"
+            },
+            "Individual location"
+          ]
+        }
+      },
       "inversedBy": "holidays"
+    },
+    "holiday_for": {
+      "type": "enumeration",
+      "required": true,
+      "enum": [
+        "All location",
+        "Individual location"
+      ]
     }
   }
 }
