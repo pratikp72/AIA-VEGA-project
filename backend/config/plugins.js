@@ -66,8 +66,6 @@ module.exports = ({ env }) => ({
         host: env('SMTP_HOST', 'smtp.gmail.com'),
         port: env.int('SMTP_PORT', 587),
         secure: env.bool('SMTP_SECURE', false),
-        requireTLS: true,
-        tls: { rejectUnauthorized: true },
         ...(env('SMTP_USERNAME') && env('SMTP_PASSWORD')
           ? {
               auth: {

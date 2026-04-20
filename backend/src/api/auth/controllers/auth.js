@@ -20,8 +20,6 @@ function createSmtpTransporter() {
     host,
     port,
     secure,
-    requireTLS: !secure,
-    tls: { rejectUnauthorized: true },
   };
 
   if (username && password) {
