@@ -2,6 +2,75 @@
 'use strict';
 
 const jwt = require('jsonwebtoken');
+const crypto = require('node:crypto');
+const nodemailer = require('nodemailer');
+
+function createSmtpTransporter() {
+  const host = String(process.env.SMTP_HOST || '').trim();
+  const port = Number(process.env.SMTP_PORT || 587);
+  const secure = String(process.env.SMTP_SECURE || 'false').trim().toLowerCase() === 'true';
+  const username = String(process.env.SMTP_USERNAME || '').trim();
+  const password = String(process.env.SMTP_PASSWORD || '').trim();
+
+  if (!host) {
+    throw new Error('SMTP_HOST is not configured');
+  }
+
+  const transporterConfig = {
+    host,
+    port,
+    secure,
+    requireTLS: !secure,
+    tls: { rejectUnauthorized: true },
+  };
+
+  if (username && password) {
+    transporterConfig.auth = { user: username, pass: password };
+  }
+
+  return nodemailer.createTransport(transporterConfig);
+}
+
+function buildResetPasswordUrl(resetCode) {
+  const base = String(
+    process.env.FRONTEND_RESET_PASSWORD_URL ||
+      process.env.FRONTEND_URL ||
+      process.env.CLIENT_URL ||
+      process.env.APP_URL ||
+      'http://localhost:3000/reset-password'
+  ).trim();
+  const separator = base.includes('?') ? '&' : '?';
+  return `${base}${separator}code=${encodeURIComponent(resetCode)}`;
+}
+
+async function sendForgotPasswordEmail({ to, username, resetCode }) {
+  const transporter = createSmtpTransporter();
+  const fromAddress =
+    String(process.env.EMAIL_FROM || '').trim() ||
+    String(process.env.SMTP_USERNAME || '').trim() ||
+    'noreply@example.com';
+  const replyToAddress = String(process.env.EMAIL_REPLY_TO || '').trim() || fromAddress;
+  const resetUrl = buildResetPasswordUrl(resetCode);
+  const safeName = String(username || '').trim() || 'User';
+
+  await transporter.sendMail({
+    from: fromAddress,
+    to,
+    replyTo: replyToAddress,
+    subject: 'Reset your password',
+    text:
+      `Hello ${safeName},\n\n` +
+      `We received a request to reset your password.\n` +
+      `Click the link below to set a new password:\n\n` +
+      `${resetUrl}\n\n` +
+      `If you did not request this, please ignore this email.\n`,
+    html:
+      `<p>Hello ${safeName},</p>` +
+      `<p>We received a request to reset your password.</p>` +
+      `<p><a href="${resetUrl}">Click here to set a new password</a></p>` +
+      `<p>If you did not request this, please ignore this email.</p>`,
+  });
+}
 
 /**
  * Helper: extracts and verifies the frontend JWT from the Authorization header.
@@ -52,6 +121,116 @@ async function findAdminUserByEmail(email) {
 }
 
 module.exports = {
+  async forgotPassword(ctx) {
+    try {
+      const identifier = String(ctx.request?.body?.identifier || '').trim();
+      if (!identifier) {
+        return ctx.badRequest('identifier is required');
+      }
+
+      const userQuery = strapi.db.query('plugin::users-permissions.user');
+      const user =
+        (await userQuery.findOne({
+          where: { emp_code: identifier },
+          select: ['id', 'email', 'username', 'active', 'blocked'],
+        })) ||
+        (await userQuery.findOne({
+          where: { emp_id: identifier },
+          select: ['id', 'email', 'username', 'active', 'blocked'],
+        })) ||
+        (await userQuery.findOne({
+          where: { email: { $eqi: identifier } },
+          select: ['id', 'email', 'username', 'active', 'blocked'],
+        }));
+
+      if (!user || user.active === false || user.blocked === true) {
+        return ctx.send({
+          success: true,
+          hasEmail: false,
+          emailSent: false,
+          message: 'If user has no email, contact admin to set password.',
+        });
+      }
+
+      const email = String(user.email || '').trim();
+      if (!email) {
+        return ctx.send({
+          success: true,
+          hasEmail: false,
+          emailSent: false,
+          message: 'User has no email. Contact admin to set password.',
+        });
+      }
+
+      const resetCode = crypto.randomBytes(32).toString('hex');
+
+      await strapi.entityService.update('plugin::users-permissions.user', user.id, {
+        data: {
+          resetPasswordToken: resetCode,
+        },
+      });
+
+      await sendForgotPasswordEmail({
+        to: email,
+        username: user.username,
+        resetCode,
+      });
+
+      return ctx.send({
+        success: true,
+        hasEmail: true,
+        emailSent: true,
+        message: 'Password reset email sent.',
+      });
+    } catch (err) {
+      strapi.log.error('forgotPassword error:', err);
+      return ctx.internalServerError('Unable to process forgot password request');
+    }
+  },
+
+  async resetForgotPassword(ctx) {
+    try {
+      const code = String(ctx.request?.body?.code || '').trim();
+      const password = String(ctx.request?.body?.password || '');
+      const passwordConfirmation = String(ctx.request?.body?.passwordConfirmation || '');
+
+      if (!code || !password || !passwordConfirmation) {
+        return ctx.badRequest('code, password, and passwordConfirmation are required');
+      }
+
+      if (password.length < 6) {
+        return ctx.badRequest('Password must be at least 6 characters');
+      }
+
+      if (password !== passwordConfirmation) {
+        return ctx.badRequest('Passwords do not match');
+      }
+
+      const user = await strapi.db.query('plugin::users-permissions.user').findOne({
+        where: { resetPasswordToken: code },
+        select: ['id'],
+      });
+
+      if (!user) {
+        return ctx.badRequest('Invalid or expired reset code');
+      }
+
+      await strapi.entityService.update('plugin::users-permissions.user', user.id, {
+        data: {
+          password,
+          resetPasswordToken: null,
+          is_first_login: false,
+        },
+        state: { isResetFlow: true },
+      });
+
+      return ctx.send({ success: true, message: 'Password reset successfully' });
+    } catch (err) {
+      strapi.log.error('resetForgotPassword error:', err);
+      return ctx.internalServerError('Unable to reset password');
+    }
+  },
+
   async login(ctx) {
     try {
       const body = ctx.request?.body || {};

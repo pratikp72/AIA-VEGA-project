@@ -4,6 +4,26 @@ module.exports = {
   routes: [
     {
       method: 'POST',
+      path: '/auth/forgot-password',
+      handler: 'auth.forgotPassword',
+      config: {
+        auth: false,
+        policies: [],
+        middlewares: [],
+      },
+    },
+    {
+      method: 'POST',
+      path: '/auth/reset-forgot-password',
+      handler: 'auth.resetForgotPassword',
+      config: {
+        auth: false,
+        policies: [],
+        middlewares: [],
+      },
+    },
+    {
+      method: 'POST',
       path: '/auth/login',
       handler: 'auth.login',
       config: {
