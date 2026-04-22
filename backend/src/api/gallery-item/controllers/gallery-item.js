@@ -8,28 +8,25 @@ const { createCoreController } = require('@strapi/strapi').factories;
 
 module.exports = createCoreController('api::gallery-item.gallery-item', ({ strapi }) => ({
   async findFiltered(ctx) {
-    const { company, type, sortBy, search, date } = ctx.query;
+    const { company, type, sortBy, search, date, page, pageSize } = ctx.query;
     const companyQuery = company != null ? String(company) : '';
     const typeQuery = type != null ? String(type) : '';
     const sortByQuery = sortBy != null ? String(sortBy) : '';
     const searchQuery = search != null ? String(search) : '';
     const dateQuery = date != null ? String(date) : '';
+    const pageNum = Math.max(1, Number(page) || 1);
+    const pageSizeNum = Math.max(1, Math.min(100, Number(pageSize) || 24));
 
-    // ---- 1) Build filters ----
+    // ---- 1) Build where (same pattern as form-template/important-link) ----
     /** @type {any} */
-    const filters = {};
+    const where = {
+      publishedAt: { $notNull: true },
+    };
 
-    // Company filter:
-    // - If company is a relation: filter by related company.name (case-insensitive)
-    // - If company is a simple field: filter by that field
     if (companyQuery) {
-      filters.$and = filters.$and || [];
-      filters.$and.push({
-        $or: [
-          { company: { name: { $eqi: companyQuery } } }, // relation with name
-          { company: { $eqi: companyQuery } }, // simple string field
-        ],
-      });
+      const upper = companyQuery.trim().toUpperCase();
+      const normalizedCompany = upper === 'VEGA' ? 'Vega' : upper === 'AIA' ? 'AIA' : companyQuery.trim();
+      where.company = { name: normalizedCompany };
     }
 
     // Type filter: 'image' | 'video' from frontend
@@ -37,38 +34,29 @@ module.exports = createCoreController('api::gallery-item.gallery-item', ({ strap
     if (typeQuery) {
       const t = typeQuery.toLowerCase();
       const value = t === 'video' ? 'Video' : 'Image';
-      filters.$and = filters.$and || [];
-      filters.$and.push({
-        media_type: { $eqi: value },
-      });
+      where.media_type = value;
     }
 
     // Search filter: title and description (case-insensitive contains)
     if (searchQuery && searchQuery.trim()) {
       const s = searchQuery.trim();
-      filters.$and = filters.$and || [];
-      filters.$and.push({
-        $or: [
-          { title: { $containsi: s } },
-          { description: { $containsi: s } },
-        ],
-      });
+      where.$or = [
+        { title: { $containsi: s } },
+        { description: { $containsi: s } },
+      ];
     }
 
-    // Date filter: exact day match on `createdAt` field only.
+    // Date filter: exact day match on `date` field.
     if (dateQuery) {
-      const dayStart = new Date(dateQuery);
-      dayStart.setHours(0, 0, 0, 0);
-      const dayEnd = new Date(dateQuery);
-      dayEnd.setHours(23, 59, 59, 999);
-
-      filters.$and = filters.$and || [];
-      filters.$and.push({
-        createdAt: {
-          $gte: dayStart.toISOString(),
-          $lte: dayEnd.toISOString(),
-        },
-      });
+      const start = new Date(`${dateQuery}T00:00:00.000Z`);
+      if (!Number.isNaN(start.getTime())) {
+        const end = new Date(start);
+        end.setUTCDate(end.getUTCDate() + 1);
+        where.date = {
+          $gte: start.toISOString().slice(0, 10),
+          $lt: end.toISOString().slice(0, 10),
+        };
+      }
     }
 
     // ---- 2) Build sort ----
@@ -97,17 +85,32 @@ module.exports = createCoreController('api::gallery-item.gallery-item', ({ strap
     const populate = {
       image: true,
       video: true,
-      company: true, // or { fields: ['name'] } if you want only name
+      company: true,
     };
 
-    // ---- 4) Query Strapi ----
-    const entities = await strapi.entityService.findMany('api::gallery-item.gallery-item', {
-      filters,
-      sort: /** @type {any} */ (sort),
-      populate,
-    });
+    const [entities, total] = await Promise.all([
+      strapi.db.query('api::gallery-item.gallery-item').findMany({
+        where,
+        orderBy: /** @type {any} */ (sort),
+        populate,
+        offset: (pageNum - 1) * pageSizeNum,
+        limit: pageSizeNum,
+      }),
+      strapi.db.query('api::gallery-item.gallery-item').count({ where }),
+    ]);
 
-    // ---- 5) Return in standard { data: [...] } format ----
-    ctx.body = { data: entities };
+    const pageCount = Math.max(1, Math.ceil(total / pageSizeNum));
+
+    ctx.body = {
+      data: entities,
+      meta: {
+        pagination: {
+          page: pageNum,
+          pageSize: pageSizeNum,
+          pageCount,
+          total,
+        },
+      },
+    };
   },
 }));

@@ -1,3 +1,5 @@
+// @ts-nocheck
+
 'use strict';
 
 /**
@@ -120,7 +122,11 @@ module.exports = ({ strapi }) => {
       const numericId = parseInt(search, 10);
       const isNumericSearch = !Number.isNaN(numericId) && String(numericId) === search;
       const searchOr = isNumericSearch
-        ? [{ id: numericId }, { emp_code: search }, { emp_id: search }]
+        ? [
+            { id: numericId },
+            { emp_code: { $containsi: search } },  // containsi handles leading zeros: "8918" matches "00008918"
+            { emp_id: { $containsi: search } },
+          ]
         : [
             { email: { $containsi: search } },
             { username: { $containsi: search } },
@@ -204,11 +210,13 @@ module.exports = ({ strapi }) => {
         joining_date: u.joining_date ?? null,
         exit_date: u.exit_date ?? null,
         date_of_birth: u.date_of_birth ?? null,
+        exit_date: u.exit_date ?? null,
         description: u.description ?? null,
         branch: u.branch ?? '—',
         contact_no: u.contact_no ?? '—',
         active: u.active !== false,
         photograph: mapPhotograph(u.photograph),
+        emp_photo_file: u.emp_photo_file ?? null,
       }));
       return {
         items,

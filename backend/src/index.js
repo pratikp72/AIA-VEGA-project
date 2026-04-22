@@ -1,12 +1,17 @@
 // @ts-nocheck
 'use strict';
 
+const { errors } = require('@strapi/utils');
 const USER_UID = 'plugin::users-permissions.user';
 const COURSE_UID = 'api::course.course';
+const COURSE_ASSIGNMENT_UID = 'api::course-assignment.course-assignment';
 const { ensureDepartmentForUser } = require('./utils/ensure-department-for-user');
 const { syncCourseLanguageComponents } = require('./utils/sync-course-language-components');
 const { autoGenerateComponentIds } = require('./utils/auto-generate-component-ids');
 const { syncVegaEmployees } = require('./cron-tasks/sync-vega-employees');
+const { populateAnswerCorrectField } = require('./utils/quiz-submission-correctness');
+const { cleanupFakeEmails } = require('./cron-tasks/cleanup-fake-emails');
+const { syncAiaEmployeePhotos } = require('./cron-tasks/sync-aia-employee-photos');
 
 function isEmailEnabled() {
   const raw = String(process.env.EMAIL_ENABLED || 'false').trim().toLowerCase();
@@ -45,6 +50,262 @@ function suppressEmailServiceIfDisabled(strapi) {
   strapi.log.info('[email] EMAIL_ENABLED=false; all outgoing emails are suppressed.');
 }
 
+const COURSE_CLONE_ASSIGNMENTS_LOG = '[course-clone-assignments]';
+
+function summarizeCourseAssignmentsPayload(raw) {
+  if (raw == null) return 'absent';
+  if (Array.isArray(raw)) return `array(len=${raw.length})`;
+  if (typeof raw === 'object') {
+    const n = (a) => (Array.isArray(a) ? a.length : 0);
+    return `connect=${n(raw.connect)} set=${n(raw.set)} disconnect=${n(raw.disconnect)}`;
+  }
+  return typeof raw;
+}
+
+function isContentManagerCourseCloneLikeRequest(strapi) {
+  const ctx = strapi.requestContext?.get?.();
+  if (!ctx?.request) return false;
+
+  const req = ctx.request;
+  const url = String(req.url || req.originalUrl || req.path || '');
+  const referer = String(
+    (typeof req.header?.referer === 'string' && req.header.referer) ||
+      req.headers?.referer ||
+      (typeof ctx.get === 'function' ? ctx.get('referer') : '') ||
+      ''
+  );
+  const combined = `${url} ${referer}`;
+  if (/\/clone\//i.test(combined)) return true;
+  if (/\/actions\/duplicate/i.test(combined)) return true;
+  return false;
+}
+
+/** Same idea as admin AutoFillComponentIds: duplicated entries default to a “copy” title. */
+function titleLooksLikeDuplicatedCourse(rawTitle) {
+  const raw = String(rawTitle ?? '').trim();
+  if (!raw) return false;
+  const s = raw.toLowerCase();
+  if (s.startsWith('copy of ')) return true;
+  if (s.includes('(copy')) return true;
+  if (/\bduplicate\b/.test(s)) return true;
+  return false;
+}
+
+/**
+ * URL/title signals (admin may rename “Copy of…” to e.g. “test course3” before save).
+ */
+function shouldStripCourseAssignmentsFromUrlOrTitle(strapi, data) {
+  if (!data || typeof data !== 'object') return false;
+  if (isContentManagerCourseCloneLikeRequest(strapi)) return true;
+  if (titleLooksLikeDuplicatedCourse(data.title)) return true;
+  return false;
+}
+
+/** Set by custom admin fetch when user is saving a duplicated course (clone URL / duplicate modal). */
+function vegaDuplicateCourseHeaderPresent(strapi) {
+  const ctx = strapi.requestContext?.get?.();
+  if (!ctx?.request) return false;
+  const h = ctx.request.header || ctx.request.headers || {};
+  const v = h['x-vega-duplicate-course'] ?? h['X-Vega-Duplicate-Course'];
+  const s = String(v ?? '').trim().toLowerCase();
+  return s === '1' || s === 'true' || s === 'yes';
+}
+
+async function assignmentHasLinksInJoinTable(strapi, assignmentDbId) {
+  const id = Number(assignmentDbId);
+  if (!Number.isFinite(id)) return null;
+  try {
+    const knex = strapi.db.connection;
+    const table = 'courses_course_assignments_lnk';
+    const hasTable = await knex.schema.hasTable(table);
+    if (!hasTable) return null;
+    const row = await knex(table).where({ course_assignment_id: id }).first();
+    return row != null;
+  } catch (e) {
+    strapi.log.debug(
+      `${COURSE_CLONE_ASSIGNMENTS_LOG} assignmentHasLinksInJoinTable failed assignmentDbId=${id}`,
+      e?.message || e
+    );
+    return null;
+  }
+}
+
+function extractCourseAssignmentIdsFromRelationPayload(raw) {
+  const out = [];
+  const seen = new Set();
+  const add = (v) => {
+    if (v == null || v === '') return;
+    if (typeof v === 'number' && Number.isFinite(v)) {
+      const k = `n:${v}`;
+      if (!seen.has(k)) {
+        seen.add(k);
+        out.push(v);
+      }
+      return;
+    }
+    if (typeof v === 'string') {
+      const t = v.trim();
+      if (!t) return;
+      const k = `s:${t}`;
+      if (seen.has(k)) return;
+      seen.add(k);
+      out.push(/^\d+$/.test(t) ? Number(t) : t);
+    }
+  };
+  const visit = (item) => {
+    if (item == null) return;
+    if (typeof item === 'number' || typeof item === 'string') {
+      add(item);
+      return;
+    }
+    if (typeof item === 'object') {
+      if (item.id != null) add(item.id);
+      if (item.documentId != null) add(String(item.documentId));
+    }
+  };
+  if (Array.isArray(raw)) {
+    raw.forEach(visit);
+    return out;
+  }
+  if (typeof raw === 'object') {
+    const dataEntries = Array.isArray(raw.data) ? raw.data : [];
+    [].concat(raw.connect || [], raw.set || [], dataEntries).forEach(visit);
+  }
+  return out;
+}
+
+function assignmentRowMatchesPayloadId(row, id) {
+  if (!row) return false;
+  if (typeof id === 'number' && Number(row.id) === id) return true;
+  if (row.documentId != null && String(row.documentId) === String(id)) return true;
+  return false;
+}
+
+function assignmentHasLinkedCourse(row) {
+  const courses = row?.courses;
+  if (Array.isArray(courses)) return courses.length > 0;
+  return courses != null && typeof courses === 'object' && courses.id != null;
+}
+
+/**
+ * Duplicate saves the same relation connects as the source: those assignment rows already link to at least one course.
+ * Renamed titles (“test course3”) still match this. Rare side effect: create that only connects brand-new assignments
+ * with no course yet is not stripped; create that intentionally joins an existing shared assignment (already has courses)
+ * is stripped — use a follow-up update to link if you rely on that edge case.
+ */
+async function payloadLooksLikeDuplicatedCourseAssignments(strapi, data) {
+  const raw = data?.course_assignments;
+  if (raw == null) return false;
+  const ids = extractCourseAssignmentIdsFromRelationPayload(raw);
+  if (ids.length === 0) return false;
+
+  const numericIds = ids.filter((x) => typeof x === 'number');
+  const docIds = ids.filter((x) => typeof x === 'string' && !/^\d+$/.test(String(x)));
+  const fromStrings = ids.filter((x) => typeof x === 'string' && /^\d+$/.test(String(x))).map((x) => Number(x));
+  const allNumeric = [...new Set([...numericIds, ...fromStrings].filter((n) => Number.isFinite(n)))];
+
+  const whereClauses = [];
+  if (allNumeric.length > 0) whereClauses.push({ id: { $in: allNumeric } });
+  if (docIds.length > 0) whereClauses.push({ documentId: { $in: docIds } });
+  if (whereClauses.length === 0) return false;
+
+  const where = whereClauses.length === 1 ? whereClauses[0] : { $or: whereClauses };
+
+  const assignments = await strapi.db.query(COURSE_ASSIGNMENT_UID).findMany({
+    where,
+    populate: { courses: { select: ['id'] } },
+    limit: Math.max(30, ids.length + 10),
+  });
+
+  if (assignments.length === 0) return false;
+
+  for (const id of ids) {
+    const row = assignments.find((a) => assignmentRowMatchesPayloadId(a, id));
+    if (!row) {
+      strapi.log.debug(
+        `${COURSE_CLONE_ASSIGNMENTS_LOG} payloadLooksLikeDuplicatedCourseAssignments: unresolved assignment id in payload, skip infer`
+      );
+      return false;
+    }
+    let linked = assignmentHasLinkedCourse(row);
+    if (!linked) {
+      const jt = await assignmentHasLinksInJoinTable(strapi, row.id);
+      if (jt === true) linked = true;
+      else if (jt === false) return false;
+      else return false;
+    }
+  }
+  return true;
+}
+
+async function stripCourseAssignmentsIfDuplicateLike(strapi, data, sourceLabel, action = 'create') {
+  if (!data || typeof data !== 'object' || data.course_assignments == null) {
+    return { stripped: false };
+  }
+
+  try {
+    const summary = summarizeCourseAssignmentsPayload(data.course_assignments);
+    const cloneUrlMatch = isContentManagerCourseCloneLikeRequest(strapi);
+    const duplicateTitle = titleLooksLikeDuplicatedCourse(data.title);
+    let trace = 'no-request-context';
+    const ctx = strapi.requestContext?.get?.();
+    if (ctx?.request) {
+      trace = `${String(ctx.request.url || ctx.request.path || '')} ref=${String(
+        (typeof ctx.request.header?.referer === 'string' && ctx.request.header.referer) ||
+          ctx.request.headers?.referer ||
+          ''
+      )}`.slice(0, 400);
+    }
+
+    const headerDup = vegaDuplicateCourseHeaderPresent(strapi);
+    const urlTitleDup = shouldStripCourseAssignmentsFromUrlOrTitle(strapi, data);
+    let duplicateLike = urlTitleDup || headerDup;
+    let reason = duplicateLike ? (headerDup ? 'vega-dup-header' : 'url-or-title') : '';
+
+    // Join-table infer only on create — on update it would strip normal assignment edits.
+    if (!duplicateLike && action !== 'update') {
+      try {
+        const inferred = await payloadLooksLikeDuplicatedCourseAssignments(strapi, data);
+        if (inferred) {
+          duplicateLike = true;
+          reason = 'assignments-already-linked';
+        }
+      } catch (lookupErr) {
+        strapi.log.warn(
+          `${COURSE_CLONE_ASSIGNMENTS_LOG} ${sourceLabel}: assignment lookup for duplicate infer failed`,
+          lookupErr
+        );
+      }
+    }
+
+    if (!duplicateLike) {
+      strapi.log.debug(
+        `${COURSE_CLONE_ASSIGNMENTS_LOG} ${sourceLabel}: keep course_assignments (summary=${summary} cloneUrlMatch=${cloneUrlMatch} dupHeader=${headerDup} duplicateTitle=${duplicateTitle} trace=${trace}`
+      );
+      return { stripped: false };
+    }
+
+    strapi.log.info(
+      `${COURSE_CLONE_ASSIGNMENTS_LOG} ${sourceLabel}: stripping course_assignments (${summary}) reason=${reason} action=${action} cloneUrlMatch=${cloneUrlMatch} dupHeader=${headerDup} duplicateTitle=${duplicateTitle} trace=${trace}`
+    );
+
+    if (action === 'update') {
+      // For duplicate flow, relation links might already exist on the draft row before publish.
+      // Force-clear M2M on update/publish so copied assignment ids are removed.
+      data.course_assignments = { set: [] };
+    } else {
+      delete data.course_assignments;
+    }
+    return { stripped: true };
+  } catch (err) {
+    strapi.log.error(
+      `${COURSE_CLONE_ASSIGNMENTS_LOG} ${sourceLabel}: error while stripping course_assignments`,
+      err
+    );
+    throw err;
+  }
+}
+
 module.exports = {
   register({ strapi }) {
     strapi.customFields.register({
@@ -68,6 +329,19 @@ module.exports = {
       type: 'json',
     });
 
+    // Course create/update: strip course_assignments only for duplicate-like saves (URL/title, join-table infer, or X-Vega-Duplicate-Course from admin).
+    strapi.documents.use(async (context, next) => {
+      if (context.uid === COURSE_UID && (context.action === 'create' || context.action === 'update')) {
+        await stripCourseAssignmentsIfDuplicateLike(
+          strapi,
+          context.params?.data,
+          `documents.use.${context.action}`,
+          context.action
+        );
+      }
+      return await next();
+    });
+
     // When a course is created or updated, sync modules/quiz/feedback_question to match course_language (one entry per language)
     strapi.documents.use(async (context, next) => {
       if (context.uid === COURSE_UID && ['create', 'update'].includes(context.action)) {
@@ -89,12 +363,57 @@ module.exports = {
         const data = context.params?.data;
         if (data && typeof data === 'object' && context.uid) {
           try {
-            autoGenerateComponentIds(strapi, context.uid, data);
+            const forceRegenerate = context.uid === COURSE_UID && context.action === 'create';
+            autoGenerateComponentIds(strapi, context.uid, data, { forceRegenerate });
           } catch (err) {
             strapi.log.warn('autoGenerateComponentIds failed', err);
           }
         }
       }
+      return await next();
+    });
+
+    // Course: published entries are read-only from Content Manager update flow.
+    // If a course has a published version, block updates from both Draft/Published tabs.
+    strapi.documents.use(async (context, next) => {
+      if (context.uid !== COURSE_UID || context.action !== 'update') {
+        return await next();
+      }
+
+      const where = context.params?.where || {};
+      let documentId =
+        context.params?.documentId
+        || where?.documentId
+        || where?.$and?.find?.((x) => x?.documentId)?.documentId
+        || null;
+
+      // Fallback: resolve documentId from id/where when only row id is available.
+      if (!documentId) {
+        const row = await strapi.db.query(COURSE_UID).findOne({
+          where: where?.id ? { id: where.id } : where,
+          select: ['id', 'documentId'],
+        });
+        documentId = row?.documentId || null;
+      }
+
+      if (!documentId) {
+        return await next();
+      }
+
+      const publishedVersion = await strapi.db.query(COURSE_UID).findOne({
+        where: {
+          documentId,
+          publishedAt: { $notNull: true },
+        },
+        select: ['id', 'documentId', 'publishedAt'],
+      });
+
+      if (publishedVersion) {
+        throw new errors.ValidationError(
+          'Published course entries are locked. Create a duplicate or unpublish first, then edit.'
+        );
+      }
+
       return await next();
     });
 
@@ -171,12 +490,83 @@ module.exports = {
   bootstrap({ strapi }) {
     suppressEmailServiceIfDisabled(strapi);
 
+    // ── Serve AIA employee photos directly from the mounted NFS share ─────────
+    // Route: GET /empimages/:filename  (e.g. /empimages/11000_06_06_2018_....JPG)
+    // No file copying — images are read straight from /mnt/empimages on every request.
+    // When the folder is updated, the new photo is served immediately.
+    {
+      const fsSync = require('node:fs');
+      const nodePath = require('node:path');
+      const imagesDir = String(process.env.AIA_EMP_IMAGES_DIR || '/mnt/empimages').trim();
+      const ALLOWED_EXT = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp']);
+      const MIME = {
+        '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
+        '.png': 'image/png', '.webp': 'image/webp',
+        '.gif': 'image/gif', '.bmp': 'image/bmp',
+      };
+
+      strapi.server.app.use(async (ctx, next) => {
+        if (!ctx.path.startsWith('/empimages/')) return next();
+
+        // Strip the prefix and sanitize — no path traversal
+        const rawName = ctx.path.slice('/empimages/'.length);
+        const fileName = nodePath.basename(rawName); // strips any ../ attempts
+        const ext = nodePath.extname(fileName).toLowerCase();
+
+        if (!fileName || !ALLOWED_EXT.has(ext)) {
+          ctx.status = 400;
+          return;
+        }
+
+        const filePath = nodePath.join(imagesDir, fileName);
+
+        // Security: ensure resolved path is still inside imagesDir
+        if (!filePath.startsWith(imagesDir + nodePath.sep) && filePath !== imagesDir) {
+          ctx.status = 403;
+          return;
+        }
+
+        if (!fsSync.existsSync(filePath)) {
+          ctx.status = 404;
+          return;
+        }
+
+        ctx.set('Content-Type', MIME[ext] || 'application/octet-stream');
+        ctx.set('Cache-Control', 'public, max-age=86400'); // cache 1 day in browser
+        ctx.body = fsSync.createReadStream(filePath);
+      });
+
+      strapi.log.info(`[aia-photo-sync] Serving employee photos from "${imagesDir}" at /empimages/:filename`);
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
     // ── Vega employee sync: run immediately on startup ───────────────────────
     console.log('\n[vega-sync] 🚀 Bootstrap: triggering Vega employee sync on startup...');
     syncVegaEmployees(strapi).catch((err) => {
       console.error(`[vega-sync] ❌ Startup sync failed: ${err?.message || err}`);
       strapi.log.error(`[vega-sync] Startup sync failed: ${err?.message || err}`);
     });
+    // ─────────────────────────────────────────────────────────────────────────
+
+    // ── AIA employee photo sync: run immediately on startup ──────────────────
+    console.log('\n[aia-photo-sync] 🚀 Bootstrap: triggering AIA photo sync on startup...');
+    syncAiaEmployeePhotos(strapi).catch((err) => {
+      console.error(`[aia-photo-sync] ❌ Startup photo sync failed: ${err?.message || err}`);
+      strapi.log.error(`[aia-photo-sync] Startup photo sync failed: ${err?.message || err}`);
+    });
+    // ─────────────────────────────────────────────────────────────────────────
+
+    // ── One-time cleanup: remove fake auto-generated emails ──────────────────
+    if (String(process.env.RUN_FAKE_EMAIL_CLEANUP || '').trim() === 'true') {
+      console.log('\n[cleanup-fake-emails] 🚀 Bootstrap: RUN_FAKE_EMAIL_CLEANUP=true, starting cleanup in 15s...');
+      // Delay to let hot-reload settle (token file write triggers restart in develop mode)
+      setTimeout(() => {
+        cleanupFakeEmails(strapi).catch((err) => {
+          console.error(`[cleanup-fake-emails] ❌ Cleanup failed: ${err?.message || err}`);
+          strapi.log.error(`[cleanup-fake-emails] Cleanup failed: ${err?.message || err}`);
+        });
+      }, 15000);
+    }
     // ─────────────────────────────────────────────────────────────────────────
     //Force reset when admin changes password
     strapi.db.lifecycles.subscribe({
@@ -327,15 +717,45 @@ module.exports = {
       strapi.log.error('Course-workflow offline-module sync bootstrap failed:', e?.message || e);
     }
 
+    // Global safety net: always populate quiz_submission.answers[].correct regardless of route/controller path.
+    try {
+      strapi.db.lifecycles.subscribe({
+        models: ['api::quiz-submission.quiz-submission'],
+        async beforeCreate(event) {
+          const data = event?.params?.data || {};
+          await populateAnswerCorrectField(strapi, data);
+          const t = Array.isArray(data.answers) ? data.answers.filter((a) => a?.correct === true).length : 0;
+          const f = Array.isArray(data.answers) ? data.answers.filter((a) => a?.correct === false).length : 0;
+          strapi.log.info('[quiz-submission db lifecycle] beforeCreate total=%s true=%s false=%s', data?.answers?.length || 0, t, f);
+        },
+        async beforeUpdate(event) {
+          const data = event?.params?.data || {};
+          await populateAnswerCorrectField(strapi, data);
+          const t = Array.isArray(data.answers) ? data.answers.filter((a) => a?.correct === true).length : 0;
+          const f = Array.isArray(data.answers) ? data.answers.filter((a) => a?.correct === false).length : 0;
+          strapi.log.info('[quiz-submission db lifecycle] beforeUpdate total=%s true=%s false=%s', data?.answers?.length || 0, t, f);
+        },
+      });
+    } catch (e) {
+      strapi.log.error('Quiz-submission correctness lifecycle bootstrap failed:', e?.message || e);
+    }
+
     // Fallback: ensure department when user is created/updated via Content Manager
     const plugin = strapi.plugin('content-manager');
     if (!plugin) return;
     const docManager = plugin.service('document-manager');
     if (!docManager || typeof docManager.create !== 'function') return;
 
-    const COURSE_ASSIGNMENT_UID = 'api::course-assignment.course-assignment';
     const originalCreate = docManager.create.bind(docManager);
     docManager.create = async (uid, opts = {}) => {
+      if (uid === COURSE_UID && opts?.data && typeof opts.data === 'object') {
+        try {
+          await stripCourseAssignmentsIfDuplicateLike(strapi, opts.data, 'docManager.create', 'create');
+        } catch (err) {
+          strapi.log.error(`${COURSE_CLONE_ASSIGNMENTS_LOG} docManager.create: strip failed`, err);
+          throw err;
+        }
+      }
       if (uid === COURSE_UID && opts?.data && typeof opts.data === 'object') {
         try {
           syncCourseLanguageComponents(opts.data);

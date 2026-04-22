@@ -1,9 +1,10 @@
+// @ts-nocheck
+
 'use strict';
 
 const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
-const crypto = require('node:crypto');
 const bcrypt = require('bcryptjs');
 const { getEmployeeApiToken } = require('./get-employee-api-token');
 const { ensureDepartmentForUser } = require('../utils/ensure-department-for-user');
@@ -68,18 +69,7 @@ function normalizeDate(value, fallback = '1970-01-01') {
   return parsed.toISOString().slice(0, 10);
 }
 
-function generateFallbackEmail(record) {
-  const mobile = String(record?.Mobile_No || '').trim().replace(/\D/g, '');
-  if (mobile) return `emp.${mobile}@aia.internal`;
 
-  const namePart = String(record?.Emp_Name || 'unknown')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '.')
-    .replace(/^\.+|\.+$/g, '')
-    .slice(0, 40);
-  const rand = Math.floor(Math.random() * 9000) + 1000;
-  return `emp.${namePart || 'unknown'}.${rand}@aia.internal`;
-}
 
 function resolvePhotoUrl(rawPhotoUrl, baseUrl) {
   if (!rawPhotoUrl) return null;
@@ -173,20 +163,8 @@ async function getEmployeeRoleId(strapi) {
   return role.id;
 }
 
-async function ensureUniqueUsername(strapi, desiredUsername, currentUserId) {
-  const base = safeString(desiredUsername, 'employee').slice(0, 60);
-  // If updating existing user, just return the base — no need to check uniqueness
-  if (currentUserId) return base;
-
-  // For new users, do a single check only
-  const existing = await strapi.db.query(USER_UID).findOne({
-    where: { username: base },
-    select: ['id'],
-  });
-  if (!existing) return base;
-
-  // Collision — append random suffix once
-  return `${base.slice(0, 52)}_${crypto.randomBytes(3).toString('hex')}`;
+function buildUsername(desiredUsername) {
+  return safeString(desiredUsername, 'employee').slice(0, 60);
 }
 
 async function uploadPhotograph(strapi, photoUrl, username) {
@@ -215,19 +193,20 @@ async function uploadPhotograph(strapi, photoUrl, username) {
 }
 
 function buildUserData(record, roleId, usernameOverride, emailOverride) {
+  const hasExitDate = Boolean(record.Exit_Date);
   return {
     username: usernameOverride,
     email: emailOverride,
     provider: 'local',
     confirmed: true,
-    blocked: false,
+    blocked: hasExitDate,
     role: roleId,
     joining_date: normalizeDate(record.Date_Of_Joining),
     date_of_birth: normalizeDate(record.Date_Of_Birth),
     contact_no: safeString(record.Mobile_No),
     company: 'AIA',
     branch: safeString(record.Branch),
-    exit_date: record.Exit_Date ? normalizeDate(record.Exit_Date, null) : null,
+    exit_date: hasExitDate ? normalizeDate(record.Exit_Date, null) : null,
     designation: safeString(record.Designation),
     department: safeString(record.Department),
     emp_code: safeString(record.Emp_Code),
@@ -235,7 +214,7 @@ function buildUserData(record, roleId, usernameOverride, emailOverride) {
     age: 0,
     working_location: '-',
     employment_type: '-',
-    active: true,
+    active: !hasExitDate,
     emp_id: '-',
     HOD: '-',
     payroll_office: '-',
@@ -350,23 +329,35 @@ async function syncEmployeesFromHrms(strapi) {
 
       for (const record of employees) {
         try {
-          const email = normalizeEmail(record?.Work_Email) || generateFallbackEmail(record);
+          const empCode = safeString(record?.Emp_Code, '');
+          const email = normalizeEmail(record?.Work_Email);
+          const hasEmpCode = Boolean(empCode && empCode !== '-');
 
-          const existing = await strapi.db.query(USER_UID).findOne({
-            where: { email },
-            select: ['id', 'username'],
-          });
+          if (!hasEmpCode) {
+            strapi.log.warn(`[employee-sync] Skipping ${record?.Emp_Code || record?.Emp_Name || 'unknown'}: missing Emp_Code`);
+            continue;
+          }
 
-          const preferredUsername = safeString(record?.Emp_Name, email.split('@')[0]);
-          const username = await ensureUniqueUsername(strapi, preferredUsername, existing?.id);
-          const userData = buildUserData(record, roleId, username, email);
+          let existing = null;
+          if (hasEmpCode) {
+            existing = await strapi.db.query(USER_UID).findOne({
+              where: { emp_code: empCode },
+              select: ['id', 'username', 'email'],
+            });
+          }
+
+          const resolvedEmail = email || normalizeEmail(existing?.email) || null;
+
+          const preferredUsername = safeString(record?.Emp_Name, empCode || 'employee');
+          const username = buildUsername(preferredUsername);
+          const userData = buildUserData(record, roleId, username, resolvedEmail);
 
           const photoUrl = resolvePhotoUrl(record?.Photograph, baseUrl);
           if (photoUrl) {
             try {
               userData.photograph = await uploadPhotograph(strapi, photoUrl, username);
             } catch (photoErr) {
-              strapi.log.warn(`[employee-sync] Photo upload failed for ${email}: ${photoErr?.message}`);
+              strapi.log.warn(`[employee-sync] Photo upload failed for ${resolvedEmail}: ${photoErr?.message}`);
             }
           }
 
@@ -380,12 +371,10 @@ async function syncEmployeesFromHrms(strapi) {
             pageCreated += 1;
           }
 
-          // Sync path uses db.query directly (bypasses Content Manager middlewares),
-          // so ensure taxonomy entities here as well.
           try {
             await ensureDepartmentForUser(strapi, userData.department, userData.company);
           } catch (deptErr) {
-            strapi.log.warn(`[employee-sync] ensureDepartmentForUser failed for ${email}: ${deptErr?.message || deptErr}`);
+            strapi.log.warn(`[employee-sync] ensureDepartmentForUser failed for ${resolvedEmail}: ${deptErr?.message || deptErr}`);
           }
 
           try {
@@ -394,7 +383,7 @@ async function syncEmployeesFromHrms(strapi) {
               await ensureWorkLocationForUser(strapi, locationName, userData.company);
             }
           } catch (locErr) {
-            strapi.log.warn(`[employee-sync] ensureWorkLocationForUser failed for ${email}: ${locErr?.message || locErr}`);
+            strapi.log.warn(`[employee-sync] ensureWorkLocationForUser failed for ${resolvedEmail}: ${locErr?.message || locErr}`);
           }
         } catch (employeeErr) {
           errorCount += 1;

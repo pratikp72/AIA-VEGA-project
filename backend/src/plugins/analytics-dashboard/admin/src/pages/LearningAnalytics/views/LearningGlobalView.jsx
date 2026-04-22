@@ -4,7 +4,6 @@ import { StatCard } from '../../../components/StatCard';
 import { DonutChart } from '../../../components/DonutChart';
 import { LineChart } from '../../../components/LineChart';
 import { BarChart } from '../../../components/BarChart';
-import { FunnelChart } from '../../../components/FunnelChart';
 import { DataTable } from '../../../components/DataTable';
 
 /**
@@ -38,9 +37,15 @@ export function LearningGlobalView({
   const courseProgress = Array.isArray(data?.courseProgress) ? data.courseProgress : [];
 
   const tableRows = useMemo(() => {
-    if (!hasCourse) return courseProgress;
+    const withoutUnknown = (courseProgress || []).filter((p) => {
+      const title = String(p.courseTitle ?? p.course?.title ?? '').trim();
+      if (!title) return false;
+      return title.toLowerCase() !== 'unknown';
+    });
+
+    if (!hasCourse) return withoutUnknown;
     const courseIdStr = String(filterCourse).trim();
-    return courseProgress.filter((p) => {
+    return withoutUnknown.filter((p) => {
       const id = p.courseId ?? p.course?.id ?? p.course?.documentId ?? '';
       const title = (p.courseTitle ?? p.course?.title ?? '').trim().toLowerCase();
       const matchId = String(id) === courseIdStr || (courseIdStr.length <= 10 && Number(id) === Number(courseIdStr));
@@ -163,10 +168,18 @@ export function LearningGlobalView({
                 data={(() => {
                   // Global view: show all users' time spent per course
                   if (!hasCourse) {
-                    return courseProgress.map(cp => ({
-                      name: cp.courseTitle ?? cp.course?.title ?? 'Course',
-                      value: cp.timeSpentMinutes ?? cp.timeSpent ?? 0
-                    }));
+                    return courseProgress
+                      .map((cp) => {
+                        const raw = String(cp.courseTitle ?? cp.course?.title ?? '').trim();
+                        return {
+                          name: raw,
+                          value: cp.timeSpentMinutes ?? cp.timeSpent ?? 0,
+                        };
+                      })
+                      .filter((row) => {
+                        if (!row.name) return false;
+                        return row.name.toLowerCase() !== 'unknown';
+                      });
                   }
                   // Course selected: show all modules' time spent
                   if (hasCourse && courseModules.length > 0) {
@@ -211,15 +224,6 @@ export function LearningGlobalView({
               />
             </Box>
           <Flex gap={4} marginBottom={6} wrap="wrap">
-            <Box style={{ flex: '1 1 340px', minWidth: 280 }}>
-              <FunnelChart
-                data={data?.completionFunnel || []}
-                title="Completion Funnel"
-                nameKey="stage"
-                dataKey="value"
-                height={280}
-              />
-            </Box>
             <Box style={{ flex: '1 1 300px', minWidth: 280 }}>
               <DonutChart
                 data={data?.statusDistribution || []}

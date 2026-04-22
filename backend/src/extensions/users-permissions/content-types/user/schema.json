@@ -16,7 +16,6 @@
     "username": {
       "type": "string",
       "minLength": 3,
-      "unique": true,
       "configurable": false,
       "required": true
     },
@@ -24,7 +23,7 @@
       "type": "email",
       "minLength": 6,
       "configurable": false,
-      "required": true
+      "required": false
     },
     "provider": {
       "type": "string",
@@ -313,6 +312,16 @@
       "type": "boolean",
       "required": true,
       "default": true
+    },
+    "emp_photo_file": {
+      "type": "string",
+      "required": false,
+      "configurable": false,
+      "conditions": {
+        "visible": {
+          "==": [{ "var": "company" }, "AIA"]
+        }
+      }
     }
   }
 }

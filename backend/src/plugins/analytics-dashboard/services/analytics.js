@@ -1,3 +1,5 @@
+// @ts-nocheck
+
 'use strict';
 
 /**
@@ -743,27 +745,132 @@ module.exports = ({ strapi }) => {
     let avgQuizScore = 0;
     if (progresses.length > 0) {
       try {
-        const numericUserIdsQuiz = [...new Set(progresses.map((p) => p.user?.id ?? p.user_id ?? p.userId).filter((x) => x != null && (typeof x === 'number' || /^\d+$/.test(String(x)))))].map(Number);
-        const numericCourseIdsQuiz = [...new Set(progresses.map((p) => p.course?.id ?? p.course_id ?? p.courseId).filter((x) => x != null && (typeof x === 'number' || /^\d+$/.test(String(x)))))].map(Number);
-        if (numericUserIdsQuiz.length > 0 && numericCourseIdsQuiz.length > 0) {
-          const quizSubs = await strapi.db.query('api::quiz-submission.quiz-submission').findMany({
-            where: {
-              submitted_by: { id: { $in: numericUserIdsQuiz } },
-              course: { id: { $in: numericCourseIdsQuiz } },
-            },
-            select: ['score', 'submitted_by', 'course'],
+        strapi.log.info(`[LearningGlobal][AvgQuizScore] Start calculation. progresses=${progresses.length}`);
+        const numericUserIdsQuiz = [...new Set(
+          progresses
+            .map((p) => p.user?.id ?? p.user_id ?? p.userId)
+            .filter((x) => x != null && (typeof x === 'number' || /^\d+$/.test(String(x))))
+            .map((x) => Number(x))
+        )];
+
+        const numericCourseIdsQuiz = [
+          ...new Set(
+            progresses
+              .map((p) => p.course?.id ?? p.course_id ?? p.courseId)
+              .filter((x) => x != null && (typeof x === 'number' || /^\d+$/.test(String(x))))
+              .map((x) => Number(x))
+          ),
+        ];
+        const documentCourseIdsQuiz = [...new Set(
+          progresses
+            .map((p) => p.course?.documentId ?? p.course?.document_id ?? p.courseId ?? p.course_id)
+            .filter((x) => x != null && typeof x === 'string' && !/^\d+$/.test(String(x)) && String(x).trim() !== '')
+            .map((x) => String(x).trim())
+        )];
+
+        // Resolve documentIds to numeric ids so quiz_submission.course (numeric FK)
+        // can be matched even when filters operate on course documentId.
+        if (documentCourseIdsQuiz.length > 0) {
+          try {
+            const courseRows = await strapi.db.query('api::course.course').findMany({
+              where: { documentId: { $in: documentCourseIdsQuiz } },
+              select: ['id', 'documentId'],
+            });
+            (courseRows || []).forEach((c) => {
+              if (c?.id != null) numericCourseIdsQuiz.push(Number(c.id));
+            });
+          } catch (_) {}
+        }
+        const uniqueNumericCourseIdsQuiz = [...new Set(numericCourseIdsQuiz.filter((n) => !Number.isNaN(n) && n > 0))];
+        strapi.log.info(
+          `[LearningGlobal][AvgQuizScore] Resolved IDs. users=${numericUserIdsQuiz.length}, courses=${uniqueNumericCourseIdsQuiz.length}, docCourses=${documentCourseIdsQuiz.length}`
+        );
+
+        if (numericUserIdsQuiz.length > 0 && uniqueNumericCourseIdsQuiz.length > 0) {
+          // Build exact (userId, courseId) pairs from the filtered enrollment set.
+          const validPairs = new Set();
+          progresses.forEach((p) => {
+            const uidRaw = p.user?.id ?? p.user_id ?? p.userId;
+            const cidRaw = p.course?.id ?? p.course_id ?? p.courseId;
+            const uid = uidRaw != null && /^\d+$/.test(String(uidRaw)) ? Number(uidRaw) : (typeof uidRaw === 'number' ? uidRaw : null);
+            const cid = cidRaw != null && /^\d+$/.test(String(cidRaw)) ? Number(cidRaw) : (typeof cidRaw === 'number' ? cidRaw : null);
+            if (uid != null && cid != null) validPairs.add(`${uid}-${cid}`);
           });
-          const pairsInProgress = new Set(progresses.map((p) => `${p.user?.id ?? p.user_id ?? p.userId}-${p.course?.id ?? p.course_id ?? p.courseId}`));
-          const scores = (quizSubs || []).filter((s) => {
-            const uid = s.submitted_by?.id ?? s.submitted_by;
-            const cid = s.course?.id ?? s.course;
-            return uid != null && cid != null && pairsInProgress.has(`${uid}-${cid}`);
-          }).map((s) => Number(s.score)).filter((n) => !Number.isNaN(n));
+          strapi.log.info(`[LearningGlobal][AvgQuizScore] Built enrollment pairs. validPairs=${validPairs.size}`);
+
+          let quizSubs = [];
+          // Primary path: document-service relation filters (Strapi v5-safe).
+          try {
+            quizSubs = await strapi.documents('api::quiz-submission.quiz-submission').findMany({
+              status: 'published',
+              filters: {
+                submitted_by: { id: { $in: numericUserIdsQuiz } },
+                course: { id: { $in: uniqueNumericCourseIdsQuiz } },
+              },
+              fields: ['score'],
+              populate: ['submitted_by', 'course'],
+              limit: 10000,
+              start: 0,
+            });
+          } catch (eDoc) {
+            strapi.log.warn(`[LearningGlobal][AvgQuizScore] documents() query failed: ${eDoc?.message}`);
+          }
+
+          // Secondary path: db.query relation filters.
+          if (!Array.isArray(quizSubs) || quizSubs.length === 0) {
+            try {
+              quizSubs = await strapi.db.query('api::quiz-submission.quiz-submission').findMany({
+                where: {
+                  submitted_by: { id: { $in: numericUserIdsQuiz } },
+                  course: { id: { $in: uniqueNumericCourseIdsQuiz } },
+                },
+                populate: { submitted_by: true, course: true },
+                select: ['score'],
+                limit: 10000,
+              });
+            } catch (eDbRel) {
+              strapi.log.warn(`[LearningGlobal][AvgQuizScore] db relation query failed: ${eDbRel?.message}`);
+            }
+          }
+
+          // Last fallback for projects that still have physical FK columns.
+          if (!Array.isArray(quizSubs) || quizSubs.length === 0) {
+            try {
+              quizSubs = await strapi.db.query('api::quiz-submission.quiz-submission').findMany({
+                where: {
+                  submitted_by_id: { $in: numericUserIdsQuiz },
+                  course_id: { $in: uniqueNumericCourseIdsQuiz },
+                },
+                select: ['score', 'submitted_by_id', 'course_id'],
+                limit: 10000,
+              });
+            } catch (eRaw) {
+              strapi.log.warn(`[LearningGlobal][AvgQuizScore] db raw-id query failed: ${eRaw?.message}`);
+            }
+          }
+
+          strapi.log.info(`[LearningGlobal][AvgQuizScore] Quiz submissions fetched. count=${Array.isArray(quizSubs) ? quizSubs.length : 0}`);
+          const scores = (quizSubs || [])
+            .filter((s) => {
+              const uid = Number(s.submitted_by?.id ?? s.submitted_by ?? s.submitted_by_id);
+              const cid = Number(s.course?.id ?? s.course ?? s.course_id);
+              if (Number.isNaN(uid) || Number.isNaN(cid)) return false;
+              return validPairs.has(`${uid}-${cid}`);
+            })
+            .map((s) => Number(s.score))
+            .filter((n) => !Number.isNaN(n));
+          strapi.log.info(
+            `[LearningGlobal][AvgQuizScore] Matched scores. matchedScores=${scores.length}, avg=${scores.length > 0 ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : 0}`
+          );
           avgQuizScore = scores.length > 0 ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : 0;
+        } else {
+          strapi.log.info('[LearningGlobal][AvgQuizScore] Skipped quiz fetch due to empty user/course ID set.');
         }
       } catch (e) {
-        strapi.log.warn('Learning global: avg quiz score from filtered set failed:', e?.message);
+        strapi.log.warn(`[LearningGlobal][AvgQuizScore] Failed: ${e?.message}`);
       }
+    } else {
+      strapi.log.info('[LearningGlobal][AvgQuizScore] Skipped because filtered progresses is empty.');
     }
 
     // Learning activity by week: enrollments with activity in that week (by last_accessed_at, week = Monday)
@@ -1807,23 +1914,6 @@ module.exports = ({ strapi }) => {
     const realtimeByCoursePersonal = await this._getRealtimeLearningMinutesByCourse(params, userId);
     let courseProgressWithRealtime = this._mergeRealtimeMinutesIntoCourseRows(courseProgress, realtimeByCoursePersonal);
     courseProgressWithRealtime = this._applyRealtimeToSelectedCourseRows(courseProgressWithRealtime, params.courseId, realtimeByCoursePersonal);
-    const hasPersonalTimeRow = courseProgressWithRealtime.some((row) => (Number(row.timeSpentMinutes) || 0) > 0);
-    if (!hasPersonalTimeRow && realtimeByCoursePersonal.totalMinutes > 0) {
-      courseProgressWithRealtime = [{
-        courseId: 'realtime-unmapped',
-        courseTitle: 'Realtime Learning (Unmapped Course)',
-        courseCategory: 'Other',
-        status: 'In_progress',
-        percentage: 0,
-        timeSpentMinutes: realtimeByCoursePersonal.totalMinutes,
-        completedAt: null,
-        certificateIssued: false,
-        quizPassed: false,
-        feedbackGiven: false,
-        feedbackPending: false,
-        inactiveDays: 0,
-      }];
-    }
     const totalTimeFromRows = courseProgressWithRealtime.reduce((sum, row) => sum + (Number(row.timeSpentMinutes) || 0), 0);
     totalTimeSpent = Math.max(totalTimeSpent, Math.round(totalTimeFromRows * 10) / 10);
 
@@ -2253,6 +2343,13 @@ module.exports = ({ strapi }) => {
    * LEARNING ANALYTICS - Employee Table (Option B: one row per employee, aggregated)
    */
   async getLearningEmployeeTable(params = {}) {
+    const dateFromNorm = params.dateFrom && /^\d{4}-\d{2}-\d{2}/.test(String(params.dateFrom))
+      ? String(params.dateFrom).slice(0, 10) + 'T00:00:00.000Z'
+      : params.dateFrom;
+    const dateToNorm = params.dateTo && /^\d{4}-\d{2}-\d{2}/.test(String(params.dateTo))
+      ? String(params.dateTo).slice(0, 10) + 'T23:59:59.999Z'
+      : params.dateTo;
+
     const userWhere = { blocked: { $eq: false } };
     if (params.company) userWhere.company = params.company;
     if (params.search && String(params.search).trim()) {
@@ -2266,6 +2363,140 @@ module.exports = ({ strapi }) => {
           { email: { $containsi: search } },
           { username: { $containsi: search } },
         ];
+      }
+    }
+
+    // When course filter is selected, constrain the user pool to only users enrolled in that course
+    // BEFORE pagination. This ensures course filter works even without search text.
+    if (params.courseId) {
+      const courseIdStr = String(params.courseId).trim();
+      const enrolledUserIds = new Set();
+      try {
+        const docs = await strapi.documents('api::user-progress.user-progress').findMany({
+          filters: {
+            $or: [
+              { course: { id: courseIdStr } },
+              { course: { documentId: courseIdStr } },
+            ],
+          },
+          status: 'published',
+          fields: ['id'],
+          populate: { user: { fields: ['id'] } },
+          pagination: { limit: 50000 },
+        });
+        (Array.isArray(docs) ? docs : []).forEach((p) => {
+          const uid = p?.user?.id;
+          if (uid != null) enrolledUserIds.add(Number(uid));
+        });
+      } catch (_) {}
+      if (enrolledUserIds.size === 0) {
+        try {
+          const rows = await strapi.db.query('api::user-progress.user-progress').findMany({
+            where: { course_id: courseIdStr },
+            select: ['user_id'],
+            limit: 50000,
+          });
+          (Array.isArray(rows) ? rows : []).forEach((r) => {
+            const uid = r?.user_id;
+            if (uid != null) enrolledUserIds.add(Number(uid));
+          });
+        } catch (_) {}
+      }
+
+      const enrolled = [...enrolledUserIds].filter((n) => Number.isFinite(n));
+      if (enrolled.length === 0) {
+        return { rows: [], total: 0, page: 1, pageSize: Math.min(100, Math.max(5, parseInt(params.pageSize, 10) || 10)) };
+      }
+
+      if (typeof userWhere.id === 'number') {
+        if (!enrolled.includes(userWhere.id)) {
+          return { rows: [], total: 0, page: 1, pageSize: Math.min(100, Math.max(5, parseInt(params.pageSize, 10) || 10)) };
+        }
+      } else {
+        userWhere.id = { $in: enrolled };
+      }
+    }
+
+    // Date/status filters must also constrain the user pool before count/pagination,
+    // otherwise table totals/pages remain based on unfiltered users.
+    if (dateFromNorm || dateToNorm || params.status) {
+      const filteredUserIds = new Set();
+      const progressFiltersForUser = {};
+      if (dateFromNorm || dateToNorm) {
+        progressFiltersForUser.last_accessed_at = {};
+        if (dateFromNorm) progressFiltersForUser.last_accessed_at.$gte = dateFromNorm;
+        if (dateToNorm) progressFiltersForUser.last_accessed_at.$lte = dateToNorm;
+      }
+      if (params.status) progressFiltersForUser.progress_status = params.status;
+      if (params.courseId) {
+        const courseIdStr = String(params.courseId).trim();
+        progressFiltersForUser.$or = [
+          { course: { id: courseIdStr } },
+          { course: { documentId: courseIdStr } },
+        ];
+      }
+
+      try {
+        const [published, draft] = await Promise.all([
+          strapi.documents('api::user-progress.user-progress').findMany({
+            filters: progressFiltersForUser,
+            status: 'published',
+            fields: ['id'],
+            populate: { user: { fields: ['id'] } },
+            pagination: { limit: 50000 },
+          }),
+          strapi.documents('api::user-progress.user-progress').findMany({
+            filters: progressFiltersForUser,
+            status: 'draft',
+            fields: ['id'],
+            populate: { user: { fields: ['id'] } },
+            pagination: { limit: 50000 },
+          }),
+        ]);
+        [...(Array.isArray(published) ? published : []), ...(Array.isArray(draft) ? draft : [])].forEach((p) => {
+          const uid = p?.user?.id;
+          if (uid != null) filteredUserIds.add(Number(uid));
+        });
+      } catch (_) {
+        try {
+          const progressWhere = {};
+          if (dateFromNorm || dateToNorm) {
+            progressWhere.last_accessed_at = {};
+            if (dateFromNorm) progressWhere.last_accessed_at.$gte = dateFromNorm;
+            if (dateToNorm) progressWhere.last_accessed_at.$lte = dateToNorm;
+          }
+          if (params.status) progressWhere.progress_status = params.status;
+          if (params.courseId) progressWhere.course_id = String(params.courseId).trim();
+
+          const rows = await strapi.db.query('api::user-progress.user-progress').findMany({
+            where: progressWhere,
+            select: ['user_id'],
+            limit: 50000,
+          });
+          (Array.isArray(rows) ? rows : []).forEach((r) => {
+            const uid = r?.user_id;
+            if (uid != null) filteredUserIds.add(Number(uid));
+          });
+        } catch (_) {}
+      }
+
+      const filtered = [...filteredUserIds].filter((n) => Number.isFinite(n));
+      if (filtered.length === 0) {
+        return { rows: [], total: 0, page: 1, pageSize: Math.min(100, Math.max(5, parseInt(params.pageSize, 10) || 10)) };
+      }
+
+      if (typeof userWhere.id === 'number') {
+        if (!filtered.includes(userWhere.id)) {
+          return { rows: [], total: 0, page: 1, pageSize: Math.min(100, Math.max(5, parseInt(params.pageSize, 10) || 10)) };
+        }
+      } else if (userWhere.id && Array.isArray(userWhere.id.$in)) {
+        const intersected = userWhere.id.$in.filter((id) => filtered.includes(Number(id)));
+        if (intersected.length === 0) {
+          return { rows: [], total: 0, page: 1, pageSize: Math.min(100, Math.max(5, parseInt(params.pageSize, 10) || 10)) };
+        }
+        userWhere.id = { $in: intersected };
+      } else {
+        userWhere.id = { $in: filtered };
       }
     }
 
@@ -2304,30 +2535,46 @@ module.exports = ({ strapi }) => {
 
     // Use Document Service for progress/submission - handles user relation correctly (id vs documentId)
     const progressFilters = { user: { id: { $in: userIdsNumeric } } };
-    if (params.dateFrom || params.dateTo) {
+    if (dateFromNorm || dateToNorm) {
       progressFilters.last_accessed_at = {};
-      if (params.dateFrom) progressFilters.last_accessed_at.$gte = params.dateFrom;
-      if (params.dateTo) progressFilters.last_accessed_at.$lte = params.dateTo;
+      if (dateFromNorm) progressFilters.last_accessed_at.$gte = dateFromNorm;
+      if (dateToNorm) progressFilters.last_accessed_at.$lte = dateToNorm;
     }
 
     let progressList = [];
     try {
-      progressList = await strapi.documents('api::user-progress.user-progress').findMany({
+      const publishedProgress = await strapi.documents('api::user-progress.user-progress').findMany({
         filters: progressFilters,
         status: 'published',
         populate: ['user', 'course'],
         pagination: { limit: 10000 },
       });
-      progressList = Array.isArray(progressList) ? progressList : [];
+      const draftProgress = await strapi.documents('api::user-progress.user-progress').findMany({
+        filters: progressFilters,
+        status: 'draft',
+        populate: ['user', 'course'],
+        pagination: { limit: 10000 },
+      });
+      const merged = [
+        ...(Array.isArray(publishedProgress) ? publishedProgress : []),
+        ...(Array.isArray(draftProgress) ? draftProgress : []),
+      ];
+      const seen = new Set();
+      progressList = merged.filter((p) => {
+        const key = p?.documentId ? `doc:${p.documentId}` : `id:${p?.id ?? ''}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
     } catch (e) {
       strapi.log.warn('Employee table: progress query failed:', e?.message);
       // Fallback to db.query if Document Service fails
       try {
         const progressWhere = { user_id: { $in: userIdsNumeric } };
-        if (params.dateFrom || params.dateTo) {
+        if (dateFromNorm || dateToNorm) {
           progressWhere.last_accessed_at = {};
-          if (params.dateFrom) progressWhere.last_accessed_at.$gte = params.dateFrom;
-          if (params.dateTo) progressWhere.last_accessed_at.$lte = params.dateTo;
+          if (dateFromNorm) progressWhere.last_accessed_at.$gte = dateFromNorm;
+          if (dateToNorm) progressWhere.last_accessed_at.$lte = dateToNorm;
         }
         progressList = await strapi.db.query('api::user-progress.user-progress').findMany({
           where: progressWhere,
@@ -2352,36 +2599,45 @@ module.exports = ({ strapi }) => {
       progressList = progressList.filter((p) => p.progress_status === params.status);
     }
 
-    // Filter progressList by course completion time min/max
-    if (params.filterTimeMin) {
-      const min = Number(params.filterTimeMin);
-      progressList = progressList.filter((p) => (p.time_spent_minutes ?? 0) >= min);
-    }
-    if (params.filterTimeMax) {
-      const max = Number(params.filterTimeMax);
-      progressList = progressList.filter((p) => (p.time_spent_minutes ?? 0) <= max);
-    }
-
     const submissionFilters = { submitted_by: { id: { $in: userIdsNumeric } } };
+    if (params.courseId) {
+      const courseIdStr = String(params.courseId).trim();
+      submissionFilters.$or = [
+        { course: { id: courseIdStr } },
+        { course: { documentId: courseIdStr } },
+      ];
+    }
     let submissionList = [];
     try {
       submissionList = await strapi.documents('api::quiz-submission.quiz-submission').findMany({
         filters: submissionFilters,
         status: 'published',
-        populate: ['submitted_by'],
+        populate: ['submitted_by', 'course'],
         pagination: { limit: 5000 },
       });
       submissionList = Array.isArray(submissionList) ? submissionList : [];
     } catch (e) {
       strapi.log.warn('Employee table: submission query failed:', e?.message);
       try {
+        const submissionWhere = { submitted_by_id: { $in: userIdsNumeric } };
+        if (params.courseId) {
+          submissionWhere.course_id = String(params.courseId).trim();
+        }
         submissionList = await strapi.db.query('api::quiz-submission.quiz-submission').findMany({
-          where: { submitted_by_id: { $in: userIdsNumeric } },
+          where: submissionWhere,
           limit: 5000,
         }) || [];
       } catch (e2) {
         strapi.log.warn('Employee table: submission db.query fallback failed:', e2?.message);
       }
+    }
+
+    if (params.courseId) {
+      const courseIdStr = String(params.courseId).trim();
+      submissionList = submissionList.filter((s) => {
+        const cid = s.course?.id ?? s.course?.documentId ?? s.course_id ?? s.courseId ?? s.course;
+        return cid != null && String(cid) === courseIdStr;
+      });
     }
 
     // Group by user (support Document Service user.id/documentId and db.query user_id/submitted_by_id)
@@ -2403,8 +2659,22 @@ module.exports = ({ strapi }) => {
     let rows = userList.map((u, i) => {
       const progs = progressByUserIdx[i] || [];
       const subs = submissionByUserIdx[i] || [];
+      const statusOrder = ['Not_started', 'In_progress', 'Completed', 'Failed'];
+      const statusCounts = {};
+      progs.forEach((p) => {
+        const status = p?.progress_status;
+        if (!status) return;
+        statusCounts[status] = (statusCounts[status] || 0) + 1;
+      });
+      const courseStatus = statusOrder
+        .filter((s) => statusCounts[s] > 0)
+        .map((s) => s)
+        .join(', ') || '—';
       const coursesEnrolled = progs.length;
-      const totalTimeSpent = progs.reduce((sum, p) => sum + (p.time_spent_minutes || 0), 0);
+      const totalTimeSpent = progs.reduce((sum, p) => {
+        const minutes = Number(p?.time_spent_minutes);
+        return sum + (Number.isFinite(minutes) ? minutes : 0);
+      }, 0);
       const totalModulesDone = progs.reduce((sum, p) => {
         const cm = p.completed_modules;
         return sum + (Array.isArray(cm) ? cm.length : 0);
@@ -2423,7 +2693,8 @@ module.exports = ({ strapi }) => {
         employeeName: u.username || u.email || `User ${u.id}`,
         company: u.company || '—',
         coursesEnrolled,
-        courseCompletionTimeMinutes: totalTimeSpent,
+        courseStatus,
+        courseCompletionTimeMinutes: Math.round(totalTimeSpent),
         totalModulesDone,
         progressPercent: avgProgress,
         quizPassRate,
@@ -2431,10 +2702,43 @@ module.exports = ({ strapi }) => {
       };
     });
 
-    // If courseId filter is applied, only include users with progress records for that course
-    // If courseId or status filter is applied, only include users with progress records for that course/status
-    if (params.courseId || params.status) {
+    // If date/course/status filters are applied, only include users with matching progress records.
+    if (dateFromNorm || dateToNorm || params.courseId || params.status) {
       rows = rows.filter((row, i) => (progressByUserIdx[i] || []).length > 0);
+    }
+
+    // Completion Time filter uses exact match against normalized displayed minutes.
+    if (params.filterTimeValue !== undefined && params.filterTimeValue !== null && String(params.filterTimeValue).trim() !== '') {
+      const value = Number(params.filterTimeValue);
+      if (Number.isFinite(value)) {
+        const target = Math.round(value);
+        rows = rows.filter((row) => Math.round(Number(row.courseCompletionTimeMinutes ?? 0)) === target);
+      }
+    } else {
+      // Backward compatibility for older clients still sending range params.
+      if (params.filterTimeMin) {
+        const min = Number(params.filterTimeMin);
+        if (Number.isFinite(min)) {
+          rows = rows.filter((row) => (row.courseCompletionTimeMinutes ?? 0) >= min);
+        }
+      }
+      if (params.filterTimeMax) {
+        const max = Number(params.filterTimeMax);
+        if (Number.isFinite(max)) {
+          rows = rows.filter((row) => (row.courseCompletionTimeMinutes ?? 0) <= max);
+        }
+      }
+    }
+
+    if (params.filterTimeValue || params.filterTimeMin || params.filterTimeMax) {
+      const sample = rows.slice(0, 10).map((r) => ({
+        employeeId: r.employeeId,
+        employeeName: r.employeeName,
+        completionTimeMin: r.courseCompletionTimeMinutes ?? 0,
+      }));
+      strapi.log.info(
+        `[analytics][employee-table] completion-time filter value=${params.filterTimeValue || ''} min=${params.filterTimeMin || ''} max=${params.filterTimeMax || ''} rowsAfter=${rows.length} sample=${JSON.stringify(sample)}`
+      );
     }
 
     const sortBy = params.sortBy || 'courseCompletionTimeMinutes';
@@ -2474,6 +2778,7 @@ module.exports = ({ strapi }) => {
       'Employee Name': r.employeeName || '—',
       'Company': r.company || '—',
       'Courses Enrolled': r.coursesEnrolled || 0,
+      'Course Status': r.courseStatus || '—',
       'Total Modules Done': r.totalModulesDone || 0,
       'Progress %': r.progressPercent || 0,
       'Avg Quiz Score': r.avgScore || 0,
@@ -2486,7 +2791,7 @@ module.exports = ({ strapi }) => {
 
     // Auto-size columns
     const maxWidth = 50;
-    const headers = ['Employee Name', 'Company', 'Courses Enrolled', 'Total Modules Done', 'Progress %', 'Avg Quiz Score', 'Course Completion Time (min)'];
+    const headers = ['Employee Name', 'Company', 'Courses Enrolled', 'Course Status', 'Total Modules Done', 'Progress %', 'Avg Quiz Score', 'Course Completion Time (min)'];
     const wscols = headers.map((header) => {
       const maxLen = Math.max(
         header.length,
@@ -2507,6 +2812,13 @@ module.exports = ({ strapi }) => {
    * Internal: Employee table data for export (all rows, no pagination)
    */
   async getLearningEmployeeTableForExport(params = {}) {
+    const dateFromNorm = params.dateFrom && /^\d{4}-\d{2}-\d{2}/.test(String(params.dateFrom))
+      ? String(params.dateFrom).slice(0, 10) + 'T00:00:00.000Z'
+      : params.dateFrom;
+    const dateToNorm = params.dateTo && /^\d{4}-\d{2}-\d{2}/.test(String(params.dateTo))
+      ? String(params.dateTo).slice(0, 10) + 'T23:59:59.999Z'
+      : params.dateTo;
+
     const userWhere = { blocked: { $eq: false } };
     if (params.company) userWhere.company = params.company;
     if (params.search && String(params.search).trim()) {
@@ -2520,6 +2832,53 @@ module.exports = ({ strapi }) => {
           { email: { $containsi: search } },
           { username: { $containsi: search } },
         ];
+      }
+    }
+
+    // Export should follow same semantics as table view:
+    // when course filter is selected, include all users enrolled in that course even without search text.
+    if (params.courseId) {
+      const courseIdStr = String(params.courseId).trim();
+      const enrolledUserIds = new Set();
+      try {
+        const docs = await strapi.documents('api::user-progress.user-progress').findMany({
+          filters: {
+            $or: [
+              { course: { id: courseIdStr } },
+              { course: { documentId: courseIdStr } },
+            ],
+          },
+          status: 'published',
+          fields: ['id'],
+          populate: { user: { fields: ['id'] } },
+          pagination: { limit: 50000 },
+        });
+        (Array.isArray(docs) ? docs : []).forEach((p) => {
+          const uid = p?.user?.id;
+          if (uid != null) enrolledUserIds.add(Number(uid));
+        });
+      } catch (_) {}
+      if (enrolledUserIds.size === 0) {
+        try {
+          const rows = await strapi.db.query('api::user-progress.user-progress').findMany({
+            where: { course_id: courseIdStr },
+            select: ['user_id'],
+            limit: 50000,
+          });
+          (Array.isArray(rows) ? rows : []).forEach((r) => {
+            const uid = r?.user_id;
+            if (uid != null) enrolledUserIds.add(Number(uid));
+          });
+        } catch (_) {}
+      }
+
+      const enrolled = [...enrolledUserIds].filter((n) => Number.isFinite(n));
+      if (enrolled.length === 0) return { rows: [] };
+
+      if (typeof userWhere.id === 'number') {
+        if (!enrolled.includes(userWhere.id)) return { rows: [] };
+      } else {
+        userWhere.id = { $in: enrolled };
       }
     }
 
@@ -2548,28 +2907,45 @@ module.exports = ({ strapi }) => {
     };
 
     const progressFilters = { user: { id: { $in: userIdsNumeric } } };
-    if (params.dateFrom || params.dateTo) {
+    if (dateFromNorm || dateToNorm) {
       progressFilters.last_accessed_at = {};
-      if (params.dateFrom) progressFilters.last_accessed_at.$gte = params.dateFrom;
-      if (params.dateTo) progressFilters.last_accessed_at.$lte = params.dateTo;
+      if (dateFromNorm) progressFilters.last_accessed_at.$gte = dateFromNorm;
+      if (dateToNorm) progressFilters.last_accessed_at.$lte = dateToNorm;
     }
 
     let progressList = [];
     try {
-      progressList = await strapi.documents('api::user-progress.user-progress').findMany({
+      const publishedProgress = await strapi.documents('api::user-progress.user-progress').findMany({
         filters: progressFilters,
         status: 'published',
         populate: ['user', 'course'],
         pagination: { limit: 50000 },
       }) || [];
+      const draftProgress = await strapi.documents('api::user-progress.user-progress').findMany({
+        filters: progressFilters,
+        status: 'draft',
+        populate: ['user', 'course'],
+        pagination: { limit: 50000 },
+      }) || [];
+      const merged = [
+        ...(Array.isArray(publishedProgress) ? publishedProgress : []),
+        ...(Array.isArray(draftProgress) ? draftProgress : []),
+      ];
+      const seen = new Set();
+      progressList = merged.filter((p) => {
+        const key = p?.documentId ? `doc:${p.documentId}` : `id:${p?.id ?? ''}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
     } catch (e) {
       strapi.log.warn('Employee table export: progress query failed:', e?.message);
       try {
         const progressWhere = { user_id: { $in: userIdsNumeric } };
-        if (params.dateFrom || params.dateTo) {
+        if (dateFromNorm || dateToNorm) {
           progressWhere.last_accessed_at = {};
-          if (params.dateFrom) progressWhere.last_accessed_at.$gte = params.dateFrom;
-          if (params.dateTo) progressWhere.last_accessed_at.$lte = params.dateTo;
+          if (dateFromNorm) progressWhere.last_accessed_at.$gte = dateFromNorm;
+          if (dateToNorm) progressWhere.last_accessed_at.$lte = dateToNorm;
         }
         progressList = await strapi.db.query('api::user-progress.user-progress').findMany({
           where: progressWhere,
@@ -2590,33 +2966,44 @@ module.exports = ({ strapi }) => {
     if (params.status) {
       progressList = progressList.filter((p) => p.progress_status === params.status);
     }
-    if (params.filterTimeMin) {
-      const min = Number(params.filterTimeMin);
-      progressList = progressList.filter((p) => (p.time_spent_minutes ?? 0) >= min);
-    }
-    if (params.filterTimeMax) {
-      const max = Number(params.filterTimeMax);
-      progressList = progressList.filter((p) => (p.time_spent_minutes ?? 0) <= max);
-    }
-
     let submissionList = [];
     try {
+      const submissionFilters = { submitted_by: { id: { $in: userIdsNumeric } } };
+      if (params.courseId) {
+        const courseIdStr = String(params.courseId).trim();
+        submissionFilters.$or = [
+          { course: { id: courseIdStr } },
+          { course: { documentId: courseIdStr } },
+        ];
+      }
       submissionList = await strapi.documents('api::quiz-submission.quiz-submission').findMany({
-        filters: { submitted_by: { id: { $in: userIdsNumeric } } },
+        filters: submissionFilters,
         status: 'published',
-        populate: ['submitted_by'],
+        populate: ['submitted_by', 'course'],
         pagination: { limit: 20000 },
       }) || [];
     } catch (e) {
       strapi.log.warn('Employee table export: submission query failed:', e?.message);
       try {
+        const submissionWhere = { submitted_by_id: { $in: userIdsNumeric } };
+        if (params.courseId) {
+          submissionWhere.course_id = String(params.courseId).trim();
+        }
         submissionList = await strapi.db.query('api::quiz-submission.quiz-submission').findMany({
-          where: { submitted_by_id: { $in: userIdsNumeric } },
+          where: submissionWhere,
           limit: 20000,
         }) || [];
       } catch (e2) {
         strapi.log.warn('Employee table export: submission fallback failed:', e2?.message);
       }
+    }
+
+    if (params.courseId) {
+      const courseIdStr = String(params.courseId).trim();
+      submissionList = submissionList.filter((s) => {
+        const cid = s.course?.id ?? s.course?.documentId ?? s.course_id ?? s.courseId ?? s.course;
+        return cid != null && String(cid) === courseIdStr;
+      });
     }
 
     const progressByUserIdx = {};
@@ -2637,8 +3024,22 @@ module.exports = ({ strapi }) => {
     let rows = userList.map((u, i) => {
       const progs = progressByUserIdx[i] || [];
       const subs = submissionByUserIdx[i] || [];
+      const statusOrder = ['Not_started', 'In_progress', 'Completed', 'Failed'];
+      const statusCounts = {};
+      progs.forEach((p) => {
+        const status = p?.progress_status;
+        if (!status) return;
+        statusCounts[status] = (statusCounts[status] || 0) + 1;
+      });
+      const courseStatus = statusOrder
+        .filter((s) => statusCounts[s] > 0)
+        .map((s) => s)
+        .join(', ') || '—';
       const coursesEnrolled = progs.length;
-      const totalTimeSpent = progs.reduce((sum, p) => sum + (p.time_spent_minutes || 0), 0);
+      const totalTimeSpent = progs.reduce((sum, p) => {
+        const minutes = Number(p?.time_spent_minutes);
+        return sum + (Number.isFinite(minutes) ? minutes : 0);
+      }, 0);
       const totalModulesDone = progs.reduce((sum, p) => sum + (Array.isArray(p.completed_modules) ? p.completed_modules.length : 0), 0);
       const avgProgress =
         coursesEnrolled > 0
@@ -2651,14 +3052,37 @@ module.exports = ({ strapi }) => {
         employeeName: u.username || u.email || `User ${u.id}`,
         company: u.company || '—',
         coursesEnrolled,
+        courseStatus,
         totalModulesDone,
         progressPercent: avgProgress,
         avgScore,
-        courseCompletionTimeMinutes: totalTimeSpent,
+        courseCompletionTimeMinutes: Math.round(totalTimeSpent),
       };
     });
-    if (params.courseId || params.status) {
+    if (dateFromNorm || dateToNorm || params.courseId || params.status) {
       rows = rows.filter((_, i) => (progressByUserIdx[i] || []).length > 0);
+    }
+
+    // Keep export semantics identical to table view for completion-time filtering.
+    if (params.filterTimeValue !== undefined && params.filterTimeValue !== null && String(params.filterTimeValue).trim() !== '') {
+      const value = Number(params.filterTimeValue);
+      if (Number.isFinite(value)) {
+        const target = Math.round(value);
+        rows = rows.filter((row) => Math.round(Number(row.courseCompletionTimeMinutes ?? 0)) === target);
+      }
+    } else {
+      if (params.filterTimeMin) {
+        const min = Number(params.filterTimeMin);
+        if (Number.isFinite(min)) {
+          rows = rows.filter((row) => (row.courseCompletionTimeMinutes ?? 0) >= min);
+        }
+      }
+      if (params.filterTimeMax) {
+        const max = Number(params.filterTimeMax);
+        if (Number.isFinite(max)) {
+          rows = rows.filter((row) => (row.courseCompletionTimeMinutes ?? 0) <= max);
+        }
+      }
     }
 
     const sortBy = params.sortBy || 'courseCompletionTimeMinutes';
@@ -2809,6 +3233,157 @@ module.exports = ({ strapi }) => {
       const hasDepartmentFilter = departmentId != null && departmentId !== '';
       const hasLocationFilter = selectedLocationId != null && String(selectedLocationId).trim() !== '';
 
+      // When department/location filters are selected, prefer courses from actual
+      // enrollments of matching users. Assignment intersection can be empty in
+      // valid cases (e.g., mixed assignment sources), causing empty dropdowns.
+      if (hasDepartmentFilter || hasLocationFilter) {
+        let departmentNameForFilter = null;
+        if (hasDepartmentFilter) {
+          try {
+            const depRaw = String(departmentId).trim();
+            if (/^\d+$/.test(depRaw)) {
+              const dep = await strapi.db.query('api::department.department').findOne({
+                where: { id: Number(depRaw) },
+                select: ['name'],
+              });
+              departmentNameForFilter = dep?.name || null;
+            } else {
+              const dep = await strapi.db.query('api::department.department').findOne({
+                where: { documentId: depRaw },
+                select: ['name'],
+              });
+              departmentNameForFilter = dep?.name || null;
+            }
+          } catch (_) {}
+        }
+
+        let locationNameForFilter = null;
+        if (hasLocationFilter) {
+          try {
+            const locRaw = String(selectedLocationId).trim();
+            const isNumericLoc = /^\d+$/.test(locRaw);
+            let loc = null;
+            try {
+              loc = isNumericLoc
+                ? await strapi.db.query('api::work-location.work-location').findOne({ where: { id: Number(locRaw) }, select: ['name'] })
+                : await strapi.db.query('api::work-location.work-location').findOne({ where: { documentId: locRaw }, select: ['name'] });
+            } catch (_) {}
+            if (!loc) {
+              loc = isNumericLoc
+                ? await strapi.db.query('api::unit-location.unit-location').findOne({ where: { id: Number(locRaw) }, select: ['name'] })
+                : await strapi.db.query('api::unit-location.unit-location').findOne({ where: { documentId: locRaw }, select: ['name'] });
+            }
+            locationNameForFilter = loc?.name || null;
+          } catch (_) {}
+        }
+
+        try {
+          const userWhere = {
+            blocked: { $ne: true },
+            active: { $ne: false },
+          };
+
+          if (companyId != null) {
+            const companyRows = await strapi.db.query('api::company.company').findMany({
+              where: { id: companyId },
+              select: ['name'],
+              limit: 1,
+            });
+            const companyName = companyRows?.[0]?.name;
+            if (companyName) userWhere.company = companyName;
+          }
+
+          const users = await strapi.db.query('plugin::users-permissions.user').findMany({
+            where: userWhere,
+            select: ['id', 'department', 'working_location', 'branch', 'unit_location'],
+            limit: 5000,
+          });
+
+          const filteredUsers = (users || []).filter((u) => {
+            if (departmentNameForFilter) {
+              const userDept = typeof u?.department === 'object' ? u?.department?.name : u?.department;
+              if (String(userDept || '').trim().toLowerCase() !== String(departmentNameForFilter).trim().toLowerCase()) return false;
+            }
+            if (locationNameForFilter) {
+              const candidates = [u?.working_location, u?.branch, u?.unit_location]
+                .filter((v) => v != null && String(v).trim() !== '')
+                .map((v) => String(v).toLowerCase());
+              if (!candidates.some((v) => v.includes(String(locationNameForFilter).trim().toLowerCase()))) return false;
+            }
+            return true;
+          });
+
+          const userIds = filteredUsers.map((u) => u.id).filter((id) => id != null);
+          if (userIds.length > 0) {
+            let progressList = [];
+            try {
+              progressList = await strapi.documents('api::user-progress.user-progress').findMany({
+                status: 'published',
+                filters: { user: { id: { $in: userIds } } },
+                fields: ['id'],
+                populate: {
+                  course: { fields: ['id', 'documentId'] },
+                },
+                pagination: { limit: 10000 },
+              });
+              progressList = Array.isArray(progressList) ? progressList : [];
+            } catch (_) {
+              progressList = [];
+            }
+
+            if (progressList.length === 0) {
+              progressList = await strapi.db.query('api::user-progress.user-progress').findMany({
+                where: { user_id: { $in: userIds } },
+                select: ['course_id'],
+                limit: 10000,
+              }) || [];
+            }
+
+            const numericCourseIds = new Set();
+            const documentCourseIds = new Set();
+            (progressList || []).forEach((p) => {
+              const rawCourse = p.course?.id ?? p.course_id ?? p.courseId ?? p.course;
+              const rawDoc = p.course?.documentId ?? p.course?.document_id;
+              if (rawCourse != null) {
+                const asStr = String(rawCourse).trim();
+                if (/^\d+$/.test(asStr)) numericCourseIds.add(Number(asStr));
+                else if (asStr) documentCourseIds.add(asStr);
+              }
+              if (rawDoc != null && String(rawDoc).trim()) documentCourseIds.add(String(rawDoc).trim());
+            });
+
+            if (numericCourseIds.size > 0 || documentCourseIds.size > 0) {
+              const [coursesById, coursesByDoc] = await Promise.all([
+                numericCourseIds.size > 0
+                  ? strapi.db.query('api::course.course').findMany({
+                      where: { id: { $in: [...numericCourseIds] } },
+                      select: ['id', 'documentId', 'title'],
+                      limit: 1000,
+                    })
+                  : [],
+                documentCourseIds.size > 0
+                  ? strapi.db.query('api::course.course').findMany({
+                      where: { documentId: { $in: [...documentCourseIds] } },
+                      select: ['id', 'documentId', 'title'],
+                      limit: 1000,
+                    })
+                  : [],
+              ]);
+
+              const fromProgress = this._dedupeCourseOptions(
+                [...(coursesById || []), ...(coursesByDoc || [])].map((c) => ({
+                  id: c.id ?? c.documentId,
+                  documentId: c.documentId ?? null,
+                  title: c.title ?? `Course ${c.id ?? c.documentId}`,
+                }))
+              );
+
+              if (fromProgress.length > 0) return fromProgress;
+            }
+          }
+        } catch (_) {}
+      }
+
       // No filters at all: return all courses.
       if (!hasDepartmentFilter && !hasLocationFilter && companyId == null) {
         let list = [];
@@ -2856,8 +3431,103 @@ module.exports = ({ strapi }) => {
           ? companyCourses
           : this._intersectCourseOptions(filteredCourses, companyCourses);
       }
+      let finalCourses = this._dedupeCourseOptions(filteredCourses || []);
 
-      return this._dedupeCourseOptions(filteredCourses || []);
+      // Fallback: if department/location filters are active but assignment-based
+      // list is empty, derive courses from actual user-progress records so the
+      // dropdown matches KPI/chart/table scope.
+      if (finalCourses.length === 0 && (hasDepartmentFilter || hasLocationFilter)) {
+        try {
+          let departmentNameForFilter = null;
+          if (hasDepartmentFilter) {
+            const depRaw = String(departmentId).trim();
+            const depIsNumeric = /^\d+$/.test(depRaw);
+            const dep = depIsNumeric
+              ? await strapi.db.query('api::department.department').findOne({ where: { id: Number(depRaw) }, select: ['name'] })
+              : await strapi.db.query('api::department.department').findOne({ where: { documentId: depRaw }, select: ['name'] });
+            departmentNameForFilter = dep?.name || null;
+          }
+
+          let locationNameForFilter = null;
+          if (hasLocationFilter) {
+            const locRaw = String(selectedLocationId).trim();
+            const locIsNumeric = /^\d+$/.test(locRaw);
+            let loc = null;
+            try {
+              loc = locIsNumeric
+                ? await strapi.db.query('api::work-location.work-location').findOne({ where: { id: Number(locRaw) }, select: ['name'] })
+                : await strapi.db.query('api::work-location.work-location').findOne({ where: { documentId: locRaw }, select: ['name'] });
+            } catch (_) {}
+            if (!loc) {
+              loc = locIsNumeric
+                ? await strapi.db.query('api::unit-location.unit-location').findOne({ where: { id: Number(locRaw) }, select: ['name'] })
+                : await strapi.db.query('api::unit-location.unit-location').findOne({ where: { documentId: locRaw }, select: ['name'] });
+            }
+            locationNameForFilter = loc?.name || null;
+          }
+
+          const rawProgress = await strapi.db.query('api::user-progress.user-progress').findMany({
+            limit: 10000,
+            populate: { course: true, user: true },
+          }) || [];
+
+          const normalizedCompany = company
+            ? (String(company).trim().toLowerCase() === 'vega'
+                ? 'Vega'
+                : (String(company).trim().toLowerCase() === 'aia' ? 'AIA' : String(company).trim()))
+            : null;
+
+          const filteredProgress = rawProgress.filter((p) => {
+            const user = p.user || {};
+            const course = p.course || {};
+            if (!course || (course.id == null && !course.documentId)) return false;
+
+            if (normalizedCompany) {
+              const rawCompany = user.company;
+              const userCompany = typeof rawCompany === 'object' && rawCompany != null
+                ? (rawCompany.name ?? rawCompany)
+                : rawCompany;
+              const normalizedUserCompany = userCompany
+                ? (String(userCompany).trim().toLowerCase() === 'vega'
+                    ? 'Vega'
+                    : (String(userCompany).trim().toLowerCase() === 'aia' ? 'AIA' : String(userCompany).trim()))
+                : null;
+              if (!normalizedUserCompany || normalizedUserCompany !== normalizedCompany) return false;
+            }
+
+            if (departmentNameForFilter) {
+              const userDept = typeof user.department === 'object' ? user.department?.name : user.department;
+              if (String(userDept || '').trim().toLowerCase() !== String(departmentNameForFilter).trim().toLowerCase()) {
+                return false;
+              }
+            }
+
+            if (locationNameForFilter) {
+              const candidates = [user.working_location, user.branch, user.unit_location]
+                .filter((v) => v != null && String(v).trim() !== '')
+                .map((v) => String(v).toLowerCase());
+              if (!candidates.some((v) => v.includes(String(locationNameForFilter).trim().toLowerCase()))) {
+                return false;
+              }
+            }
+            return true;
+          });
+
+          finalCourses = this._dedupeCourseOptions(
+            filteredProgress
+              .map((p) => ({
+                id: p.course?.id ?? p.course?.documentId,
+                documentId: p.course?.documentId ?? null,
+                title: p.course?.title ?? p.course?.attributes?.title ?? `Course ${p.course?.id ?? p.course?.documentId}`,
+              }))
+              .filter((c) => c.id != null || c.documentId)
+          );
+        } catch (fallbackError) {
+          strapi.log.warn('getCoursesByDepartment fallback from progress failed:', fallbackError?.message || fallbackError);
+        }
+      }
+
+      return finalCourses;
     } catch (e) {
       strapi.log.error('getCoursesByDepartment error:', e?.message || e);
       return [];

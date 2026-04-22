@@ -23,20 +23,21 @@ function getComponentModel(strapi, componentUid) {
   return strapi.getModel(componentUid) || strapi.getModel(`component::${componentUid}`);
 }
 
-function ensureComponentIds(strapi, data, componentUid) {
+function ensureComponentIds(strapi, data, componentUid, options = {}) {
   const config = COMPONENT_ID_CONFIG[componentUid];
   if (!config) return;
   const { idKey, prefix } = config;
+  const forceRegenerate = !!options.forceRegenerate;
   const val = data[idKey];
-  if (val === undefined || val === null || String(val).trim() === '') {
+  if (forceRegenerate || val === undefined || val === null || String(val).trim() === '') {
     data[idKey] = generateId(prefix);
   }
 }
 
-function walkComponentData(strapi, data, componentUid) {
+function walkComponentData(strapi, data, componentUid, options = {}) {
   if (!data || typeof data !== 'object') return;
   const model = getComponentModel(strapi, componentUid);
-  ensureComponentIds(strapi, data, componentUid);
+  ensureComponentIds(strapi, data, componentUid, options);
 
   if (!model?.attributes) return;
   const attrs = model.attributes;
@@ -48,15 +49,15 @@ function walkComponentData(strapi, data, componentUid) {
       const subUid = attr.component;
       if (!subUid) continue;
       if (attr.repeatable && Array.isArray(value)) {
-        value.forEach((item) => walkComponentData(strapi, item, subUid));
+        value.forEach((item) => walkComponentData(strapi, item, subUid, options));
       } else if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
-        walkComponentData(strapi, value, subUid);
+        walkComponentData(strapi, value, subUid, options);
       }
     }
   }
 }
 
-function walkContentTypeData(strapi, data, contentTypeUid) {
+function walkContentTypeData(strapi, data, contentTypeUid, options = {}) {
   if (!data || typeof data !== 'object') return;
   const model = strapi.getModel(contentTypeUid);
   if (!model?.attributes) return;
@@ -69,9 +70,9 @@ function walkContentTypeData(strapi, data, contentTypeUid) {
       const componentUid = attr.component;
       if (!componentUid) continue;
       if (attr.repeatable && Array.isArray(value)) {
-        value.forEach((item) => walkComponentData(strapi, item, componentUid));
+        value.forEach((item) => walkComponentData(strapi, item, componentUid, options));
       } else if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
-        walkComponentData(strapi, value, componentUid);
+        walkComponentData(strapi, value, componentUid, options);
       }
     }
   }
@@ -83,11 +84,13 @@ function walkContentTypeData(strapi, data, contentTypeUid) {
  * @param {object} strapi - Strapi instance
  * @param {string} uid - Content-type UID (e.g. 'api::course.course')
  * @param {object} data - Document payload (params.data)
+ * @param {object} [options]
+ * @param {boolean} [options.forceRegenerate=false] - regenerate configured component IDs even when existing values are present
  */
-function autoGenerateComponentIds(strapi, uid, data) {
+function autoGenerateComponentIds(strapi, uid, data, options = {}) {
   if (!data || typeof data !== 'object') return;
   try {
-    walkContentTypeData(strapi, data, uid);
+    walkContentTypeData(strapi, data, uid, options);
   } catch (err) {
     strapi.log.warn('autoGenerateComponentIds failed', err);
   }

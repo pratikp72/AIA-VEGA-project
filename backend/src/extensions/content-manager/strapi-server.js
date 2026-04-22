@@ -178,6 +178,48 @@ function mergeFilterIfPresent(baseFilter, nextFilter) {
   return mergeWithAnd(baseFilter, nextFilter);
 }
 
+const COURSE_CLONE_ASSIGNMENTS_LOG = '[course-clone-assignments]';
+
+function extractCourseIdentityFromCmBody(body) {
+  const data = body?.data ?? body?.results?.[0] ?? body;
+  if (!data || typeof data !== 'object') return {};
+  return {
+    id: data?.id != null ? Number(data.id) : null,
+    documentId: data?.documentId != null ? String(data.documentId) : null,
+  };
+}
+
+async function forceRemoveCourseAssignmentLinksForCourse(strapi, identity) {
+  const knex = strapi.db?.connection;
+  if (!knex) return;
+
+  let ids = [];
+  if (Number.isFinite(identity?.id)) {
+    ids = [Number(identity.id)];
+  } else if (identity?.documentId) {
+    const rows = await strapi.db.query(COURSE_UID).findMany({
+      where: { documentId: String(identity.documentId) },
+      select: ['id'],
+      limit: 10,
+    });
+    ids = (rows || []).map((r) => Number(r?.id)).filter(Number.isFinite);
+  }
+
+  if (ids.length === 0) return;
+
+  const newTable = 'courses_course_assignments_lnk';
+  const oldTable = 'course_assignments_course_lnk';
+  const hasNew = await knex.schema.hasTable(newTable);
+  const hasOld = await knex.schema.hasTable(oldTable);
+
+  if (hasNew) {
+    await knex(newTable).whereIn('course_id', ids).del();
+  }
+  if (hasOld) {
+    await knex(oldTable).whereIn('course_id', ids).del();
+  }
+}
+
 async function hydrateRelationsForEntry(strapi, uid, entry) {
   if (!entry || typeof entry !== 'object') return entry;
 
@@ -395,6 +437,29 @@ module.exports = (plugin) => {
       await defaultCollectionFindOne(ctx);
       const modelUid = ctx.params?.model;
       await hydrateRelationsInCmBody(strapi, modelUid, ctx.body);
+    };
+  }
+
+  const defaultCollectionClone = collectionTypesController?.clone?.bind(collectionTypesController);
+  if (defaultCollectionClone) {
+    collectionTypesController.clone = async function clone(ctx) {
+      await defaultCollectionClone(ctx);
+
+      const modelUid = ctx.params?.model;
+      if (modelUid !== COURSE_UID) return;
+
+      try {
+        const identity = extractCourseIdentityFromCmBody(ctx.body);
+        await forceRemoveCourseAssignmentLinksForCourse(strapi, identity);
+        strapi.log.info(
+          `${COURSE_CLONE_ASSIGNMENTS_LOG} content-manager.clone: removed assignment links for cloned course id=${identity?.id ?? 'n/a'} documentId=${identity?.documentId ?? 'n/a'}`
+        );
+      } catch (err) {
+        strapi.log.error(
+          `${COURSE_CLONE_ASSIGNMENTS_LOG} content-manager.clone: failed to remove assignment links`,
+          err
+        );
+      }
     };
   }
 

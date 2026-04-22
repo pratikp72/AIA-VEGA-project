@@ -40,14 +40,16 @@ module.exports = ({ strapi }) => ({
       });
 
       if (user?.email) {
-        console.log('Sending email to:', user.email);
+        console.log(`[EMAIL] 📤 Sending to user: ${user.email} | subject: ${title}`);
         try {
           await strapi.plugins["email"].services.email.send({
             to: user.email,
             subject: title,
             text: message,
           });
+          console.log(`[EMAIL] ✅ Sent to: ${user.email}`);
         } catch (err) {
+          console.log(`[EMAIL] ❌ Failed to: ${user.email} — ${err?.message || err}`);
           strapi.log.error('Email send error:', err);
         }
       }
@@ -81,14 +83,16 @@ module.exports = ({ strapi }) => ({
       });
       // Email
       if (user.email && emailEnabled) {
-        console.log('Sending email to:', user.email);
+        console.log(`[EMAIL] 📤 Sending to user: ${user.email} | subject: ${title}`);
         try {
           await strapi.plugins["email"].services.email.send({
             to: user.email,
             subject: title,
             text: message,
           });
+          console.log(`[EMAIL] ✅ Sent to: ${user.email}`);
         } catch (err) {
+          console.log(`[EMAIL] ❌ Failed to: ${user.email} — ${err?.message || err}`);
           strapi.log.error('Email send error:', err);
         }
       }
@@ -116,14 +120,16 @@ module.exports = ({ strapi }) => ({
           },
         });
         if (admin.email && emailEnabled) {
-          console.log('Sending email to admin:', admin.email);
+          console.log(`[EMAIL] 📤 Sending to admin: ${admin.email} | subject: ${title}`);
           try {
             await strapi.plugins["email"].services.email.send({
               to: admin.email,
               subject: title,
               text: message,
             });
+            console.log(`[EMAIL] ✅ Sent to admin: ${admin.email}`);
           } catch (err) {
+            console.log(`[EMAIL] ❌ Failed to admin: ${admin.email} — ${err?.message || err}`);
             strapi.log.error('Admin email send error:', err);
           }
         }
