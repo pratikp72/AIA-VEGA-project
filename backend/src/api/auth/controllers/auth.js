@@ -121,72 +121,83 @@ async function findAdminUserByEmail(email) {
 }
 
 module.exports = {
-  async forgotPassword(ctx) {
-    try {
-      const identifier = String(ctx.request?.body?.identifier || '').trim();
-      if (!identifier) {
-        return ctx.badRequest('identifier is required');
-      }
-
-      const userQuery = strapi.db.query('plugin::users-permissions.user');
-      const user =
-        (await userQuery.findOne({
-          where: { emp_code: identifier },
-          select: ['id', 'email', 'username', 'active', 'blocked'],
-        })) ||
-        (await userQuery.findOne({
-          where: { emp_id: identifier },
-          select: ['id', 'email', 'username', 'active', 'blocked'],
-        })) ||
-        (await userQuery.findOne({
-          where: { email: { $eqi: identifier } },
-          select: ['id', 'email', 'username', 'active', 'blocked'],
-        }));
-
-      if (!user || user.active === false || user.blocked === true) {
-        return ctx.send({
-          success: true,
-          hasEmail: false,
-          emailSent: false,
-          message: 'If user has no email, contact admin to set password.',
-        });
-      }
-
-      const email = String(user.email || '').trim();
-      if (!email) {
-        return ctx.send({
-          success: true,
-          hasEmail: false,
-          emailSent: false,
-          message: 'User has no email. Contact admin to set password.',
-        });
-      }
-
-      const resetCode = crypto.randomBytes(32).toString('hex');
-
-      await strapi.entityService.update('plugin::users-permissions.user', user.id, {
-        data: {
-          resetPasswordToken: resetCode,
-        },
+  
+   async forgotPassword(ctx) {
+  try {
+    const identifier = String(ctx.request?.body?.identifier || '').trim();
+    if (!identifier) {
+      return ctx.badRequest('identifier is required', {
+        errorCode: 'IDENTIFIER_REQUIRED',
       });
-
-      await sendForgotPasswordEmail({
-        to: email,
-        username: user.username,
-        resetCode,
-      });
-
-      return ctx.send({
-        success: true,
-        hasEmail: true,
-        emailSent: true,
-        message: 'Password reset email sent.',
-      });
-    } catch (err) {
-      strapi.log.error('forgotPassword error:', err);
-      return ctx.internalServerError('Unable to process forgot password request');
     }
-  },
+
+    const userQuery = strapi.db.query('plugin::users-permissions.user');
+    const user =
+      (await userQuery.findOne({
+        where: { emp_code: identifier },
+        select: ['id', 'email', 'username', 'active', 'blocked'],
+      })) ||
+      (await userQuery.findOne({
+        where: { emp_id: identifier },
+        select: ['id', 'email', 'username', 'active', 'blocked'],
+      })) ||
+      (await userQuery.findOne({
+        where: { email: { $eqi: identifier } },
+        select: ['id', 'email', 'username', 'active', 'blocked'],
+      }));
+
+    // Wrong ID
+    if (!user) {
+      return ctx.badRequest('The Employee ID you entered is incorrect. Please try again.', {
+        errorCode: 'INVALID_IDENTIFIER',
+        invalidIdentifier: true,
+      });
+    }
+
+    // Optional: keep this separate if you want explicit inactive/blocked handling
+    if (user.active === false || user.blocked === true) {
+      return ctx.badRequest('Your account is inactive or blocked. Please contact Admin.', {
+        errorCode: 'USER_INACTIVE_OR_BLOCKED',
+      });
+    }
+
+    const email = String(user.email || '').trim();
+
+    // ID exists, but no email
+    if (!email) {
+      return ctx.badRequest(
+        'The Employee ID you have entered, does not have a personal email id registered against it. Contact an IT team representative to help you with this process.',
+        {
+          errorCode: 'NO_EMAIL',
+          hasEmail: false,
+          emailSent: false,
+        }
+      );
+    }
+
+    const resetCode = crypto.randomBytes(32).toString('hex');
+
+    await strapi.entityService.update('plugin::users-permissions.user', user.id, {
+      data: { resetPasswordToken: resetCode },
+    });
+
+    await sendForgotPasswordEmail({
+      to: email,
+      username: user.username,
+      resetCode,
+    });
+
+    return ctx.send({
+      success: true,
+      hasEmail: true,
+      emailSent: true,
+      message: 'Password reset email sent.',
+    });
+  } catch (err) {
+    strapi.log.error('forgotPassword error:', err);
+    return ctx.internalServerError('Unable to process forgot password request');
+  }
+}, 
 
   async resetForgotPassword(ctx) {
     try {
