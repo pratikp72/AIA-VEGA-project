@@ -341,7 +341,7 @@ async function syncVegaEmployees(strapi) {
           emp_id: safeString(row[COL.USER_ID]),
           employment_type: safeString(row[COL.EMPLOYMENT_TYPE]),
           date_of_birth: excelSerialToIso(row[COL.DOB]),
-          age: 0,
+          age: safeString(row[COL.AGE]),
           contact_no: safeString(row[COL.CONTACT]),
           joining_date: excelSerialToIso(row[COL.DOJ]),
           experience_with_vega: safeString(row[COL.EXP_WITH_VEGA]),

@@ -65,6 +65,21 @@
       "inversedBy": "users",
       "configurable": false
     },
+    "emp_photo_file": {
+      "type": "string",
+      "required": false,
+      "configurable": false,
+      "conditions": {
+        "visible": {
+          "==": [
+            {
+              "var": "company"
+            },
+            "AIA"
+          ]
+        }
+      }
+    },
     "joining_date": {
       "type": "date",
       "required": true
@@ -106,20 +121,6 @@
       "allowedTypes": [
         "images"
       ]
-    },
-    "age": {
-      "type": "integer",
-      "conditions": {
-        "visible": {
-          "==": [
-            {
-              "var": "company"
-            },
-            "Vega"
-          ]
-        }
-      },
-      "required": true
     },
     "working_location": {
       "type": "string",
@@ -313,15 +314,19 @@
       "required": true,
       "default": true
     },
-    "emp_photo_file": {
+    "age": {
       "type": "string",
-      "required": false,
-      "configurable": false,
       "conditions": {
         "visible": {
-          "==": [{ "var": "company" }, "AIA"]
+          "==": [
+            {
+              "var": "company"
+            },
+            "Vega"
+          ]
         }
-      }
+      },
+      "required": true
     }
   }
 }
