@@ -1,3 +1,8 @@
+const allowedCorsOrigins = String(process.env['ALLOWED_CORS_ORIGINS'] || 'http://localhost:3000')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
 module.exports = [
   'global::ensure-department-after-user',
   'global::ensure-work-location-after-user',
@@ -7,7 +12,7 @@ module.exports = [
   {
     name: 'strapi::cors',
     config: {
-      origin: ['http://192.168.2.84:3000', 'http://localhost:3000'],
+      origin: allowedCorsOrigins,
       methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'],
       headers: ['Content-Type', 'Authorization', 'Origin', 'Accept'],
       keepHeaderOnError: true,
