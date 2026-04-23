@@ -33,8 +33,7 @@
             "Multiple_choice"
           ]
         }
-      },
-      "required": true
+      }
     },
     "point": {
       "type": "integer"
@@ -42,6 +41,7 @@
     "correct": {
       "type": "boolean"
     },
+
     "selected_answer_for_multiSelect": {
       "type": "json",
       "conditions": {

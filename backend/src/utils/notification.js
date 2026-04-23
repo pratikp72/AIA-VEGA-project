@@ -1,3 +1,4 @@
+// @ts-nocheck
 'use strict';
 
 /**
@@ -41,25 +42,36 @@ module.exports = (strapi) => {
       }
     }
 
-    // Resolve courseTitle from courseId (numeric id or documentId)
-    if (out.courseId != null && out.courseId !== '' && !out.courseTitle) {
+    // Resolve courseTitle, company, courseDocumentId from courseId (numeric id or documentId)
+    if (out.courseId != null && out.courseId !== '') {
       try {
         const courseId = Number(out.courseId);
         let courseRow = null;
         if (!Number.isNaN(courseId)) {
           courseRow = await strapi.db.query('api::course.course').findOne({
             where: { id: courseId },
-            select: ['id', 'title'],
+            populate: ['company'],
           });
         }
         if (!courseRow && String(out.courseId)) {
           courseRow = await strapi.db.query('api::course.course').findOne({
             where: { documentId: String(out.courseId) },
-            select: ['id', 'documentId', 'title'],
+            populate: ['company'],
           });
         }
-        if (courseRow?.title) {
+        if (courseRow?.title && !out.courseTitle) {
           out.courseTitle = courseRow.title;
+        }
+        if (courseRow?.documentId && !out.courseDocumentId) {
+          out.courseDocumentId = courseRow.documentId;
+        }
+        if (!out.company && courseRow) {
+          const companies = Array.isArray(courseRow.company)
+            ? courseRow.company
+            : courseRow.company
+              ? [courseRow.company]
+              : [];
+          if (companies[0]?.name) out.company = companies[0].name;
         }
       } catch (err) {
         strapi.log.warn('[notification] enrichMeta course error:', err?.message || err);
@@ -224,13 +236,26 @@ module.exports = (strapi) => {
    * Requires .env: SMTP_HOST, SMTP_PORT, SMTP_USERNAME, SMTP_PASSWORD, EMAIL_FROM
    */
   async function sendEmail(to, subject, body, htmlOverride) {
-    if (!to || !subject) return;
+    if (!to || !subject) {
+      console.log(`[EMAIL] ❌ Skipped — missing to="${to}" or subject="${subject}"`);
+      return;
+    }
+
     const emailEnabled = isEmailEnabled();
-    strapi.log.warn(`[notification.sendEmail] Checking EMAIL_ENABLED: ${process.env.EMAIL_ENABLED} → ${emailEnabled}`);
+    console.log(`[EMAIL] EMAIL_ENABLED env="${process.env.EMAIL_ENABLED}" → resolved=${emailEnabled}`);
+
     if (!emailEnabled) {
+      console.log(`[EMAIL] ❌ Blocked — EMAIL_ENABLED is false. Set EMAIL_ENABLED=true in .env to send emails.`);
       strapi.log.warn(`[notification.sendEmail] Email blocked: EMAIL_ENABLED=false (to: ${to})`);
       return;
     }
+
+    console.log(`[EMAIL] 📤 Attempting to send email:`);
+    console.log(`[EMAIL]   → To:      ${to}`);
+    console.log(`[EMAIL]   → Subject: ${subject}`);
+    console.log(`[EMAIL]   → SMTP:    ${process.env.SMTP_HOST}:${process.env.SMTP_PORT}`);
+    console.log(`[EMAIL]   → From:    ${process.env.EMAIL_FROM}`);
+
     const text = body || '';
     const html = htmlOverride || (text ? text.replace(/\n/g, '<br>') : '');
     const payload = {
@@ -244,18 +269,28 @@ module.exports = (strapi) => {
     const emailService =
       strapi.plugin?.('email')?.service?.('email') ||
       strapi.plugins?.email?.services?.email;
+
     if (!emailService || typeof emailService.send !== 'function') {
+      console.log(`[EMAIL] ❌ Email plugin service not found — check config/plugins.js and EMAIL_ENABLED in .env`);
       strapi.log.warn('[notification] Email plugin not available – skipping send. Enable email in config/plugins.js and set SMTP_* in .env');
       return;
     }
+
     try {
       await emailService.send(payload);
+      console.log(`[EMAIL] ✅ Email sent successfully to: ${to}`);
     } catch (err) {
       const msg = err?.message || String(err);
-      strapi.log.error('[notification] Email send failed:', msg);
-      if (/auth|credentials|login|ECONNREFUSED|ETIMEDOUT|Invalid login/i.test(msg)) {
-        strapi.log.warn('[notification] Check .env: SMTP_HOST, SMTP_PORT, SMTP_USERNAME, SMTP_PASSWORD');
+      console.log(`[EMAIL] ❌ Email send FAILED to: ${to}`);
+      console.log(`[EMAIL]   → Error: ${msg}`);
+      if (/ECONNREFUSED/i.test(msg)) {
+        console.log(`[EMAIL]   → HINT: Cannot connect to SMTP server. Check SMTP_HOST (${process.env.SMTP_HOST}) and SMTP_PORT (${process.env.SMTP_PORT}) are correct and reachable.`);
+      } else if (/ETIMEDOUT/i.test(msg)) {
+        console.log(`[EMAIL]   → HINT: Connection timed out. The SMTP server may be unreachable from this machine.`);
+      } else if (/auth|credentials|login|Invalid login/i.test(msg)) {
+        console.log(`[EMAIL]   → HINT: Authentication failed. Check SMTP_USERNAME and SMTP_PASSWORD in .env`);
       }
+      strapi.log.error('[notification] Email send failed:', msg);
     }
   }
 
@@ -484,7 +519,12 @@ module.exports = (strapi) => {
     const { sendEmail: doEmail = true, sendSocket: doSocket = true } = options;
     const globalEmailEnabled = isEmailEnabled();
     const shouldSendEmail = doEmail && globalEmailEnabled;
-    strapi.log.warn(`[notification.sendNotification] type=${type} doEmail=${doEmail} globalEmailEnabled=${globalEmailEnabled} effectiveEmail=${shouldSendEmail} usersCount=${usersArray.length}`);
+    console.log(`[NOTIFICATION] 🔔 sendNotification called`);
+    console.log(`[NOTIFICATION]   → type:         ${type}`);
+    console.log(`[NOTIFICATION]   → title:        ${title}`);
+    console.log(`[NOTIFICATION]   → users:        ${usersArray.length}`);
+    console.log(`[NOTIFICATION]   → adminRoles:   ${JSON.stringify(adminRoles)}`);
+    console.log(`[NOTIFICATION]   → emailEnabled: ${globalEmailEnabled}, willSendEmail: ${shouldSendEmail}`);
     const users = Array.isArray(usersArray) ? usersArray.filter(Boolean) : [];
     const roles = Array.isArray(adminRoles) ? adminRoles.filter(Boolean) : [];
     const enrichedMeta = await enrichMeta(meta);

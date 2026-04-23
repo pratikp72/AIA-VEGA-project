@@ -11,12 +11,12 @@ function _computeNextStep(completedCount, totalModules, course) {
 }
 
 /**
- * Weighted progress: Modules = 80%, Quiz = 10 or 20%, Feedback = 10% (if compulsory).
- * If feedback is NOT compulsory → quiz weight = 20%, no feedback portion.
+ * Weighted progress: Modules = 90%, Quiz = 10%. Feedback has no percentage weight.
+ * Passing the quiz always completes the course at 100%.
  */
 function _calcModulePct(completedCount, totalModules) {
   if (totalModules <= 0) return 0;
-  return Math.round((completedCount / totalModules) * 80);
+  return Math.round((completedCount / totalModules) * 90);
 }
 
 /**
@@ -394,7 +394,6 @@ module.exports = createCoreController("api::user-progress.user-progress", ({ str
       where: { id: numCourseId },
       populate: { modules: true, feedback: true },
     });
-    const feedbackCompulsory = course?.feedback?.[0]?.compulsory === true;
     const effectiveLang = progress.selected_language ?? null;
     const langModules = _filterModulesByLanguage(course?.modules, effectiveLang);
     const totalModules = langModules.length;
@@ -403,29 +402,20 @@ module.exports = createCoreController("api::user-progress.user-progress", ({ str
     const langModuleKeys = _buildModuleKeySet(langModules);
     const completedInLang = completedModules.filter((id) => langModuleKeys.has(String(id)));
     const modulePct = _calcModulePct(completedInLang.length, totalModules);
-    const quizPct = feedbackCompulsory ? 10 : 20;
+    // Quiz = 10% always; feedback has no weight → passing quiz completes the course
+    const quizPct = 10;
 
     /** @type {any} */
     let updateData;
     if (passed === true) {
-      if (feedbackCompulsory) {
-        // Quiz = 10%, waiting for feedback (another 10%)
-        updateData = {
-          progress_status: 'In_progress',
-          progress_percentage: modulePct + quizPct,
-          completed_at: null,
-          last_accessed_at: now,
-        };
-      } else {
-        // Quiz = 20%, no feedback needed → course complete
-        updateData = {
-          progress_status: 'Completed',
-          progress_percentage: modulePct + quizPct,
-          completed_at: now,
-          last_accessed_at: now,
-          certificate_issued: true,
-        };
-      }
+      // Quiz passed → course complete at modulePct + 10%
+      updateData = {
+        progress_status: 'Completed',
+        progress_percentage: modulePct + quizPct,
+        completed_at: now,
+        last_accessed_at: now,
+        certificate_issued: true,
+      };
     } else {
       // Failed: keep module percentage only
       updateData = {
@@ -673,11 +663,12 @@ module.exports = createCoreController("api::user-progress.user-progress", ({ str
     }
 
     if (existing) {
+      // Feedback has no percentage weight. Course is already Completed after quiz pass.
+      // Just ensure the record stays Completed and link the feedback submission.
       /** @type {any} */
       const updateData = {
         progress_status: "Completed",
-        progress_percentage: 100,
-        completed_at: now,
+        completed_at: existing.completed_at ?? now,
         certificate_issued: true,
       };
       try {

@@ -34,7 +34,10 @@
     },
     "active": {
       "type": "enumeration",
-      "enum": ["published", "unpublished"],
+      "enum": [
+        "published",
+        "unpublished"
+      ],
       "default": "published",
       "required": true
     },

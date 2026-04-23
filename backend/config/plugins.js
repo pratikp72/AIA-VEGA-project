@@ -40,6 +40,22 @@ module.exports = ({ env }) => ({
   },
 
   /**
+   * Local plugin: Quiz Submission
+   */
+  'quiz-submission-admin': {
+    enabled: true,
+    resolve: './src/plugins/quiz-submission-admin',
+  },
+
+  /**
+   * Local plugin: Feedback Submission
+   */
+  'feedback-submission-admin': {
+    enabled: true,
+    resolve: './src/plugins/feedback-submission-admin',
+  },
+
+  /**
    * 📧 Email Provider (Nodemailer)
    */
   email: {
@@ -50,8 +66,6 @@ module.exports = ({ env }) => ({
         host: env('SMTP_HOST', 'smtp.gmail.com'),
         port: env.int('SMTP_PORT', 587),
         secure: env.bool('SMTP_SECURE', false),
-        requireTLS: true,
-        tls: { rejectUnauthorized: true },
         ...(env('SMTP_USERNAME') && env('SMTP_PASSWORD')
           ? {
               auth: {

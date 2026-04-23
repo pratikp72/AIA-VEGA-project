@@ -35,10 +35,8 @@ export function Filters({
   setFilterCourse,
   filterStatus,
   setFilterStatus,
-  filterTimeMin,
-  setFilterTimeMin,
-  filterTimeMax,
-  setFilterTimeMax,
+  filterTimeValue,
+  setFilterTimeValue,
   courses = [],
   // course view (global) filters – order: Company, Date range, Department, Course, Course type, Location, Quiz status, Feedback given
   filterCourseCategory = '',
@@ -313,7 +311,6 @@ export function Filters({
                   minWidth: '100%',
                 }}
               >
-                <option value="">All Courses</option>
                 {courses.map(c => (
                   <option key={c.id} value={c.id}>{c.title}</option>
                 ))}
@@ -341,29 +338,25 @@ export function Filters({
                 <option value="Failed">Failed</option>
               </select>
             </Box>
-            <Box style={{ minWidth: 200 }}>
+            <Box style={{ minWidth: 200, display: 'flex', flexDirection: 'column' }}>
               <Typography variant="pi" textColor="neutral600" style={{ marginBottom: 4 }}>
                 Course Completion Time (min)
               </Typography>
-              <Flex gap={2} alignItems="center">
-                <input
-                  type="number"
-                  min="0"
-                  value={filterTimeMin}
-                  onChange={e => setFilterTimeMin(e.target.value)}
-                  placeholder="Min"
-                  style={{ width: 70, padding: '6px', border: '1px solid #dcdce4', borderRadius: 4 }}
-                />
-                <Typography variant="pi">to</Typography>
-                <input
-                  type="number"
-                  min="0"
-                  value={filterTimeMax}
-                  onChange={e => setFilterTimeMax(e.target.value)}
-                  placeholder="Max"
-                  style={{ width: 70, padding: '6px', border: '1px solid #dcdce4', borderRadius: 4 }}
-                />
-              </Flex>
+              <input
+                type="number"
+                min="0"
+                value={filterTimeValue}
+                onChange={e => setFilterTimeValue(e.target.value)}
+                placeholder="e.g. 5"
+                style={{
+                  width: 120,
+                  height: 36,
+                  padding: '8px 12px',
+                  border: '1px solid #dcdce4',
+                  borderRadius: 4,
+                  boxSizing: 'border-box',
+                }}
+              />
             </Box>
             <Box style={{ display: 'flex', flexDirection: 'column', minWidth: 260 }}>
               <Typography variant="pi" textColor="neutral600" style={{ marginBottom: 4 }}>

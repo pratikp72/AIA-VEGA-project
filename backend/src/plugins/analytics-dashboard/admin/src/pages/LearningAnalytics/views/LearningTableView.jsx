@@ -1,3 +1,5 @@
+// @ts-nocheck
+
 import React from 'react';
 import { Box } from '@strapi/design-system';
 import { DataTable } from '../../../components/DataTable';
@@ -92,10 +94,11 @@ export function LearningTableView({
               columns={[
                 { key: 'employeeName', label: 'Employee Name' },
                 { key: 'company', label: 'Company' },
-                { key: 'coursesEnrolled', label: 'Courses Enrolled' },
-                { key: 'totalModulesDone', label: 'Total Modules Done' },
-                { key: 'progressPercent', label: 'Avg Progress %', render: (v) => `${v ?? 0}%` },
-                { key: 'avgScore', label: 'Avg Quiz Score' },
+                // { key: 'coursesEnrolled', label: 'Courses Enrolled' },
+                { key: 'courseStatus', label: 'Course Status' },
+                // { key: 'totalModulesDone', label: 'Total Modules Done' },
+                { key: 'progressPercent', label: 'Progress %', render: (v) => `${v ?? 0}%` },
+                { key: 'avgScore', label: 'Quiz Score' },
                 {
                   key: 'courseCompletionTimeMinutes',
                   label: 'Completion Time',

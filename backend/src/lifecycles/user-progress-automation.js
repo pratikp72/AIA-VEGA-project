@@ -622,7 +622,6 @@ function registerUserProgressLifecycles(strapi) {
           where: { id: numCourseId },
           populate: { modules: true, feedback: true },
         });
-        const feedbackCompulsory = course?.feedback?.[0]?.compulsory === true;
         // Filter modules by the user's selected language
         const effectiveLang = progress.selected_language ?? null;
         const allModules = Array.isArray(course?.modules) ? course.modules : [];
@@ -632,29 +631,21 @@ function registerUserProgressLifecycles(strapi) {
           : allModules;
         const totalModules = (langModules.length > 0 ? langModules : allModules).length;
         const completedModules = Array.isArray(progress.completed_modules) ? progress.completed_modules : [];
-        const modulePct = totalModules > 0 ? Math.round((completedModules.length / totalModules) * 80) : 0;
-        const quizPct = feedbackCompulsory ? 10 : 20;
+        const modulePct = totalModules > 0 ? Math.round((completedModules.length / totalModules) * 90) : 0;
+        // Quiz = 10% always; feedback has no weight → passing quiz completes the course
+        const quizPct = 10;
         const now = new Date();
 
         let updateData;
         if (passed) {
-          if (feedbackCompulsory) {
-            updateData = {
-              progress_status: 'In_progress',
-              progress_percentage: modulePct + quizPct,
-              completed_at: null,
-              last_accessed_at: now,
-            };
-          } else {
-            // No feedback required → course complete
-            updateData = {
-              progress_status: 'Completed',
-              progress_percentage: modulePct + quizPct,
-              completed_at: now,
-              last_accessed_at: now,
-              certificate_issued: true,
-            };
-          }
+          // Quiz passed → course complete at modulePct + 10%
+          updateData = {
+            progress_status: 'Completed',
+            progress_percentage: modulePct + quizPct,
+            completed_at: now,
+            last_accessed_at: now,
+            certificate_issued: true,
+          };
         } else {
           // Failed: keep module-only percentage
           updateData = {

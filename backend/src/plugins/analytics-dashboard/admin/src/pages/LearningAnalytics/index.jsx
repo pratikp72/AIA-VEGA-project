@@ -1,3 +1,6 @@
+// @ts-nocheck
+
+
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Page, Layouts } from '@strapi/admin/strapi-admin';
 import { Box, Flex, Typography, Loader } from '@strapi/design-system';
@@ -137,10 +140,25 @@ export default function LearningAnalyticsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only when filterCourse changes
   }, [filterCourse]);
 
-  // Clear course filter when course-list context changes so stale selected course does not linger.
+  // Clear course filter when context changes outside Employee Table.
   useEffect(() => {
-    setFilterCourse('');
+    if (viewMode !== 'table') {
+      setFilterCourse('');
+    }
   }, [viewMode, company, department, unitLocation, searchDebounced]);
+
+  // Employee Table: default selected course is the first available course.
+  useEffect(() => {
+    if (viewMode !== 'table') return;
+    if (!Array.isArray(courses) || courses.length === 0) {
+      setFilterCourse('');
+      return;
+    }
+    const hasSelectedCourse = courses.some((c) => String(c.id) === String(filterCourse));
+    if (!filterCourse || !hasSelectedCourse) {
+      setFilterCourse(String(courses[0].id));
+    }
+  }, [viewMode, courses, filterCourse]);
 
   // Single effect: load courses when filter context changes. Skip only if same key (avoid refetch loop).
   useEffect(() => {
@@ -184,8 +202,7 @@ export default function LearningAnalyticsPage() {
   }, [viewMode, company, department, unitLocation, searchDebounced]);
 
   const [filterStatus, setFilterStatus] = useState('');
-  const [filterTimeMin, setFilterTimeMin] = useState('');
-  const [filterTimeMax, setFilterTimeMax] = useState('');
+  const [filterTimeValue, setFilterTimeValue] = useState('');
   const handleExportAllPersonalData = useCallback(() => {
     if (!data || !employeeDetail) return;
     const wb = XLSX.utils.book_new();
@@ -279,8 +296,7 @@ export default function LearningAnalyticsPage() {
         ...(searchVal && { search: searchVal }),
         ...(filterCourse && { courseId: filterCourse }),
         ...(filterStatus && { status: filterStatus }),
-        ...(filterTimeMin && { filterTimeMin }),
-        ...(filterTimeMax && { filterTimeMax }),
+        ...(filterTimeValue && { filterTimeValue }),
       };
       fetcher = () => fetchLearningEmployeeTable(tableParams);
     } else if (viewMode === 'personal' && employeeId) {
@@ -302,8 +318,7 @@ export default function LearningAnalyticsPage() {
             ...(searchDebounced?.trim() && { search: searchDebounced.trim() }),
             ...(filterCourse && { courseId: filterCourse }),
             ...(filterStatus && { status: filterStatus }),
-            ...(filterTimeMin && { filterTimeMin }),
-            ...(filterTimeMax && { filterTimeMax }),
+            ...(filterTimeValue && { filterTimeValue }),
           };
           if (dateFrom) tableParams.dateFrom = dateFrom;
           if (dateTo) tableParams.dateTo = dateTo;
@@ -319,7 +334,7 @@ export default function LearningAnalyticsPage() {
       })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
-  }, [viewMode, employeeId, dateFrom, dateTo, department, company, searchDebounced, sortOrder, page, pageSize, filterCourse, filterModule, filterStatus, filterTimeMin, filterTimeMax, filterCourseCategory, unitLocation, filterQuizStatus, filterFeedbackGiven, courseModules]);
+  }, [viewMode, employeeId, dateFrom, dateTo, department, company, searchDebounced, sortOrder, page, pageSize, filterCourse, filterModule, filterStatus, filterTimeValue, filterCourseCategory, unitLocation, filterQuizStatus, filterFeedbackGiven, courseModules]);
 
   useEffect(() => {
     if (viewMode === 'table') setPage(1);
@@ -354,7 +369,7 @@ export default function LearningAnalyticsPage() {
       setData(null);
       setLoading(false);
     }
-  }, [viewMode, employeeId, dateFrom, dateTo, department, company, searchDebounced, sortOrder, page, pageSize, filterCourse, filterModule, filterStatus, filterTimeMin, filterTimeMax, filterCourseCategory, unitLocation, filterQuizStatus, filterFeedbackGiven]);
+  }, [viewMode, employeeId, dateFrom, dateTo, department, company, searchDebounced, sortOrder, page, pageSize, filterCourse, filterModule, filterStatus, filterTimeValue, filterCourseCategory, unitLocation, filterQuizStatus, filterFeedbackGiven]);
 
   const kpis = data?.kpis || {};
   const quiz = data?.quiz || {};
@@ -394,10 +409,8 @@ export default function LearningAnalyticsPage() {
             courses={viewMode === 'personal' ? (employeeId && personalCourseOptions !== null ? personalCourseOptions : []) : courses}
             filterStatus={filterStatus}
             setFilterStatus={setFilterStatus}
-            filterTimeMin={filterTimeMin}
-            setFilterTimeMin={setFilterTimeMin}
-            filterTimeMax={filterTimeMax}
-            setFilterTimeMax={setFilterTimeMax}
+            filterTimeValue={filterTimeValue}
+            setFilterTimeValue={setFilterTimeValue}
             filterCourseCategory={filterCourseCategory}
             setFilterCourseCategory={setFilterCourseCategory}
             unitLocation={unitLocation}

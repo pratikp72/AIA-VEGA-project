@@ -16,7 +16,6 @@
     "username": {
       "type": "string",
       "minLength": 3,
-      "unique": true,
       "configurable": false,
       "required": true
     },
@@ -24,7 +23,7 @@
       "type": "email",
       "minLength": 6,
       "configurable": false,
-      "required": true
+      "required": false
     },
     "provider": {
       "type": "string",
@@ -65,6 +64,21 @@
       "target": "plugin::users-permissions.role",
       "inversedBy": "users",
       "configurable": false
+    },
+    "emp_photo_file": {
+      "type": "string",
+      "required": false,
+      "configurable": false,
+      "conditions": {
+        "visible": {
+          "==": [
+            {
+              "var": "company"
+            },
+            "AIA"
+          ]
+        }
+      }
     },
     "joining_date": {
       "type": "date",
@@ -107,20 +121,6 @@
       "allowedTypes": [
         "images"
       ]
-    },
-    "age": {
-      "type": "integer",
-      "conditions": {
-        "visible": {
-          "==": [
-            {
-              "var": "company"
-            },
-            "Vega"
-          ]
-        }
-      },
-      "required": true
     },
     "working_location": {
       "type": "string",
@@ -313,6 +313,20 @@
       "type": "boolean",
       "required": true,
       "default": true
+    },
+    "age": {
+      "type": "string",
+      "conditions": {
+        "visible": {
+          "==": [
+            {
+              "var": "company"
+            },
+            "Vega"
+          ]
+        }
+      },
+      "required": true
     }
   }
 }
