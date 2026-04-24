@@ -76,8 +76,6 @@ module.exports = ({ strapi }) => {
 
     const where = {
       blocked: { $eq: false },
-      active: { $ne: false },
-      exit_date: { $null: true },
     };
 
     const companyVal = params.company && String(params.company).trim() && !/^all\s*companies?$/i.test(String(params.company));
@@ -85,6 +83,16 @@ module.exports = ({ strapi }) => {
       const c = String(params.company).trim();
       const cl = c.toLowerCase();
       where.company = cl === 'vega' ? 'Vega' : cl === 'aia' ? 'AIA' : c;
+    }
+
+    // Vega: show employees with active=true (exit_date doesn't matter)
+    // AIA + no-filter: show employees with exit_date IS NULL (currently working)
+    const resolvedCompany = where.company;
+    if (resolvedCompany === 'Vega') {
+      where.active = true;
+    } else {
+      where.active = { $ne: false };
+      where.exit_date = { $null: true };
     }
 
     const deptVal = params.department && String(params.department).trim() && String(params.department).toLowerCase() !== 'all';
