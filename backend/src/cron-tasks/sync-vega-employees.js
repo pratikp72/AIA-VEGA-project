@@ -157,7 +157,8 @@ async function uploadVegaPhoto(strapi, sharingUrl, username, accessToken) {
     data: {
       name: fileName,
       alternativeText: safeString(username, 'employee'),
-      caption: '',
+      // Keep source SharePoint URL so future sync runs can detect changes.
+      caption: raw,
       width: null,
       height: null,
       formats: null,
@@ -358,24 +359,29 @@ async function syncVegaEmployees(strapi) {
           description: '',
         };
 
-        // Upload photo if SharePoint URL present and user doesn't already have one
+        // Upload/refresh photo if SharePoint URL is present.
+        // We store the source URL in upload.caption and compare it on each run.
         const sharingUrl = safeString(row[COL.IMAGE], '');
         if (sharingUrl && sharingUrl !== '-' && sharingUrl.startsWith('http')) {
-          // Check if user already has a photograph via populate (it's a media relation)
-          let hasPhoto = false;
+          let existingPhotoId = null;
+          let existingPhotoSource = null;
           if (existing) {
             const withPhoto = await strapi.db.query(USER_UID).findOne({
               where: { id: existing.id },
               populate: ['photograph'],
             });
-            hasPhoto = Boolean(withPhoto?.photograph?.id);
+            existingPhotoId = withPhoto?.photograph?.id || null;
+            existingPhotoSource = String(withPhoto?.photograph?.caption || '').trim() || null;
           }
-          if (!hasPhoto) {
+          const shouldUploadPhoto = !existingPhotoId || existingPhotoSource !== sharingUrl;
+          if (shouldUploadPhoto) {
             try {
               const photoId = await uploadVegaPhoto(strapi, sharingUrl, name, accessToken);
               if (photoId) {
                 userData.photograph = photoId;
-                console.log(`[vega-sync]   PHOTO    ${String(row[COL.USER_ID]).padEnd(8)} | uploaded id=${photoId}`);
+                console.log(
+                  `[vega-sync]   PHOTO    ${String(row[COL.USER_ID]).padEnd(8)} | ${existingPhotoId ? 'replaced' : 'uploaded'} id=${photoId}`
+                );
               }
             } catch (photoErr) {
               strapi.log.warn(`[vega-sync] Photo upload failed for ${name}: ${photoErr?.message}`);
