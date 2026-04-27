@@ -1,3 +1,4 @@
+//@ts-nocheck
 'use strict';
 
 /**
@@ -10,6 +11,7 @@ function getQueryParams(ctx) {
     dateFrom: ctx.query.dateFrom || ctx.query.date_from,
     dateTo: ctx.query.dateTo || ctx.query.date_to,
     department: ctx.query.department,
+    designation: ctx.query.designation,
     company: ctx.query.company,
     unitLocation: ctx.query.unitLocation || ctx.query.unit_location,
     location: ctx.query.location,

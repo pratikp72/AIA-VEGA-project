@@ -8,19 +8,39 @@
     <link rel="icon" type="image/png" href="/favicon.ico" />
     <link rel="icon" type="image/x-icon" href="/favicon.png" />
     <script>
-      
       (function() {
-        const originalTitle = document.title;
-        Object.defineProperty(document, 'title', {
-          set: function(newTitle) {
-           
-            const updatedTitle = (newTitle || '').replace(/Strapi/gi, 'AIA-VEGA');
-            document.getElementsByTagName('title')[0].innerHTML = updatedTitle;
-          },
-          get: function() {
-            return document.getElementsByTagName('title')[0].innerHTML;
-          }
-        });
+        // 1. Ensure the title is correct immediately (before any JS bundle runs)
+        var titleEl = document.getElementsByTagName('title')[0];
+        if (titleEl && /Strapi/i.test(titleEl.textContent)) {
+          titleEl.textContent = 'AIA-VEGA Admin';
+        }
+
+        // 2. Intercept document.title setter so any JS assignment is replaced
+        try {
+          Object.defineProperty(document, 'title', {
+            set: function(newTitle) {
+              var updated = (newTitle || '').replace(/Strapi/gi, 'AIA-VEGA');
+              document.getElementsByTagName('title')[0].textContent = updated;
+            },
+            get: function() {
+              return document.getElementsByTagName('title')[0].textContent;
+            },
+            configurable: true,
+          });
+        } catch (e) {}
+
+        // 3. MutationObserver set up EARLY (in <head>) to catch direct DOM writes
+        //    that bypass the document.title setter (e.g. React Helmet, innerHTML)
+        if (titleEl && window.MutationObserver) {
+          new MutationObserver(function(mutations) {
+            mutations.forEach(function(mutation) {
+              var text = (mutation.target || titleEl).textContent || '';
+              if (/Strapi/i.test(text)) {
+                (mutation.target || titleEl).textContent = text.replace(/Strapi/gi, 'AIA-VEGA');
+              }
+            });
+          }).observe(titleEl, { childList: true, characterData: true, subtree: true });
+        }
       })();
     </script>
     <style>

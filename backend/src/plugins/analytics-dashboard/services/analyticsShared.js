@@ -114,6 +114,13 @@ module.exports = ({ strapi }) => {
       }
     }
 
+    // Add designation filter
+    const designationVal = params.designation && String(params.designation).trim() && String(params.designation).toLowerCase() !== 'all';
+    if (designationVal) {
+      const desigStr = String(params.designation).trim();
+      where.designation = { $containsi: desigStr };
+    }
+
     let locCondition = null;
     if (params.location && String(params.location).trim()) {
       const locVal = String(params.location).trim();
