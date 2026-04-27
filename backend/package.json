@@ -7,6 +7,7 @@
     "predevelop": "node scripts/cleanup-db-sessions.js || true",
     "prestart": "node scripts/cleanup-db-sessions.js || true",
     "build": "strapi build",
+    "postbuild": "node scripts/patch-admin-title.js",
     "console": "strapi console",
     "deploy": "strapi deploy",
     "dev": "strapi develop",

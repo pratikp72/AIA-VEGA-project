@@ -90,8 +90,6 @@ if (typeof window !== 'undefined') {
       body[data-hide-cm-sidebar="pending"] nav a[href="/content-manager"],
       body[data-hide-cm-sidebar="pending"] aside a[href="/admin/content-manager"],
       body[data-hide-cm-sidebar="pending"] aside a[href="/content-manager"],
-      body[data-hide-cm-sidebar="pending"] nav a[href="/admin"],
-      body[data-hide-cm-sidebar="pending"] nav a[href="/admin/home"],
       body[data-hide-cm-sidebar="pending"] nav a[href*="/plugins/cloud"],
       body[data-hide-cm-sidebar="pending"] nav a[href*="/deploy"],
       body[data-hide-cm-sidebar="pending"] aside a[href*="/plugins/cloud"],
@@ -100,8 +98,6 @@ if (typeof window !== 'undefined') {
       body[data-hide-cm-sidebar="pending"] aside a[href*="/settings"],
       body[data-hide-cm-sidebar="pending"] a[href="/admin/content-manager"],
       body[data-hide-cm-sidebar="pending"] a[href="/content-manager"],
-      body[data-hide-cm-sidebar="pending"] a[href="/admin"],
-      body[data-hide-cm-sidebar="pending"] a[href="/admin/home"],
       body[data-hide-cm-sidebar="pending"] a[href*="/plugins/cloud"],
       body[data-hide-cm-sidebar="pending"] a[href*="/deploy"],
       body[data-hide-cm-sidebar="pending"] a[href*="/settings"],
@@ -110,8 +106,6 @@ if (typeof window !== 'undefined') {
       body[data-hide-cm-sidebar="true"] nav a[href="/content-manager"],
       body[data-hide-cm-sidebar="true"] aside a[href="/admin/content-manager"],
       body[data-hide-cm-sidebar="true"] aside a[href="/content-manager"],
-      body[data-hide-cm-sidebar="true"] nav a[href="/admin"],
-      body[data-hide-cm-sidebar="true"] nav a[href="/admin/home"],
       body[data-hide-cm-sidebar="true"] nav a[href*="/plugins/cloud"],
       body[data-hide-cm-sidebar="true"] nav a[href*="/deploy"],
       body[data-hide-cm-sidebar="true"] aside a[href*="/plugins/cloud"],
@@ -120,8 +114,6 @@ if (typeof window !== 'undefined') {
       body[data-hide-cm-sidebar="true"] aside a[href*="/settings"],
       body[data-hide-cm-sidebar="true"] a[href="/admin/content-manager"],
       body[data-hide-cm-sidebar="true"] a[href="/content-manager"],
-      body[data-hide-cm-sidebar="true"] a[href="/admin"],
-      body[data-hide-cm-sidebar="true"] a[href="/admin/home"],
       body[data-hide-cm-sidebar="true"] a[href*="/plugins/cloud"],
       body[data-hide-cm-sidebar="true"] a[href*="/deploy"],
       body[data-hide-cm-sidebar="true"] a[href*="/settings"],
@@ -246,12 +238,8 @@ if (typeof window !== 'undefined') {
       body[data-hide-cm-sidebar="pending"] nav a[href="/content-manager"],
       body[data-hide-cm-sidebar="pending"] aside a[href="/admin/content-manager"],
       body[data-hide-cm-sidebar="pending"] aside a[href="/content-manager"],
-      body[data-hide-cm-sidebar="pending"] nav a[href="/admin"],
-      body[data-hide-cm-sidebar="pending"] nav a[href="/admin/home"],
       body[data-hide-cm-sidebar="pending"] nav a[href*="/plugins/cloud"],
       body[data-hide-cm-sidebar="pending"] nav a[href*="/deploy"],
-      body[data-hide-cm-sidebar="pending"] aside a[href="/admin"],
-      body[data-hide-cm-sidebar="pending"] aside a[href="/admin/home"],
       body[data-hide-cm-sidebar="pending"] aside a[href*="/plugins/cloud"],
       body[data-hide-cm-sidebar="pending"] aside a[href*="/deploy"],
       body[data-hide-cm-sidebar="pending"] nav a[href*="/settings"],
@@ -260,12 +248,8 @@ if (typeof window !== 'undefined') {
       body[data-hide-cm-sidebar="true"] nav a[href="/content-manager"],
       body[data-hide-cm-sidebar="true"] aside a[href="/admin/content-manager"],
       body[data-hide-cm-sidebar="true"] aside a[href="/content-manager"],
-      body[data-hide-cm-sidebar="true"] nav a[href="/admin"],
-      body[data-hide-cm-sidebar="true"] nav a[href="/admin/home"],
       body[data-hide-cm-sidebar="true"] nav a[href*="/plugins/cloud"],
       body[data-hide-cm-sidebar="true"] nav a[href*="/deploy"],
-      body[data-hide-cm-sidebar="true"] aside a[href="/admin"],
-      body[data-hide-cm-sidebar="true"] aside a[href="/admin/home"],
       body[data-hide-cm-sidebar="true"] aside a[href*="/plugins/cloud"],
       body[data-hide-cm-sidebar="true"] aside a[href*="/deploy"],
       body[data-hide-cm-sidebar="true"] nav a[href*="/settings"],
@@ -331,24 +315,7 @@ if (typeof window !== 'undefined') {
         opacity: 1 !important;
         pointer-events: auto !important;
       }
-      /* Hard-hide only Home sidebar item for non-super roles to prevent flicker */
-      body[data-hide-cm-sidebar="pending"] nav[class*="MainNav"] a[href="/admin"],
-      body[data-hide-cm-sidebar="pending"] nav[class*="MainNav"] a[href="/admin/"],
-      body[data-hide-cm-sidebar="pending"] nav[class*="MainNav"] a[href="/admin/home"],
-      body[data-hide-cm-sidebar="pending"] aside[class*="MainNav"] a[href="/admin"],
-      body[data-hide-cm-sidebar="pending"] aside[class*="MainNav"] a[href="/admin/"],
-      body[data-hide-cm-sidebar="pending"] aside[class*="MainNav"] a[href="/admin/home"],
-      body[data-hide-cm-sidebar="true"] nav[class*="MainNav"] a[href="/admin"],
-      body[data-hide-cm-sidebar="true"] nav[class*="MainNav"] a[href="/admin/"],
-      body[data-hide-cm-sidebar="true"] nav[class*="MainNav"] a[href="/admin/home"],
-      body[data-hide-cm-sidebar="true"] aside[class*="MainNav"] a[href="/admin"],
-      body[data-hide-cm-sidebar="true"] aside[class*="MainNav"] a[href="/admin/"],
-      body[data-hide-cm-sidebar="true"] aside[class*="MainNav"] a[href="/admin/home"] {
-        display: none !important;
-        visibility: hidden !important;
-        opacity: 0 !important;
-        pointer-events: none !important;
-      }
+      /* Home link remains visible for all roles. */
       /* Ensure brand/logo links stay visible even if href is /admin */
       body[data-hide-cm-sidebar="pending"] [class*="NavBrand"] a[href="/admin"],
       body[data-hide-cm-sidebar="pending"] [class*="Brand"] a[href="/admin"],
@@ -1863,51 +1830,9 @@ if (typeof window !== 'undefined') {
     });
   };
   
-  // Prevent Home menu item flicker for non-super users.
-  // This targets only sidebar/mobile Home entries and skips brand/logo links.
-  const enforceHomeHiddenForNonSuper = () => {
-    try {
-      const mode = document.body?.getAttribute('data-hide-cm-sidebar');
-      if (mode !== 'true' && mode !== 'pending') return;
-      
-      const links = document.querySelectorAll('a[href="/admin"], a[href="/admin/"], a[href="/admin/home"]');
-      links.forEach((link) => {
-        const isBrandLink =
-          !!link.closest('[class*="NavBrand"]') || !!link.closest('[class*="Brand"]');
-        if (isBrandLink) return;
-        
-        const isSidebarOrMenu =
-          !!link.closest('nav') ||
-          !!link.closest('aside') ||
-          !!link.closest('[role="menu"]') ||
-          !!link.closest('[role="menuitem"]') ||
-          !!link.closest('[class*="Popover"]') ||
-          !!link.closest('[class*="Dropdown"]');
-        if (!isSidebarOrMenu) return;
-        
-        link.style.setProperty('display', 'none', 'important');
-        link.style.setProperty('visibility', 'hidden', 'important');
-        link.style.setProperty('opacity', '0', 'important');
-        link.style.setProperty('pointer-events', 'none', 'important');
-        link.setAttribute('data-hidden-by-modules-sidebar', 'true');
-        
-        let parent = link.parentElement;
-        let depth = 0;
-        while (parent && depth < 4) {
-          if (parent.tagName === 'LI' || parent.classList.toString().includes('Nav')) {
-            parent.style.setProperty('display', 'none', 'important');
-            parent.style.setProperty('visibility', 'hidden', 'important');
-            parent.style.setProperty('opacity', '0', 'important');
-            parent.setAttribute('data-hidden-by-modules-sidebar', 'true');
-          }
-          parent = parent.parentElement;
-          depth += 1;
-        }
-      });
-    } catch (e) {
-      // Ignore DOM timing errors
-    }
-  };
+  // Home visibility logic removed: keep Home visible for all admin roles.
+  const enforceHomeHiddenForNonSuper = () => {};
+
 
   // Run immediately and multiple times to catch early role detection
   // This ensures roles are detected as soon as Redux store is ready
@@ -2488,134 +2413,12 @@ if (typeof window !== 'undefined') {
     }
   }, 100);
   
-  // Redirect HR/LM Admin away from home page
-  const redirectIfNeeded = async () => {
-    try {
-      // Check if we're on the home page
-      const currentPath = window.location.pathname;
-      const isHomePage = currentPath === '/admin' || currentPath === '/admin/' || currentPath === '/admin/home';
-      
-      if (!isHomePage) {
-        return; // Not on home page, no redirect needed
-      }
-      
-      // Check roles to see if user is HR/LM/Admin (not Super Admin)
-      let isHRorLMorAdmin = false;
-      let roles = null;
-      
-      // Priority 1: Window roles
-      if (window.__MODULES_SIDEBAR_ROLES__ && Array.isArray(window.__MODULES_SIDEBAR_ROLES__) && window.__MODULES_SIDEBAR_ROLES__.length > 0) {
-        roles = window.__MODULES_SIDEBAR_ROLES__;
-      }
-      
-      // Priority 2: SessionStorage
-      if (!roles || roles.length === 0) {
-        try {
-          const stored = sessionStorage.getItem('__modules_sidebar_roles__');
-          if (stored) {
-            roles = JSON.parse(stored);
-          }
-        } catch (e) {
-          // Ignore
-        }
-      }
-      
-      // Priority 3: Redux store
-      if (!roles || roles.length === 0) {
-        try {
-          const state = window.strapi?.store?.getState?.() || {};
-          const adminUser = state?.admin_app?.user;
-          const authUser = state?.auth?.user || state?.auth?.userInfo;
-          roles = adminUser?.roles || authUser?.roles || [];
-        } catch (e) {
-          // Ignore
-        }
-      }
-      
-      // Check if HR, LM, or Admin (not Super Admin)
-      if (roles && Array.isArray(roles) && roles.length > 0) {
-        const isSuper = roles.some(r => {
-          const name = (r?.name || '').toLowerCase();
-          return name === 'super admin' || name.includes('super admin');
-        });
-        
-        if (!isSuper) {
-          const isHR = roles.some(r => {
-            const name = (r?.name || '').toLowerCase();
-            return name === 'hr admin' || name.includes('hr admin') || (name.includes('hr') && !name.includes('lm') && !name.includes('admin'));
-          });
-          
-          const isLM = roles.some(r => {
-            const name = (r?.name || '').toLowerCase();
-            return name === 'lm admin' || name.includes('lm admin') || (name.includes('lm') && !name.includes('hr') && !name.includes('admin'));
-          });
-          
-          const isAdmin = roles.some(r => {
-            const name = (r?.name || '').toLowerCase();
-            return (name === 'admin' || name.includes('admin')) && !name.includes('super') && !name.includes('hr') && !name.includes('lm');
-          });
-          
-          isHRorLMorAdmin = isHR || isLM || isAdmin;
-        }
-      }
-      
-      // If HR/LM/Admin on home page, redirect to All Modules
-      if (isHRorLMorAdmin) {
-        const allModulesPath = '/admin/plugins/modules-sidebar/all-modules';
-        if (window.location.pathname !== allModulesPath) {
-          if (process.env.NODE_ENV === 'development') {
-            console.log('[CM Hide] Redirecting HR/LM/Admin from home page to All Modules');
-          }
-          window.location.href = allModulesPath;
-        }
-      }
-    } catch (e) {
-      // Ignore errors
-    }
-  };
+  // Home redirect logic removed: keep Home available to all admin roles.
+  const redirectIfNeeded = async () => {};
+
   
-  // Role-aware redirect target for logo/home clicks:
-  // - Super Admin -> Home page
-  // - Other admin roles -> All Modules
-  const getAdminHomeTargetByRole = () => {
-    const allModulesPath = '/admin/plugins/modules-sidebar/all-modules';
-    const superAdminHomePath = '/admin';
-    let roles = [];
-    
-    // Priority 1: in-memory roles populated by All Modules page
-    if (Array.isArray(window.__MODULES_SIDEBAR_ROLES__) && window.__MODULES_SIDEBAR_ROLES__.length > 0) {
-      roles = window.__MODULES_SIDEBAR_ROLES__;
-    }
-    
-    // Priority 2: session storage cache
-    if ((!roles || roles.length === 0)) {
-      try {
-        const stored = sessionStorage.getItem('__modules_sidebar_roles__');
-        if (stored) roles = JSON.parse(stored) || [];
-      } catch (e) {
-        // Ignore
-      }
-    }
-    
-    // Priority 3: Redux store
-    if ((!roles || roles.length === 0)) {
-      try {
-        const state = window.strapi?.store?.getState?.() || {};
-        const adminUser = state?.admin_app?.user;
-        const authUser = state?.auth?.user || state?.auth?.userInfo;
-        roles = adminUser?.roles || authUser?.roles || [];
-      } catch (e) {
-        // Ignore
-      }
-    }
-    
-    const isSuperAdmin = Array.isArray(roles) && roles.some((r) => {
-      const name = String(r?.name || r?.code || '').toLowerCase();
-      return name === 'super admin' || name.includes('super admin') || name.includes('strapi-super-admin');
-    });
-    
-    return isSuperAdmin ? superAdminHomePath : allModulesPath;
-  };
+  const getAdminHomeTargetByRole = () => '/admin';
+
   
   const isLogoOrHomeAnchor = (anchor) => {
     if (!anchor) return false;
@@ -2707,25 +2510,7 @@ if (typeof window !== 'undefined') {
   setTimeout(forceBrandInteractive, 200);
   setInterval(forceBrandInteractive, 1000);
   
-  // Intercept logo/home clicks and route based on role immediately.
-  document.addEventListener('click', (event) => {
-    const target = event.target;
-    const anchor = target && target.closest ? target.closest('a') : null;
-    const brandContainer = target && target.closest
-      ? target.closest('[class*="NavBrand"], [class*="Brand"]')
-      : null;
-    
-    if (!anchor && !brandContainer) return;
-    if (anchor && !isLogoOrHomeAnchor(anchor) && !brandContainer) return;
-    
-    const destination = getAdminHomeTargetByRole();
-    const current = window.location.pathname;
-    if (destination && current !== destination) {
-      event.preventDefault();
-      event.stopPropagation();
-      window.location.assign(destination);
-    }
-  }, true);
+  // Keep default Strapi navigation behavior for logo/home links.
   
   // Deprecated: link visibility is controlled ONLY by body[data-hide-cm-sidebar] + CSS.
   // Keeping this as a no-op to avoid any blinking / late role side-effects.

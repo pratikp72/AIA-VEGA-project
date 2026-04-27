@@ -207,8 +207,8 @@ module.exports = {
         return ctx.badRequest('code, password, and passwordConfirmation are required');
       }
 
-      if (password.length < 6) {
-        return ctx.badRequest('Password must be at least 6 characters');
+      if (password.length < 8) {
+        return ctx.badRequest('Password must be at least 8 characters');
       }
 
       if (password !== passwordConfirmation) {
@@ -456,8 +456,8 @@ module.exports = {
           return ctx.badRequest('Both fields are required');
         }
 
-        if (newPassword.length < 6) {
-          return ctx.badRequest('Password must be at least 6 characters');
+        if (newPassword.length < 8) {
+          return ctx.badRequest('Password must be at least 8 characters');
         }
 
         if (newPassword !== confirmPassword) {
@@ -497,8 +497,8 @@ module.exports = {
         if (!currentPassword || !newPassword || !confirmPassword) {
           return ctx.badRequest('All fields are required');
         }
-        if (newPassword.length < 6) {
-          return ctx.badRequest('New password must be at least 6 characters');
+        if (newPassword.length < 8) {
+          return ctx.badRequest('New password must be at least 8 characters');
         }
         if (newPassword !== confirmPassword) {
           return ctx.badRequest('New password and confirm password do not match');
