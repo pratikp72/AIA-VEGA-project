@@ -12,6 +12,56 @@ const { syncVegaEmployees } = require('./cron-tasks/sync-vega-employees');
 const { populateAnswerCorrectField } = require('./utils/quiz-submission-correctness');
 const { cleanupFakeEmails } = require('./cron-tasks/cleanup-fake-emails');
 const { syncAiaEmployeePhotos } = require('./cron-tasks/sync-aia-employee-photos');
+const fs = require('node:fs');
+const path = require('node:path');
+
+const ADMIN_TAB_TITLE = 'AIA-VEGA';
+const AIA_TITLE_PATCH_MARKER = 'data-aia-title-patch="1"';
+
+function patchGeneratedAdminIndexHtml(strapi) {
+  const htmlPath = path.join(__dirname, '..', '.strapi', 'client', 'index.html');
+
+  if (!fs.existsSync(htmlPath)) {
+    return false;
+  }
+
+  const original = fs.readFileSync(htmlPath, 'utf8');
+  let next = original.replace(/<title>[^<]*<\/title>/i, `<title>${ADMIN_TAB_TITLE}</title>`);
+
+  if (!next.includes(AIA_TITLE_PATCH_MARKER)) {
+    const inlineScript = `\n    <script ${AIA_TITLE_PATCH_MARKER}>\n      (function () {\n        var ADMIN_TAB_TITLE = '${ADMIN_TAB_TITLE}';\n        function setExactTitle() {\n          var t = document.getElementsByTagName('title')[0];\n          if (t && t.textContent !== ADMIN_TAB_TITLE) {\n            t.textContent = ADMIN_TAB_TITLE;\n          }\n        }\n        var titleEl = document.getElementsByTagName('title')[0];\n        setExactTitle();\n        try {\n          Object.defineProperty(document, 'title', {\n            set: function () {\n              setExactTitle();\n            },\n            get: function () {\n              return ADMIN_TAB_TITLE;\n            },\n            configurable: true,\n          });\n        } catch (e) {}\n        if (titleEl && window.MutationObserver) {\n          new MutationObserver(function () {\n            setExactTitle();\n          }).observe(titleEl, { childList: true, characterData: true, subtree: true });\n        }\n      })();\n    </script>`;
+
+    next = next.replace(/<head(\s[^>]*)?>/i, (match) => `${match}${inlineScript}`);
+  }
+
+  if (next === original) {
+    return false;
+  }
+
+  fs.writeFileSync(htmlPath, next, 'utf8');
+  strapi.log.info(`[admin-title] patched generated admin HTML: ${htmlPath}`);
+  return true;
+}
+
+function installGeneratedAdminTitlePatcher(strapi) {
+  // Apply immediately and then retry briefly to handle dev-mode regenerations.
+  patchGeneratedAdminIndexHtml(strapi);
+
+  let attempts = 0;
+  const maxAttempts = 30;
+  const timer = setInterval(() => {
+    attempts += 1;
+    try {
+      patchGeneratedAdminIndexHtml(strapi);
+    } catch (err) {
+      strapi.log.warn(`[admin-title] patch retry failed: ${err?.message || err}`);
+    }
+
+    if (attempts >= maxAttempts) {
+      clearInterval(timer);
+    }
+  }, 1000);
+}
 
 function isEmailEnabled() {
   const raw = String(process.env.EMAIL_ENABLED || 'false').trim().toLowerCase();
@@ -488,6 +538,8 @@ module.exports = {
   },
 
   bootstrap({ strapi }) {
+    installGeneratedAdminTitlePatcher(strapi);
+
     suppressEmailServiceIfDisabled(strapi);
 
     // ── Serve AIA employee photos directly from the mounted NFS share ─────────

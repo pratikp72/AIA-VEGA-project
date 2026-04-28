@@ -4,26 +4,32 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="robots" content="noindex" />
-    <title>AIA-VEGA Admin</title>
+    <title>AIA-VEGA</title>
     <link rel="icon" type="image/png" href="/favicon.ico" />
     <link rel="icon" type="image/x-icon" href="/favicon.png" />
     <script>
       (function() {
+        var ADMIN_TAB_TITLE = 'AIA-VEGA';
+
+        function setExactTitle() {
+          var el = document.getElementsByTagName('title')[0];
+          if (el && el.textContent !== ADMIN_TAB_TITLE) {
+            el.textContent = ADMIN_TAB_TITLE;
+          }
+        }
+
         // 1. Ensure the title is correct immediately (before any JS bundle runs)
         var titleEl = document.getElementsByTagName('title')[0];
-        if (titleEl && /Strapi/i.test(titleEl.textContent)) {
-          titleEl.textContent = 'AIA-VEGA Admin';
-        }
+        setExactTitle();
 
         // 2. Intercept document.title setter so any JS assignment is replaced
         try {
           Object.defineProperty(document, 'title', {
-            set: function(newTitle) {
-              var updated = (newTitle || '').replace(/Strapi/gi, 'AIA-VEGA');
-              document.getElementsByTagName('title')[0].textContent = updated;
+            set: function() {
+              setExactTitle();
             },
             get: function() {
-              return document.getElementsByTagName('title')[0].textContent;
+              return ADMIN_TAB_TITLE;
             },
             configurable: true,
           });
@@ -34,10 +40,7 @@
         if (titleEl && window.MutationObserver) {
           new MutationObserver(function(mutations) {
             mutations.forEach(function(mutation) {
-              var text = (mutation.target || titleEl).textContent || '';
-              if (/Strapi/i.test(text)) {
-                (mutation.target || titleEl).textContent = text.replace(/Strapi/gi, 'AIA-VEGA');
-              }
+              setExactTitle();
             });
           }).observe(titleEl, { childList: true, characterData: true, subtree: true });
         }

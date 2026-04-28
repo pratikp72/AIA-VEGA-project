@@ -36,6 +36,237 @@ import CourseAssignmentExcelUserUpload from './components/CourseAssignmentExcelU
 import KeepRelationDropdownOpen from './components/KeepRelationDropdownOpen.jsx';
 import { installVegaDuplicateCourseFetchInterceptor } from './utils/vegaDuplicateCourseFetch.js';
 
+const ADMIN_HOME_PATH = '/admin';
+const ADMIN_TAB_TITLE = 'AIA-VEGA';
+
+function enforceAdminTabTitle() {
+  if (typeof document === 'undefined') {
+    return;
+  }
+
+  const setExactTitle = () => {
+    const titleEl = document.querySelector('title');
+    if (titleEl && titleEl.textContent !== ADMIN_TAB_TITLE) {
+      titleEl.textContent = ADMIN_TAB_TITLE;
+    }
+  };
+
+  setExactTitle();
+
+  const titleDescriptor = Object.getOwnPropertyDescriptor(Document.prototype, 'title');
+  if (titleDescriptor) {
+    Object.defineProperty(document, 'title', {
+      set() {
+        if (typeof titleDescriptor.set === 'function') {
+          titleDescriptor.set.call(this, ADMIN_TAB_TITLE);
+        } else {
+          setExactTitle();
+        }
+      },
+      get() {
+        if (typeof titleDescriptor.get === 'function') {
+          return titleDescriptor.get.call(this) || ADMIN_TAB_TITLE;
+        }
+        return ADMIN_TAB_TITLE;
+      },
+      configurable: true,
+    });
+  }
+
+  const titleEl = document.querySelector('title');
+  if (titleEl && window.MutationObserver) {
+    const observer = new MutationObserver(() => {
+      setExactTitle();
+    });
+    observer.observe(titleEl, { childList: true, characterData: true, subtree: true });
+  }
+}
+
+function installAdminLogoHomeRedirect() {
+  if (typeof document === 'undefined' || typeof window === 'undefined') {
+    return;
+  }
+
+  const navigateHome = (event) => {
+    if (event) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+    if (window.location.pathname !== ADMIN_HOME_PATH) {
+      window.location.assign(ADMIN_HOME_PATH);
+    }
+  };
+
+  const bindClickableBrandTarget = (el) => {
+    if (!el || el.dataset.vegaLogoHomeBound === '1') {
+      return;
+    }
+
+    el.dataset.vegaLogoHomeBound = '1';
+    el.style.cursor = 'pointer';
+
+    if (!(el instanceof HTMLAnchorElement)) {
+      el.setAttribute('role', el.getAttribute('role') || 'link');
+      if (!el.hasAttribute('tabindex')) {
+        el.setAttribute('tabindex', '0');
+      }
+      el.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          navigateHome(event);
+        }
+      });
+    } else {
+      el.setAttribute('href', ADMIN_HOME_PATH);
+    }
+
+    el.addEventListener('click', navigateHome);
+  };
+
+  const isSidebarUploadedLogoTarget = (el) => {
+    if (!(el instanceof Element)) {
+      return false;
+    }
+
+    const sidebarRoot = el.closest('aside, nav, [data-testid*="main-nav" i], [data-testid*="left-menu" i]');
+    if (!sidebarRoot) {
+      return false;
+    }
+
+    const logoImage =
+      (el.tagName === 'IMG' ? el : el.closest('img')) ||
+      el.querySelector?.('img') ||
+      null;
+
+    if (!logoImage) {
+      return false;
+    }
+
+    const src = String(logoImage.getAttribute('src') || '').toLowerCase();
+    const alt = String(logoImage.getAttribute('alt') || '').toLowerCase();
+    const indicatesLogo = src.includes('/uploads/') || src.includes('logo') || alt.includes('logo');
+    if (!indicatesLogo) {
+      return false;
+    }
+
+    const rect = logoImage.getBoundingClientRect();
+    return Number.isFinite(rect.top) && rect.top < 220;
+  };
+
+  const installDelegatedLogoRedirect = () => {
+    if (document.body?.dataset?.vegaDelegatedLogoRedirectBound === '1') {
+      return;
+    }
+
+    document.body.dataset.vegaDelegatedLogoRedirectBound = '1';
+
+    document.addEventListener(
+      'click',
+      (event) => {
+        const target = event.target instanceof Element ? event.target : null;
+        if (!target || !isSidebarUploadedLogoTarget(target)) {
+          return;
+        }
+        navigateHome(event);
+      },
+      true
+    );
+
+    document.addEventListener(
+      'keydown',
+      (event) => {
+        if (event.key !== 'Enter' && event.key !== ' ') {
+          return;
+        }
+
+        const active = document.activeElement instanceof Element ? document.activeElement : null;
+        if (!active || !isSidebarUploadedLogoTarget(active)) {
+          return;
+        }
+
+        navigateHome(event);
+      },
+      true
+    );
+  };
+
+  const markSidebarLogoAsClickable = () => {
+    const candidates = document.querySelectorAll(
+      'aside img, nav img, [data-testid*="main-nav" i] img, [data-testid*="left-menu" i] img'
+    );
+
+    candidates.forEach((img) => {
+      if (!(img instanceof Element) || !isSidebarUploadedLogoTarget(img)) {
+        return;
+      }
+
+      const clickable = img.closest('a, button, [role="button"], [role="link"], div, span') || img;
+      if (clickable instanceof HTMLElement) {
+        clickable.style.cursor = 'pointer';
+        if (!clickable.hasAttribute('tabindex')) {
+          clickable.setAttribute('tabindex', '0');
+        }
+        if (!clickable.hasAttribute('role')) {
+          clickable.setAttribute('role', 'link');
+        }
+      }
+    });
+  };
+
+  const findSidebarBrandTarget = () => {
+    const aside = document.querySelector('aside');
+    if (!aside) {
+      return null;
+    }
+
+    const directTarget =
+      aside.querySelector('a[aria-label="Home"]') ||
+      aside.querySelector('button[aria-label="Home"]') ||
+      aside.querySelector('a[href="/admin"]') ||
+      aside.querySelector('a[href="/admin/"]') ||
+      aside.querySelector('[data-testid*="navbrand" i]');
+
+    if (directTarget) {
+      return directTarget;
+    }
+
+    const withBrandText = Array.from(aside.querySelectorAll('*')).find((el) => {
+      const text = (el.textContent || '').trim().toLowerCase();
+      return text === 'aia-vega' || text === 'strapi';
+    });
+
+    if (withBrandText) {
+      return withBrandText.closest('a,button,div') || withBrandText;
+    }
+
+    const withLogoAsset = Array.from(aside.querySelectorAll('img,svg')).find((node) => {
+      const clickable = node.closest('a,button,div');
+      if (!clickable) {
+        return false;
+      }
+      const topRegion = clickable.getBoundingClientRect().top;
+      return Number.isFinite(topRegion) && topRegion < 220;
+    });
+
+    return withLogoAsset ? withLogoAsset.closest('a,button,div') : null;
+  };
+
+  const wireLogoLinks = () => {
+    const brandTarget = findSidebarBrandTarget();
+    bindClickableBrandTarget(brandTarget);
+    installDelegatedLogoRedirect();
+    markSidebarLogoAsClickable();
+  };
+
+  wireLogoLinks();
+
+  if (window.MutationObserver) {
+    const observer = new MutationObserver(() => {
+      wireLogoLinks();
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+  }
+}
+
 export default {
   /**
    * Register function - runs when the admin panel initializes
@@ -497,45 +728,12 @@ export default {
     console.log('Note: Configure Content Manager visibility via role permissions in Strapi admin');
     console.log('For business roles, revoke general Content Manager permissions');
     
-    // Replace "Strapi" with "AIA-VEGA" in document title
+    // Keep browser tab title fixed to AIA-VEGA and force logo clicks to admin home
     if (typeof window !== 'undefined') {
       installVegaDuplicateCourseFetchInterceptor();
 
-      // Set initial title
-      document.title = 'AIA-VEGA Admin';
-      
-      // Override title setter to always replace "Strapi" with "AIA-VEGA"
-      const originalTitleDescriptor = Object.getOwnPropertyDescriptor(Document.prototype, 'title');
-      if (originalTitleDescriptor) {
-        Object.defineProperty(document, 'title', {
-          set: function(newTitle) {
-            const updatedTitle = (newTitle || '').replace(/Strapi/gi, 'AIA-VEGA');
-            if (typeof originalTitleDescriptor.set === 'function') {
-              originalTitleDescriptor.set.call(this, updatedTitle);
-            }
-          },
-          get: function() {
-            if (typeof originalTitleDescriptor.get === 'function') {
-              return originalTitleDescriptor.get.call(this);
-            }
-            return document.title;
-          },
-          configurable: true,
-        });
-      }
-      
-      // Also watch for title changes via MutationObserver
-      const titleElement = document.querySelector('title');
-      if (titleElement) {
-        const observer = new MutationObserver(function(mutations) {
-          mutations.forEach(function(mutation) {
-            if (mutation.target.textContent && mutation.target.textContent.includes('Strapi')) {
-              mutation.target.textContent = mutation.target.textContent.replace(/Strapi/gi, 'AIA-VEGA');
-            }
-          });
-        });
-        observer.observe(titleElement, { childList: true, characterData: true, subtree: true });
-      }
+      enforceAdminTabTitle();
+      installAdminLogoHomeRedirect();
     }
     
     console.log('AIA-VEGA Admin Panel initialized');

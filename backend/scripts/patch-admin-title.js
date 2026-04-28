@@ -2,9 +2,9 @@
 
 /**
  * Patches .strapi/client/index.html after `strapi build`.
- * Replaces "Strapi Admin" title with "AIA-VEGA Admin" and injects
+ * Replaces any title with "AIA-VEGA" and injects
  * an early inline script that intercepts all subsequent title writes
- * so the tab never flashes "Strapi Admin".
+ * so the tab never shows another product name.
  *
  * Run automatically via the `postbuild` npm script.
  */
@@ -20,9 +20,10 @@ if (!fs.existsSync(HTML_PATH)) {
 }
 
 let html = fs.readFileSync(HTML_PATH, 'utf8');
+const originalHtml = html;
 
 // 1. Replace the <title> tag
-html = html.replace(/<title>[^<]*<\/title>/i, '<title>AIA-VEGA Admin</title>');
+html = html.replace(/<title>[^<]*<\/title>/i, '<title>AIA-VEGA</title>');
 
 // 2. Inject early intercept script immediately after <head> opening tag
 //    Only inject once (idempotent re-runs)
@@ -31,20 +32,24 @@ if (!html.includes(INJECT_MARKER)) {
   const inlineScript = `
   <script ${INJECT_MARKER}>
     (function () {
+      var ADMIN_TAB_TITLE = 'AIA-VEGA';
+      function setExactTitle() {
+        var t = document.getElementsByTagName('title')[0];
+        if (t && t.textContent !== ADMIN_TAB_TITLE) {
+          t.textContent = ADMIN_TAB_TITLE;
+        }
+      }
       // Immediately correct title if Strapi set it before this script ran
       var titleEl = document.getElementsByTagName('title')[0];
-      if (titleEl && /strapi/i.test(titleEl.textContent)) {
-        titleEl.textContent = 'AIA-VEGA Admin';
-      }
+      setExactTitle();
       // Intercept document.title = '...' assignments
       try {
         Object.defineProperty(document, 'title', {
-          set: function (v) {
-            document.getElementsByTagName('title')[0].textContent =
-              (v || '').replace(/Strapi/gi, 'AIA-VEGA');
+          set: function () {
+            setExactTitle();
           },
           get: function () {
-            return document.getElementsByTagName('title')[0].textContent;
+            return ADMIN_TAB_TITLE;
           },
           configurable: true,
         });
@@ -52,19 +57,20 @@ if (!html.includes(INJECT_MARKER)) {
       // Watch for direct DOM mutations on <title>
       if (titleEl && window.MutationObserver) {
         new MutationObserver(function (ms) {
-          ms.forEach(function (m) {
-            var t = (m.target || titleEl).textContent || '';
-            if (/strapi/i.test(t)) {
-              (m.target || titleEl).textContent = t.replace(/Strapi/gi, 'AIA-VEGA');
-            }
+          ms.forEach(function () {
+            setExactTitle();
           });
         }).observe(titleEl, { childList: true, characterData: true, subtree: true });
       }
     })();
   </script>`;
 
-  html = html.replace('<head>', '<head>' + inlineScript);
+  html = html.replace(/<head(\s[^>]*)?>/i, (match) => `${match}${inlineScript}`);
 }
 
-fs.writeFileSync(HTML_PATH, html, 'utf8');
-console.log('[patch-admin-title] Patched:', HTML_PATH);
+if (html !== originalHtml) {
+  fs.writeFileSync(HTML_PATH, html, 'utf8');
+  console.log('[patch-admin-title] Patched:', HTML_PATH);
+} else {
+  console.log('[patch-admin-title] No change needed:', HTML_PATH);
+}
