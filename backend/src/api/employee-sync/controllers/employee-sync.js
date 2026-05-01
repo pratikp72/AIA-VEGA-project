@@ -1,8 +1,10 @@
+//@ts-nocheck
 'use strict';
 
 const bcrypt = require('bcryptjs');
 const { syncEmployeesFromHrms, backfillUserOrgTaxonomy } = require('../../../cron-tasks/sync-employees');
 const { syncVegaEmployees } = require('../../../cron-tasks/sync-vega-employees');
+const { syncAiaEmployeePhotos } = require('../../../cron-tasks/sync-aia-employee-photos');
 
 module.exports = {
   async trigger(ctx) {
@@ -13,11 +15,13 @@ module.exports = {
       return ctx.unauthorized('Invalid or missing sync secret');
     }
 
-    syncEmployeesFromHrms(strapi).catch((err) => {
-      strapi.log.error('[employee-sync] manual trigger failed:', err?.message || err);
-    });
+    syncEmployeesFromHrms(strapi)
+      .then(() => syncAiaEmployeePhotos(strapi))
+      .catch((err) => {
+        strapi.log.error('[employee-sync] manual trigger failed:', err?.message || err);
+      });
 
-    return ctx.send({ message: 'Employee sync triggered. Check Strapi logs for progress.' });
+    return ctx.send({ message: 'Employee sync triggered (photo sync will follow). Check Strapi logs for progress.' });
   },
 
   async triggerVega(ctx) {

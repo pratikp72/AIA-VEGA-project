@@ -10,11 +10,84 @@ let isRunning = false;
 let isRunningStartedAt = null;
 const MAX_RUN_MS = 30 * 60 * 1000;
 
+const SUPPORTED_EXTS = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp']);
+
 /**
- * Reads /mnt/empimages and builds a map: empCode -> fileName (most recent file wins).
+ * Ensures a directory exists, creating it if needed.
+ */
+async function ensureDir(dirPath) {
+  await fs.mkdir(dirPath, { recursive: true });
+}
+
+/**
+ * Copies new/changed files from sourceDir to cacheDir.
+ * A file is copied when:
+ *  - it does not exist in cacheDir, OR
+ *  - its mtime in sourceDir is newer than in cacheDir.
+ * Returns counts: { copied, skipped, failed }
+ */
+async function syncSourceToCache(sourceDir, cacheDir, strapi) {
+  let copied = 0;
+  let skipped = 0;
+  let failed = 0;
+
+  let entries;
+  try {
+    entries = await fs.readdir(sourceDir, { withFileTypes: true });
+  } catch (err) {
+    strapi.log.error(`[aia-photo-sync] Cannot read source dir "${sourceDir}": ${err.message}`);
+    return { copied, skipped, failed };
+  }
+
+  for (const entry of entries) {
+    if (!entry.isFile()) continue;
+    const ext = path.extname(entry.name).toLowerCase();
+    if (!SUPPORTED_EXTS.has(ext)) continue;
+
+    const srcPath = path.join(sourceDir, entry.name);
+    const dstPath = path.join(cacheDir, entry.name);
+    const tmpPath = dstPath + '.tmp';
+
+    try {
+      const srcStat = await fs.stat(srcPath);
+
+      let needsCopy = true;
+      try {
+        const dstStat = await fs.stat(dstPath);
+        // Skip if cache file is same age or newer
+        if (dstStat.mtimeMs >= srcStat.mtimeMs) {
+          needsCopy = false;
+        }
+      } catch {
+        // dst does not exist — needs copy
+      }
+
+      if (!needsCopy) {
+        skipped++;
+        continue;
+      }
+
+      // Atomic copy: write to .tmp then rename
+      await fs.copyFile(srcPath, tmpPath);
+      await fs.rename(tmpPath, dstPath);
+      copied++;
+    } catch (err) {
+      failed++;
+      strapi.log.warn(`[aia-photo-sync] Copy failed for ${entry.name}: ${err.message}`);
+      // Clean up tmp if left behind
+      await fs.unlink(tmpPath).catch(() => {});
+    }
+  }
+
+  return { copied, skipped, failed };
+}
+
+/**
+ * Reads a directory and builds a map: empCode -> fileName (most recent file wins).
  *
- * Filename format: <empCode>_<date>_<time>_<id>.<ext>
- * e.g. 11000_06_06_2018_16_19_38_00002638.JPG
+ * Filename format: <photoId>_<date>_<time>_<empCode>.<ext>
+ * e.g. 11788_27_09_2021_16_19_09_00008918.png
+ * The emp_code is the LAST underscore-separated segment before the extension.
  */
 async function buildEmpCodeToFileMap(imagesDir, strapi) {
   const map = new Map(); // empCode -> { fileName, mtime }
@@ -26,8 +99,6 @@ async function buildEmpCodeToFileMap(imagesDir, strapi) {
     strapi.log.error(`[aia-photo-sync] Cannot read "${imagesDir}": ${err.message}`);
     return map;
   }
-
-  const SUPPORTED_EXTS = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp']);
 
   for (const entry of entries) {
     if (!entry.isFile()) continue;
@@ -61,11 +132,13 @@ async function buildEmpCodeToFileMap(imagesDir, strapi) {
 }
 
 /**
- * Syncs AIA employee photos by storing just the filename on the user record.
- * Images are served directly from the mounted folder via /empimages/:filename.
+ * Syncs AIA employee photos via a two-stage pipeline:
+ *  Stage 1 — copy new/changed files from source mount to cache directory.
+ *  Stage 2 — update DB emp_photo_file from cache directory filenames.
  *
- * No file copying. No Strapi media uploads. Just a lightweight DB string update.
- * When the folder gets a new/updated photo, the next cron run picks it up automatically.
+ * Source: AIA_EMP_IMAGES_DIR (mounted NFS share, read-only)
+ * Cache:  AIA_EMP_IMAGES_CACHE_DIR (persistent server volume, managed by this app)
+ * Serve:  /empimages/:filename reads from cache dir
  */
 async function syncAiaEmployeePhotos(strapi) {
   if (isRunning) {
@@ -80,9 +153,17 @@ async function syncAiaEmployeePhotos(strapi) {
   isRunning = true;
   isRunningStartedAt = Date.now();
 
-  const imagesDir = String(process.env.AIA_EMP_IMAGES_DIR || '/mnt/empimages').trim();
-  strapi.log.info(`[aia-photo-sync] Starting sync from "${imagesDir}"`);
-  console.log(`\n[aia-photo-sync] ▶ Starting photo sync from "${imagesDir}"...`);
+  const sourceDir = String(process.env.AIA_EMP_IMAGES_DIR || '/mnt/empimages').trim();
+  const cacheDir = String(process.env.AIA_EMP_IMAGES_CACHE_DIR || '').trim();
+  const useCache = Boolean(cacheDir);
+
+  // The directory we actually read filenames from for DB updates
+  const serveDir = useCache ? cacheDir : sourceDir;
+
+  strapi.log.info(`[aia-photo-sync] Starting — source="${sourceDir}" cache="${cacheDir || 'disabled'}"`);
+  console.log(`\n[aia-photo-sync] ▶ Starting photo sync...`);
+  console.log(`[aia-photo-sync]   source : ${sourceDir}`);
+  console.log(`[aia-photo-sync]   cache  : ${cacheDir || '(disabled — serving direct from source)'}`);
 
   let updatedCount = 0;
   let skippedUnchanged = 0;
@@ -90,9 +171,18 @@ async function syncAiaEmployeePhotos(strapi) {
   let errorCount = 0;
 
   try {
-    const empCodeMap = await buildEmpCodeToFileMap(imagesDir, strapi);
-    strapi.log.info(`[aia-photo-sync] ${empCodeMap.size} unique employee images found`);
-    console.log(`[aia-photo-sync] ✔ ${empCodeMap.size} unique employee images found in "${imagesDir}"`);
+    // ── Stage 1: copy source → cache ────────────────────────────────────────
+    if (useCache) {
+      await ensureDir(cacheDir);
+      const { copied, skipped: copySkipped, failed: copyFailed } = await syncSourceToCache(sourceDir, cacheDir, strapi);
+      strapi.log.info(`[aia-photo-sync] Cache sync done — copied=${copied}, unchanged=${copySkipped}, failed=${copyFailed}`);
+      console.log(`[aia-photo-sync] ✔ Cache sync — copied=${copied}, unchanged=${copySkipped}, failed=${copyFailed}`);
+    }
+
+    // ── Stage 2: build map from serveDir and update DB ──────────────────────
+    const empCodeMap = await buildEmpCodeToFileMap(serveDir, strapi);
+    strapi.log.info(`[aia-photo-sync] ${empCodeMap.size} unique employee images found in "${serveDir}"`);
+    console.log(`[aia-photo-sync] ✔ ${empCodeMap.size} unique employee images found`);
 
     if (empCodeMap.size === 0) {
       strapi.log.warn('[aia-photo-sync] No images found, aborting');

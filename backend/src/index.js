@@ -542,14 +542,16 @@ module.exports = {
 
     suppressEmailServiceIfDisabled(strapi);
 
-    // ── Serve AIA employee photos directly from the mounted NFS share ─────────
+    // ── Serve AIA employee photos from cache dir (if configured) else direct mount ──
     // Route: GET /empimages/:filename  (e.g. /empimages/11000_06_06_2018_....JPG)
-    // No file copying — images are read straight from /mnt/empimages on every request.
-    // When the folder is updated, the new photo is served immediately.
+    // Serves from AIA_EMP_IMAGES_CACHE_DIR (persistent volume) when set,
+    // falling back to AIA_EMP_IMAGES_DIR (mounted share) otherwise.
     {
       const fsSync = require('node:fs');
       const nodePath = require('node:path');
-      const imagesDir = String(process.env.AIA_EMP_IMAGES_DIR || '/mnt/empimages').trim();
+      const cacheDir = String(process.env.AIA_EMP_IMAGES_CACHE_DIR || '').trim();
+      const sourceDir = String(process.env.AIA_EMP_IMAGES_DIR || '/mnt/empimages').trim();
+      const imagesDir = cacheDir || sourceDir;
       const ALLOWED_EXT = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp']);
       const MIME = {
         '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
@@ -588,7 +590,7 @@ module.exports = {
         ctx.body = fsSync.createReadStream(filePath);
       });
 
-      strapi.log.info(`[aia-photo-sync] Serving employee photos from "${imagesDir}" at /empimages/:filename`);
+      strapi.log.info(`[aia-photo-sync] Serving employee photos from "${imagesDir}" at /empimages/:filename${cacheDir ? ' (cache)' : ' (direct mount)'}`);
     }
     // ─────────────────────────────────────────────────────────────────────────
 
