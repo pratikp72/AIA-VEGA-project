@@ -6,10 +6,11 @@ const { syncVegaEmployees } = require('../src/cron-tasks/sync-vega-employees');
 const { syncAiaEmployeePhotos } = require('../src/cron-tasks/sync-aia-employee-photos');
 
 module.exports = {
-  // AIA employees — fetched from HRMS API
+  // AIA employees — fetched from HRMS API, followed immediately by photo sync
   employeeSyncDaily: {
     task: async ({ strapi }) => {
       await syncEmployeesFromHrms(strapi);
+      await syncAiaEmployeePhotos(strapi);
     },
     options: {
       rule: '0 0 14 * * *',
@@ -27,7 +28,7 @@ module.exports = {
   },
 
   // AIA employee photos — synced from mounted NFS share at /mnt/empimages
-  // Runs once daily at 2 AM. Only updates users that don't yet have a photo.
+  // Runs once daily at 2 PM. Only updates users that don't yet have a photo.
   aiaEmployeePhotoSync: {
     task: async ({ strapi }) => {
       await syncAiaEmployeePhotos(strapi);
