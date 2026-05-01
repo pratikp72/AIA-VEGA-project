@@ -1,3 +1,5 @@
+//@ts-nocheck
+
 import React from 'react';
 import { Box, Typography, Table, Thead, Tbody, Tr, Th, Td, Button, Flex } from '@strapi/design-system';
 import * as XLSX from 'xlsx';
@@ -43,9 +45,11 @@ export function DataTable({
     const exportData = exportSource.map((row) => {
       const exportRow = {};
       columns.forEach((col) => {
-        let value = row[col.key];
-        // If there's a render function, use it but strip JSX
-        if (col.render) {
+        let value = typeof col.exportValue === 'function'
+          ? col.exportValue(row[col.key], row)
+          : row[col.key];
+        // If no exportValue is provided, fall back to render output and strip JSX.
+        if (value === undefined && col.render) {
           const rendered = col.render(value, row);
           // If rendered is a React element, try to extract text content
           if (rendered && typeof rendered === 'object' && rendered.props) {
