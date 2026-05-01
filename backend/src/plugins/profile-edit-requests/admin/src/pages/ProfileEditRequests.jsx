@@ -129,6 +129,35 @@ export default function ProfileEditRequestsPage() {
     return String(value);
   };
 
+  const toAbsoluteMediaUrl = (url) => {
+    if (!url || typeof url !== 'string') return null;
+    if (/^https?:\/\//i.test(url)) return url;
+    if (url.startsWith('/')) return `${window.location.origin}${url}`;
+    return `${window.location.origin}/${url}`;
+  };
+
+  const getPhotographExportText = (value) => {
+    if (value == null || value === '') return 'empty';
+
+    if (typeof value === 'number') {
+      const mediaUrl = toAbsoluteMediaUrl(mediaCache[value]);
+      return mediaUrl || `Photo updated (media ${value})`;
+    }
+
+    if (typeof value === 'string') {
+      const asUrl = toAbsoluteMediaUrl(value);
+      return asUrl || value;
+    }
+
+    if (typeof value === 'object') {
+      const mediaUrl = toAbsoluteMediaUrl(value.url || value.previewUrl);
+      if (mediaUrl) return mediaUrl;
+      if (value.id != null) return `Photo updated (media ${value.id})`;
+    }
+
+    return formatChangeValue(value);
+  };
+
   const getChangesExportText = (entry) => {
     const attrs = entry?.attributes || entry || {};
     const requestedChanges = attrs.requested_changes && typeof attrs.requested_changes === 'object'
@@ -143,9 +172,13 @@ export default function ProfileEditRequestsPage() {
 
     return fields
       .map((field) => {
-        const newValue = formatChangeValue(requestedChanges[field]);
+        const newValue = field === 'photograph'
+          ? getPhotographExportText(requestedChanges[field])
+          : formatChangeValue(requestedChanges[field]);
         if (Object.prototype.hasOwnProperty.call(previousValues, field)) {
-          const oldValue = formatChangeValue(previousValues[field]);
+          const oldValue = field === 'photograph'
+            ? getPhotographExportText(previousValues[field])
+            : formatChangeValue(previousValues[field]);
           return `${field}: ${oldValue} -> ${newValue}`;
         }
         return `${field}: ${newValue}`;
@@ -246,6 +279,23 @@ export default function ProfileEditRequestsPage() {
       }
     });
   }, [showModal, selectedRequest]);
+
+  // Prefetch photo URLs for visible requests so Excel export shows links instead of only media IDs.
+  useEffect(() => {
+    const pendingIds = new Set();
+
+    list.forEach((entry) => {
+      const requestedChanges = entry?.attributes?.requested_changes || entry?.requested_changes || {};
+      const mediaId = requestedChanges?.photograph;
+      if (typeof mediaId === 'number' && !mediaCache[mediaId]) {
+        pendingIds.add(mediaId);
+      }
+    });
+
+    pendingIds.forEach((mediaId) => {
+      fetchMediaUrl(mediaId);
+    });
+  }, [list]);
 
   const renderChangesPreview = (requestedChanges) => {
     if (!requestedChanges || typeof requestedChanges !== 'object') {
