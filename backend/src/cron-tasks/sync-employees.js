@@ -410,8 +410,12 @@ async function syncEmployeesFromHrms(strapi) {
     strapi.log.info(
       `[employee-sync] ===== SYNC COMPLETE ===== fetched=${totalFetched}${totalCount !== null ? `/${totalCount}` : ''} | created=${createdCount}, updated=${updatedCount}, errors=${errorCount}, total processed=${createdCount + updatedCount + errorCount}`
     );
+    strapi.log.info(
+      `[sync-summary] company=AIA sync=employee status=completed created=${createdCount} updated=${updatedCount} errors=${errorCount} total=${createdCount + updatedCount + errorCount}`
+    );
   } catch (err) {
     strapi.log.error(`[employee-sync] run failed: ${err?.message || err}`);
+    strapi.log.error(`[sync-summary] company=AIA sync=employee status=failed error="${err?.message || err}"`);
   } finally {
     isRunning = false;
   }

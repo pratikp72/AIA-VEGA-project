@@ -242,8 +242,12 @@ async function syncAiaEmployeePhotos(strapi) {
       `[aia-photo-sync] DONE — total=${totalProcessed}, updated=${updatedCount}, unchanged=${skippedUnchanged}, noImage=${skippedNoImage}, errors=${errorCount}`
     );
     console.log(`[aia-photo-sync] ✅ DONE — total=${totalProcessed}, updated=${updatedCount}, unchanged=${skippedUnchanged}, noImage=${skippedNoImage}, errors=${errorCount}\n`);
+    strapi.log.info(
+      `[sync-summary] company=AIA sync=photos status=completed dbUpdated=${updatedCount} unchanged=${skippedUnchanged} errors=${errorCount} total=${totalProcessed}`
+    );
   } catch (err) {
     strapi.log.error(`[aia-photo-sync] run failed: ${err?.message}`);
+    strapi.log.error(`[sync-summary] company=AIA sync=photos status=failed error="${err?.message || err}"`);
   } finally {
     isRunning = false;
   }
