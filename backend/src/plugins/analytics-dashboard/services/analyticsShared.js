@@ -136,22 +136,47 @@ module.exports = ({ strapi }) => {
       const search = String(params.search).trim();
       const numericId = parseInt(search, 10);
       const isNumericSearch = !Number.isNaN(numericId) && String(numericId) === search;
-      const searchOr = isNumericSearch
-        ? [
+      let searchCondition;
+
+      if (isNumericSearch) {
+        searchCondition = {
+          $or: [
             { id: numericId },
-            { emp_code: { $containsi: search } },  // containsi handles leading zeros: "8918" matches "00008918"
-            { emp_id: { $containsi: search } },
-          ]
-        : [
-            { email: { $containsi: search } },
-            { username: { $containsi: search } },
             { emp_code: { $containsi: search } },
             { emp_id: { $containsi: search } },
-          ];
-      if (locCondition) {
-        where.$and = (where.$and || []).concat([locCondition, { $or: searchOr }]);
+          ],
+        };
       } else {
-        where.$or = searchOr;
+        // Normalize: strip honorifics, collapse spaces, lowercase
+        const cleaned = search
+          .replace(/mr\.?|mrs\.?|ms\.?/gi, '')
+          .replace(/\s+/g, ' ')
+          .trim();
+
+        const tokens = cleaned.split(' ').filter(Boolean);
+
+        // Each token must match at least one searchable field (username, email, emp_code, emp_id)
+        const tokenConditions = tokens.map((word) => ({
+          $or: [
+            { username: { $containsi: word } },
+            { email: { $containsi: word } },
+            { emp_code: { $containsi: word } },
+            { emp_id: { $containsi: word } },
+          ],
+        }));
+
+        searchCondition = tokenConditions;
+      }
+
+      if (locCondition) {
+        where.$and = (where.$and || []).concat([
+          locCondition,
+          ...(Array.isArray(searchCondition) ? searchCondition : [searchCondition]),
+        ]);
+      } else {
+        where.$and = (where.$and || []).concat(
+          Array.isArray(searchCondition) ? searchCondition : [searchCondition]
+        );
       }
     } else if (locCondition) {
       Object.assign(where, locCondition);
