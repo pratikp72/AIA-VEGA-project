@@ -171,6 +171,8 @@ async function syncAiaEmployeePhotos(strapi) {
   let errorCount = 0;
 
   try {
+    strapi.log.info('[sync-summary] company=AIA sync=photos status=started');
+
     // ── Stage 1: copy source → cache ────────────────────────────────────────
     if (useCache) {
       await ensureDir(cacheDir);

@@ -281,6 +281,8 @@ async function syncEmployeesFromHrms(strapi) {
   let errorCount = 0;
 
   try {
+    strapi.log.info('[sync-summary] company=AIA sync=employee status=started');
+
     const roleId = await getEmployeeRoleId(strapi);
     const passwordHash = await bcrypt.hash(defaultPassword, 10);
     const token = await getEmployeeApiToken(strapi);

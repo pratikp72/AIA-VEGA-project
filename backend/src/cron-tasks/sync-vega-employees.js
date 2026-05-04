@@ -257,6 +257,8 @@ async function syncVegaEmployees(strapi) {
   let errorCount = 0;
 
   try {
+    strapi.log.info('[sync-summary] company=VEGA sync=employee status=started');
+
     const roleId = await getEmployeeRoleId(strapi);
     const passwordHash = await bcrypt.hash(defaultPassword, 10);
 
