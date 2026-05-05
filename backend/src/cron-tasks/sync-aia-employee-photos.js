@@ -171,6 +171,8 @@ async function syncAiaEmployeePhotos(strapi) {
   let errorCount = 0;
 
   try {
+    strapi.log.info('[sync-summary] company=AIA sync=photos status=started');
+
     // ── Stage 1: copy source → cache ────────────────────────────────────────
     if (useCache) {
       await ensureDir(cacheDir);
@@ -242,8 +244,12 @@ async function syncAiaEmployeePhotos(strapi) {
       `[aia-photo-sync] DONE — total=${totalProcessed}, updated=${updatedCount}, unchanged=${skippedUnchanged}, noImage=${skippedNoImage}, errors=${errorCount}`
     );
     console.log(`[aia-photo-sync] ✅ DONE — total=${totalProcessed}, updated=${updatedCount}, unchanged=${skippedUnchanged}, noImage=${skippedNoImage}, errors=${errorCount}\n`);
+    strapi.log.info(
+      `[sync-summary] company=AIA sync=photos status=completed dbUpdated=${updatedCount} unchanged=${skippedUnchanged} errors=${errorCount} total=${totalProcessed}`
+    );
   } catch (err) {
     strapi.log.error(`[aia-photo-sync] run failed: ${err?.message}`);
+    strapi.log.error(`[sync-summary] company=AIA sync=photos status=failed error="${err?.message || err}"`);
   } finally {
     isRunning = false;
   }

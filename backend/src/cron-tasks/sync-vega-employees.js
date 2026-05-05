@@ -257,6 +257,8 @@ async function syncVegaEmployees(strapi) {
   let errorCount = 0;
 
   try {
+    strapi.log.info('[sync-summary] company=VEGA sync=employee status=started');
+
     const roleId = await getEmployeeRoleId(strapi);
     const passwordHash = await bcrypt.hash(defaultPassword, 10);
 
@@ -426,9 +428,13 @@ async function syncVegaEmployees(strapi) {
       `[vega-sync] ===== SYNC COMPLETE ===== created=${createdCount}, updated=${updatedCount}, errors=${errorCount}`
     );
     console.log(`\n[vega-sync] ✅ SYNC COMPLETE — created=${createdCount}, updated=${updatedCount}, errors=${errorCount}\n`);
+    strapi.log.info(
+      `[sync-summary] company=VEGA sync=employee status=completed created=${createdCount} updated=${updatedCount} errors=${errorCount}`
+    );
   } catch (err) {
     strapi.log.error(`[vega-sync] run failed: ${err?.message || err}`);
     console.error(`\n[vega-sync] ❌ FAILED: ${err?.message || err}\n`);
+    strapi.log.error(`[sync-summary] company=VEGA sync=employee status=failed error="${err?.message || err}"`);
   } finally {
     isRunning = false;
   }

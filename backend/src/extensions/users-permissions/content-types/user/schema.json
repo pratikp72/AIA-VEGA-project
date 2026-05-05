@@ -19,12 +19,6 @@
       "configurable": false,
       "required": true
     },
-    "email": {
-      "type": "email",
-      "minLength": 6,
-      "configurable": false,
-      "required": false
-    },
     "provider": {
       "type": "string",
       "configurable": false
@@ -79,6 +73,10 @@
           ]
         }
       }
+    },
+    "email": {
+      "type": "string",
+      "required": false
     },
     "joining_date": {
       "type": "date",

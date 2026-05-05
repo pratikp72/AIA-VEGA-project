@@ -132,6 +132,57 @@ module.exports = ({ strapi }) => {
       };
     }
 
+    // if (params.search && String(params.search).trim()) {
+    //   const search = String(params.search).trim();
+    //   const numericId = parseInt(search, 10);
+    //   const isNumericSearch = !Number.isNaN(numericId) && String(numericId) === search;
+    //   let searchCondition;
+
+    //   if (isNumericSearch) {
+    //     searchCondition = {
+    //       $or: [
+    //         { id: numericId },
+    //         { emp_code: { $containsi: search } },
+    //         { emp_id: { $containsi: search } },
+    //       ],
+    //     };
+    //   } else {
+    //     // Normalize: strip honorifics, collapse spaces, lowercase
+    //     const cleaned = search
+    //       .replace(/mr\.?|mrs\.?|ms\.?/gi, '')
+    //       .replace(/\s+/g, ' ')
+    //       .trim();
+
+    //     const tokens = cleaned.split(' ').filter(Boolean);
+
+    //     // Each token must match at least one searchable field (username, email, emp_code, emp_id)
+    //     const tokenConditions = tokens.map((word) => ({
+    //       $or: [
+    //         { username: { $containsi: word } },
+    //         { email: { $containsi: word } },
+    //         { emp_code: { $containsi: word } },
+    //         { emp_id: { $containsi: word } },
+    //       ],
+    //     }));
+
+    //     searchCondition = tokenConditions;
+    //   }
+
+    //   if (locCondition) {
+    //     where.$and = (where.$and || []).concat([
+    //       locCondition,
+    //       ...(Array.isArray(searchCondition) ? searchCondition : [searchCondition]),
+    //     ]);
+    //   } else {
+    //     where.$and = (where.$and || []).concat(
+    //       Array.isArray(searchCondition) ? searchCondition : [searchCondition]
+    //     );
+    //   }
+    // } else if (locCondition) {
+    //   Object.assign(where, locCondition);
+    // }
+
+
     if (params.search && String(params.search).trim()) {
       const search = String(params.search).trim();
       const numericId = parseInt(search, 10);
@@ -156,6 +207,7 @@ module.exports = ({ strapi }) => {
     } else if (locCondition) {
       Object.assign(where, locCondition);
     }
+
 
     const dateFromRaw = params.dateFrom && String(params.dateFrom).trim();
     const dateToRaw = params.dateTo && String(params.dateTo).trim();
