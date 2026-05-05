@@ -1,3 +1,5 @@
+//@ts-nocheck
+
 'use strict';
 
 const COURSE_ASSIGNMENT_UID = 'api::course-assignment.course-assignment';
@@ -424,11 +426,26 @@ module.exports = (plugin) => {
   const defaultCollectionFind = collectionTypesController?.find?.bind(collectionTypesController);
   const defaultCollectionFindOne = collectionTypesController?.findOne?.bind(collectionTypesController);
 
+  // Remove null email from responses so Strapi admin Yup (.string().nullable().min(1))
+  // never sees null or "" — a missing key is treated as optional and skips all validators
+  function normalizeUserEmailInBody(modelUid, body) {
+    if (modelUid !== USER_UID || !body) return;
+    const normalize = (entry) => {
+      if (entry && typeof entry === 'object' && 'email' in entry && entry.email === null) {
+        delete entry.email;
+      }
+    };
+    if (body.data && typeof body.data === 'object') normalize(body.data);
+    if (Array.isArray(body.results)) body.results.forEach(normalize);
+    if (Array.isArray(body.data)) body.data.forEach(normalize);
+  }
+
   if (defaultCollectionFind) {
     collectionTypesController.find = async function find(ctx) {
       await defaultCollectionFind(ctx);
       const modelUid = ctx.params?.model;
       await hydrateRelationsInCmBody(strapi, modelUid, ctx.body);
+      normalizeUserEmailInBody(modelUid, ctx.body);
     };
   }
 
@@ -437,6 +454,32 @@ module.exports = (plugin) => {
       await defaultCollectionFindOne(ctx);
       const modelUid = ctx.params?.model;
       await hydrateRelationsInCmBody(strapi, modelUid, ctx.body);
+      normalizeUserEmailInBody(modelUid, ctx.body);
+    };
+  }
+
+  // Normalize email before saving: empty string or null → delete key so Yup never sees it
+  function sanitizeUserEmailForSave(ctx) {
+    if (ctx.params?.model !== USER_UID || !ctx.request?.body?.data) return;
+    const data = ctx.request.body.data;
+    if ('email' in data && (data.email === null || data.email === '')) {
+      delete data.email;
+    }
+  }
+
+  const defaultCollectionCreate = collectionTypesController?.create?.bind(collectionTypesController);
+  if (defaultCollectionCreate) {
+    collectionTypesController.create = async function create(ctx) {
+      sanitizeUserEmailForSave(ctx);
+      return defaultCollectionCreate(ctx);
+    };
+  }
+
+  const defaultCollectionUpdate = collectionTypesController?.update?.bind(collectionTypesController);
+  if (defaultCollectionUpdate) {
+    collectionTypesController.update = async function update(ctx) {
+      sanitizeUserEmailForSave(ctx);
+      return defaultCollectionUpdate(ctx);
     };
   }
 
