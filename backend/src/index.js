@@ -8,6 +8,7 @@ const COURSE_ASSIGNMENT_UID = 'api::course-assignment.course-assignment';
 const { ensureDepartmentForUser } = require('./utils/ensure-department-for-user');
 const { syncCourseLanguageComponents } = require('./utils/sync-course-language-components');
 const { autoGenerateComponentIds } = require('./utils/auto-generate-component-ids');
+const { syncEmployeesFromHrms } = require('./cron-tasks/sync-employees');
 const { syncVegaEmployees } = require('./cron-tasks/sync-vega-employees');
 const { populateAnswerCorrectField } = require('./utils/quiz-submission-correctness');
 const { cleanupFakeEmails } = require('./cron-tasks/cleanup-fake-emails');
@@ -65,6 +66,11 @@ function installGeneratedAdminTitlePatcher(strapi) {
 
 function isEmailEnabled() {
   const raw = String(process.env.EMAIL_ENABLED || 'false').trim().toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'on';
+}
+
+function isStartupSyncEnabled() {
+  const raw = String(process.env.RUN_STARTUP_SYNCS || 'false').trim().toLowerCase();
   return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'on';
 }
 
@@ -594,20 +600,30 @@ module.exports = {
     }
     // ─────────────────────────────────────────────────────────────────────────
 
-    // ── Vega employee sync: run immediately on startup ───────────────────────
-    console.log('\n[vega-sync] 🚀 Bootstrap: triggering Vega employee sync on startup...');
-    syncVegaEmployees(strapi).catch((err) => {
-      console.error(`[vega-sync] ❌ Startup sync failed: ${err?.message || err}`);
-      strapi.log.error(`[vega-sync] Startup sync failed: ${err?.message || err}`);
-    });
-    // ─────────────────────────────────────────────────────────────────────────
+    // ── Optional startup syncs (env-controlled) ──────────────────────────────
+    if (isStartupSyncEnabled()) {
+      console.log('\n[startup-sync] 🚀 RUN_STARTUP_SYNCS=true: triggering startup syncs...');
 
-    // ── AIA employee photo sync: run immediately on startup ──────────────────
-    console.log('\n[aia-photo-sync] 🚀 Bootstrap: triggering AIA photo sync on startup...');
-    syncAiaEmployeePhotos(strapi).catch((err) => {
-      console.error(`[aia-photo-sync] ❌ Startup photo sync failed: ${err?.message || err}`);
-      strapi.log.error(`[aia-photo-sync] Startup photo sync failed: ${err?.message || err}`);
-    });
+      console.log('[employee-sync] 🚀 Bootstrap: triggering AIA employee sync on startup...');
+      syncEmployeesFromHrms(strapi).catch((err) => {
+        console.error(`[employee-sync] ❌ Startup sync failed: ${err?.message || err}`);
+        strapi.log.error(`[employee-sync] Startup sync failed: ${err?.message || err}`);
+      });
+
+      console.log('[aia-photo-sync] 🚀 Bootstrap: triggering AIA photo sync on startup...');
+      syncAiaEmployeePhotos(strapi).catch((err) => {
+        console.error(`[aia-photo-sync] ❌ Startup photo sync failed: ${err?.message || err}`);
+        strapi.log.error(`[aia-photo-sync] Startup photo sync failed: ${err?.message || err}`);
+      });
+
+      console.log('[vega-sync] 🚀 Bootstrap: triggering Vega employee sync on startup...');
+      syncVegaEmployees(strapi).catch((err) => {
+        console.error(`[vega-sync] ❌ Startup sync failed: ${err?.message || err}`);
+        strapi.log.error(`[vega-sync] Startup sync failed: ${err?.message || err}`);
+      });
+    } else {
+      strapi.log.info('[startup-sync] RUN_STARTUP_SYNCS=false; skipping startup sync jobs.');
+    }
     // ─────────────────────────────────────────────────────────────────────────
 
     // ── One-time cleanup: remove fake auto-generated emails ──────────────────
