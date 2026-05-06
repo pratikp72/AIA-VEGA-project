@@ -5,6 +5,8 @@ const { syncEmployeesFromHrms } = require('../src/cron-tasks/sync-employees');
 const { syncVegaEmployees } = require('../src/cron-tasks/sync-vega-employees');
 const { syncAiaEmployeePhotos } = require('../src/cron-tasks/sync-aia-employee-photos');
 
+const CRON_TZ = process.env.CRON_TZ || process.env.TZ || 'UTC';
+
 module.exports = {
   // AIA employees — fetched from HRMS API, followed immediately by photo sync
   employeeSyncDaily: {
@@ -14,6 +16,7 @@ module.exports = {
     },
     options: {
       rule: '0 0 14 * * *',
+      tz: CRON_TZ,
     },
   },
 
@@ -24,17 +27,19 @@ module.exports = {
     },
     options: {
       rule: '0 0 14 * * *',
+      tz: CRON_TZ,
     },
   },
 
-  // AIA employee photos — synced from mounted NFS share at /mnt/empimages
-  // Runs once daily at 2 PM. Only updates users that don't yet have a photo.
-  aiaEmployeePhotoSync: {
-    task: async ({ strapi }) => {
-      await syncAiaEmployeePhotos(strapi);
-    },
-    options: {
-      rule: '0 0 14 * * *',
-    },
-  },
+//   // AIA employee photos — synced from mounted NFS share at /mnt/empimages
+//   // Runs once daily at 2 PM. Only updates users that don't yet have a photo.
+//   aiaEmployeePhotoSync: {
+//     task: async ({ strapi }) => {
+//       await syncAiaEmployeePhotos(strapi);
+//     },
+//     options: {
+//       rule: '0 0 14 * * *',
+//       tz: CRON_TZ,
+//     },
+//   },
 };
