@@ -1,0 +1,14 @@
+node_modules
+npm-debug.log
+.DS_Store
+.git
+.gitignore
+.env
+.env.*
+.strapi
+.cache
+dist
+data
+__database
+__public
+__src
