@@ -626,6 +626,41 @@ module.exports = {
     }
     // ─────────────────────────────────────────────────────────────────────────
 
+    // ── Register scheduled cron tasks (Strapi v5 requires explicit strapi.cron.add) ──
+    {
+      const CRON_TZ = process.env.CRON_TZ || process.env.TZ || 'UTC';
+      const CRON_DEBUG_EVERY_MINUTE = String(process.env.CRON_DEBUG_EVERY_MINUTE || '').trim().toLowerCase() === 'true';
+
+      const cronTasks = {
+        employeeSyncDaily: {
+          task: async ({ strapi: s }) => {
+            await syncEmployeesFromHrms(s);
+            await syncAiaEmployeePhotos(s);
+          },
+          options: { rule: '0 0 18 * * *', tz: CRON_TZ },
+        },
+        vegaEmployeeSyncDaily: {
+          task: async ({ strapi: s }) => {
+            await syncVegaEmployees(s);
+          },
+          options: { rule: '0 0 18 * * *', tz: CRON_TZ },
+        },
+      };
+
+      if (CRON_DEBUG_EVERY_MINUTE) {
+        cronTasks.cronDebugEveryMinute = {
+          task: async ({ strapi: s }) => {
+            s.log.info(`[cron-debug] tick at ${new Date().toISOString()} (tz=${CRON_TZ})`);
+          },
+          options: { rule: '0 * * * * *', tz: CRON_TZ },
+        };
+      }
+
+      strapi.cron.add(cronTasks);
+      strapi.log.info(`[cron-register] registered cron tasks: ${Object.keys(cronTasks).join(', ')} | tz=${CRON_TZ} | debug_every_minute=${CRON_DEBUG_EVERY_MINUTE}`);
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
     // ── One-time cleanup: remove fake auto-generated emails ──────────────────
     if (String(process.env.RUN_FAKE_EMAIL_CLEANUP || '').trim() === 'true') {
       console.log('\n[cleanup-fake-emails] 🚀 Bootstrap: RUN_FAKE_EMAIL_CLEANUP=true, starting cleanup in 15s...');
