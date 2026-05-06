@@ -15,7 +15,7 @@ module.exports = {
       await syncAiaEmployeePhotos(strapi);
     },
     options: {
-      rule: '0 0 14 * * *',
+      rule: '0 30 16 * * *',
       tz: CRON_TZ,
     },
   },
@@ -26,7 +26,7 @@ module.exports = {
       await syncVegaEmployees(strapi);
     },
     options: {
-      rule: '0 0 14 * * *',
+      rule: '0 30 16 * * *',
       tz: CRON_TZ,
     },
   },
