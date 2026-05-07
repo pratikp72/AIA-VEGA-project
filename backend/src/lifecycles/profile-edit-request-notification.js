@@ -36,6 +36,13 @@ function buildChangedFieldsText(requestedChanges) {
   return fields.join(', ');
 }
 
+function buildRejectionReasonText(reason) {
+  if (typeof reason !== 'string') return '';
+  const normalized = reason.trim();
+  if (!normalized) return '';
+  return ` Reason: ${normalized}`;
+}
+
 async function refetchProfileEditRequest(strapi, recordId) {
   if (recordId == null) return null;
 
@@ -126,11 +133,14 @@ function registerProfileEditRequestNotificationLifecycles(strapi) {
           const requesterName = getDisplayName(requester);
           const changedFields = buildChangedFieldsText(record.requested_changes);
           const statusLower = status.toLowerCase();
+          const rejectionReasonText = status === 'Rejected'
+            ? buildRejectionReasonText(record.reason_for_rejection)
+            : '';
 
           const title = `Profile Edit Request ${status}`;
           const message = changedFields
-            ? `Your profile edit request for ${changedFields} has been ${statusLower}.`
-            : `Your profile edit request has been ${statusLower}.`;
+            ? `Your profile edit request for ${changedFields} has been ${statusLower}.${rejectionReasonText}`
+            : `Your profile edit request has been ${statusLower}.${rejectionReasonText}`;
 
           await notifUtil.sendNotification(
             'profile_edit_request',
@@ -143,6 +153,7 @@ function registerProfileEditRequestNotificationLifecycles(strapi) {
               userName: requesterName,
               changedFields,
               status,
+              reason_for_rejection: record.reason_for_rejection || null,
               source: 'profile_edit_request',
               action: 'status_update',
             },

@@ -24,6 +24,11 @@ const COMPANY_OPTIONS = [
   { value: 'VEGA', label: 'VEGA' },
 ];
 
+const normalizeRejectionReason = (value) => {
+  if (typeof value !== 'string') return '';
+  return value.trim();
+};
+
 export default function ProfileEditRequestsPage() {
   const [list, setList] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -37,6 +42,8 @@ export default function ProfileEditRequestsPage() {
   const [showModal, setShowModal] = useState(false);
   const [dateRange, setDateRange] = useState({ start: null, end: null });
   const [mediaCache, setMediaCache] = useState({}); // Cache for media URLs
+  const [rejectionReason, setRejectionReason] = useState('');
+  const [rejectionReasonError, setRejectionReasonError] = useState('');
   
   const { get, put } = getFetchClient();
   const isMounted = useRef(true);
@@ -69,15 +76,17 @@ export default function ProfileEditRequestsPage() {
     };
   }, []);
 
-  const updateStatus = async (documentId, newStatus) => {
+  const updateStatus = async (documentId, newStatus, options = {}) => {
     const id = documentId != null ? String(documentId) : null;
     if (!id) return;
     setUpdatingId(id);
     setError(null);
     try {
+      const normalizedReason = normalizeRejectionReason(options.reason_for_rejection);
       await put(`/profile-edit-requests/requests/${encodeURIComponent(id)}`, {
         data: {
           request_status: newStatus,
+          ...(newStatus === 'Rejected' ? { reason_for_rejection: normalizedReason } : {}),
         },
       });
       
@@ -86,12 +95,18 @@ export default function ProfileEditRequestsPage() {
           prev.map((e) => {
             const eid = e.documentId ?? e.id ?? e._id;
             if (eid == null || String(eid) !== id) return e;
-            return { ...e, request_status: newStatus };
+            return {
+              ...e,
+              request_status: newStatus,
+              reason_for_rejection: newStatus === 'Rejected' ? normalizedReason : null,
+            };
           })
         );
         await fetchList();
         setShowModal(false);
         setSelectedRequest(null);
+        setRejectionReason('');
+        setRejectionReasonError('');
       }
     } catch (e) {
       if (isMounted.current) {
@@ -237,12 +252,26 @@ export default function ProfileEditRequestsPage() {
     setShowModal(true);
     // Clear media cache when opening a new request
     setMediaCache({});
+    setRejectionReason('');
+    setRejectionReasonError('');
   };
 
   const handleDecision = async (status) => {
     if (!selectedRequest) return;
     const id = entryId(selectedRequest);
     if (!id) return;
+    if (status === 'Rejected') {
+      const normalizedReason = normalizeRejectionReason(rejectionReason);
+      if (!normalizedReason) {
+        setRejectionReasonError('Reason for rejection is required.');
+        return;
+      }
+      setRejectionReasonError('');
+      await updateStatus(id, status, { reason_for_rejection: normalizedReason });
+      return;
+    }
+
+    setRejectionReasonError('');
     await updateStatus(id, status);
   };
 
@@ -438,6 +467,13 @@ export default function ProfileEditRequestsPage() {
     );
   };
 
+  const getRejectionReasonValue = (entry) => {
+    const attrs = entry?.attributes || entry || {};
+    return normalizeRejectionReason(attrs.reason_for_rejection || '');
+  };
+
+  const getRejectionReasonDisplay = (entry) => getRejectionReasonValue(entry) || '\u2014';
+
   return (
     <Layouts.Root>
       <Layouts.Header
@@ -570,6 +606,16 @@ export default function ProfileEditRequestsPage() {
                               </Button>
                             ),
                           },
+                          {
+                            key: 'reason_for_rejection',
+                            label: 'Rejection Reason',
+                            exportValue: (val, row) => getRejectionReasonDisplay(row),
+                            render: (val, row) => (
+                              <Typography variant="omega" style={TABLE_FONT_STYLE}>
+                                {getRejectionReasonDisplay(row)}
+                              </Typography>
+                            ),
+                          },
                           { key: 'company', label: 'Company', render: (val, row) => (row?.userCompany || '\u2014') },
                         ]}
                 pagination={{
@@ -604,6 +650,47 @@ export default function ProfileEditRequestsPage() {
                     Employee: {getDisplayValues(selectedRequest).userName}
                   </Typography>
                   {renderChangesPreview(getDisplayValues(selectedRequest).requestedChanges)}
+                  {getStatusValue(selectedRequest) === 'Rejected' && (
+                    <Box marginTop={4}>
+                      <Typography variant="omega">
+                        <Typography as="span" variant="omega" fontWeight="bold">
+                          Rejection Reason:{' '}
+                        </Typography>
+                        {getRejectionReasonValue(selectedRequest) || 'No rejection reason recorded.'}
+                      </Typography>
+                    </Box>
+                  )}
+                  {getStatusValue(selectedRequest) === 'Pending' && (
+                    <Box marginTop={4}>
+                      <Typography variant="pi" fontWeight="bold" marginBottom={2}>
+                        Reason for Rejection
+                      </Typography>
+                      <textarea
+                        value={rejectionReason}
+                        onChange={(event) => {
+                          setRejectionReason(event.target.value);
+                          if (rejectionReasonError) {
+                            setRejectionReasonError('');
+                          }
+                        }}
+                        rows={4}
+                        placeholder="Enter the reason that will be sent to the requester"
+                        style={{
+                          width: '100%',
+                          border: '1px solid #dcdce4',
+                          borderRadius: '4px',
+                          padding: '8px 12px',
+                          fontSize: '14px',
+                          resize: 'vertical',
+                        }}
+                      />
+                      {rejectionReasonError ? (
+                        <Typography variant="pi" textColor="danger600" marginTop={2}>
+                          {rejectionReasonError}
+                        </Typography>
+                      ) : null}
+                    </Box>
+                  )}
                 </Box>
               </Modal.Body>
               <Modal.Footer>

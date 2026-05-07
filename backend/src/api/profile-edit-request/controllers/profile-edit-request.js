@@ -70,7 +70,7 @@ module.exports = createCoreController('api::profile-edit-request.profile-edit-re
 		// Populate related fields for table display
 		ctx.query = ctx.query || {};
 		const existingFields = Array.isArray(ctx.query.fields) ? ctx.query.fields : [];
-		ctx.query.fields = Array.from(new Set([...existingFields, 'company']));
+		ctx.query.fields = Array.from(new Set([...existingFields, 'company', 'reason_for_rejection']));
 		ctx.query.populate = {
 			...(ctx.query.populate && typeof ctx.query.populate === 'object' ? ctx.query.populate : {}),
 			users_permissions_user: true,
@@ -82,7 +82,7 @@ module.exports = createCoreController('api::profile-edit-request.profile-edit-re
 	async findOne(ctx) {
 		ctx.query = ctx.query || {};
 		const existingFields = Array.isArray(ctx.query.fields) ? ctx.query.fields : [];
-		ctx.query.fields = Array.from(new Set([...existingFields, 'company']));
+		ctx.query.fields = Array.from(new Set([...existingFields, 'company', 'reason_for_rejection']));
 		ctx.query.populate = {
 			...(ctx.query.populate && typeof ctx.query.populate === 'object' ? ctx.query.populate : {}),
 			users_permissions_user: true,
