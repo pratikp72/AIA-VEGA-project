@@ -18,7 +18,8 @@ import DateRangeInput from '../../../../analytics-dashboard/admin/src/components
 
 const DEFAULT_PAGE_SIZE = 10;
 const TABLE_FONT_STYLE = { fontSize: '14px' };
-const REJECTION_REASON_COLUMN_WIDTH = 500;
+const REJECTION_REASON_COLUMN_MAX_WIDTH = 450;
+const REJECTION_REASON_COLUMN_MIN_WIDTH = 170;
 const COMPANY_COLUMN_WIDTH = 50;
 const COMPANY_OPTIONS = [
   { value: '', label: 'All Companies' },
@@ -510,6 +511,26 @@ export default function ProfileEditRequestsPage() {
 
   const getRejectionReasonDisplay = (entry) => getRejectionReasonValue(entry) || '\u2014';
 
+  const rejectionReasonColumnWidth = useMemo(() => {
+    if (!shouldShowRejectionReasonColumn) {
+      return REJECTION_REASON_COLUMN_MIN_WIDTH;
+    }
+
+    const headerLength = 'Rejection Reason'.length;
+    const maxReasonLength = filteredList.reduce((maxLen, entry) => {
+      const reason = getRejectionReasonValue(entry);
+      return Math.max(maxLen, reason.length);
+    }, 0);
+
+    const effectiveLength = Math.max(headerLength, maxReasonLength);
+    const estimatedWidth = Math.ceil(effectiveLength * 8 + 30);
+
+    return Math.min(
+      REJECTION_REASON_COLUMN_MAX_WIDTH,
+      Math.max(REJECTION_REASON_COLUMN_MIN_WIDTH, estimatedWidth)
+    );
+  }, [filteredList, shouldShowRejectionReasonColumn]);
+
   return (
     <Layouts.Root>
       <Layouts.Header
@@ -660,52 +681,6 @@ export default function ProfileEditRequestsPage() {
                               </Button>
                             ),
                           },
-                          ...(shouldShowRejectionReasonColumn
-                            ? [
-                                {
-                                  key: 'reason_for_rejection',
-                                  label: 'Rejection Reason',
-                                  thStyle: { maxWidth: `${REJECTION_REASON_COLUMN_WIDTH}px`, overflow: 'hidden' },
-                                  tdStyle: { maxWidth: `${REJECTION_REASON_COLUMN_WIDTH}px`, overflow: 'hidden' },
-                                  header: (
-                                    <Box
-                                      style={{
-                                        width: `${REJECTION_REASON_COLUMN_WIDTH}px`,
-                                        maxWidth: `${REJECTION_REASON_COLUMN_WIDTH}px`,
-                                      }}
-                                    >
-                                      <Typography variant="sigma" textColor="neutral600">
-                                        Rejection Reason
-                                      </Typography>
-                                    </Box>
-                                  ),
-                                  exportValue: (val, row) => getRejectionReasonDisplay(row),
-                                  render: (val, row) => {
-                                    const reason = getRejectionReasonDisplay(row);
-                                    return (
-                                      <Box
-                                        title={reason === '\u2014' ? undefined : reason}
-                                        style={{
-                                          width: `${REJECTION_REASON_COLUMN_WIDTH}px`,
-
-                                          maxWidth: `${REJECTION_REASON_COLUMN_WIDTH}px`,
-                                          overflow: 'hidden',
-                                          display: '-webkit-box',
-                                          WebkitLineClamp: 2,
-                                          WebkitBoxOrient: 'vertical',
-                                          whiteSpace: 'normal',
-                                          textOverflow: 'ellipsis',
-                                        }}
-                                      >
-                                        <Typography variant="omega" style={TABLE_FONT_STYLE}>
-                                          {reason}
-                                        </Typography>
-                                      </Box>
-                                    );
-                                  },
-                                },
-                              ]
-                            : []),
                           {
                             key: 'company',
                             label: 'Company',
@@ -736,6 +711,63 @@ export default function ProfileEditRequestsPage() {
                               </Box>
                             ),
                           },
+                          ...(shouldShowRejectionReasonColumn
+                            ? [
+                                {
+                                  key: 'reason_for_rejection',
+                                  label: 'Rejection Reason',
+                                  thStyle: {
+                                    width: `${rejectionReasonColumnWidth}px`,
+                                    minWidth: `${rejectionReasonColumnWidth}px`,
+                                    maxWidth: `${rejectionReasonColumnWidth}px`,
+                                    overflow: 'hidden',
+                                  },
+                                  tdStyle: {
+                                    width: `${rejectionReasonColumnWidth}px`,
+                                    minWidth: `${rejectionReasonColumnWidth}px`,
+                                    maxWidth: `${rejectionReasonColumnWidth}px`,
+                                    overflow: 'hidden',
+                                  },
+                                  header: (
+                                    <Box
+                                      style={{
+                                        width: `${rejectionReasonColumnWidth}px`,
+                                        minWidth: `${rejectionReasonColumnWidth}px`,
+                                        maxWidth: `${rejectionReasonColumnWidth}px`,
+                                      }}
+                                    >
+                                      <Typography variant="sigma" textColor="neutral600">
+                                        Rejection Reason
+                                      </Typography>
+                                    </Box>
+                                  ),
+                                  exportValue: (val, row) => getRejectionReasonDisplay(row),
+                                  render: (val, row) => {
+                                    const reason = getRejectionReasonDisplay(row);
+                                    return (
+                                      <Box
+                                        title={reason === '\u2014' ? undefined : reason}
+                                        style={{
+                                          width: `${rejectionReasonColumnWidth}px`,
+                                          minWidth: `${rejectionReasonColumnWidth}px`,
+                                          maxWidth: `${rejectionReasonColumnWidth}px`,
+                                          overflow: 'hidden',
+                                          display: '-webkit-box',
+                                          WebkitLineClamp: 2,
+                                          WebkitBoxOrient: 'vertical',
+                                          whiteSpace: 'normal',
+                                          textOverflow: 'ellipsis',
+                                        }}
+                                      >
+                                        <Typography variant="omega" style={TABLE_FONT_STYLE}>
+                                          {reason}
+                                        </Typography>
+                                      </Box>
+                                    );
+                                  },
+                                },
+                              ]
+                            : []),
                         ]}
                 pagination={{
                   page: currentPage,
