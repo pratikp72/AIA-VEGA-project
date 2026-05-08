@@ -5,6 +5,15 @@ import React, { useCallback } from 'react';
 import { Box, Flex, Typography, SingleSelect, SingleSelectOption } from '@strapi/design-system';
 import DateRangeInput from './DateRangeInput';
 
+// Parse YYYY-MM-DD string as local date (not UTC)
+const parseLocalDate = (dateStr) => {
+  if (!dateStr) return null;
+  const match = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return null;
+  const [, year, month, day] = match;
+  return new Date(Number(year), Number(month) - 1, Number(day), 0, 0, 0, 0);
+};
+
 export function Filters({
   viewMode,
   onViewModeChange,
@@ -136,7 +145,7 @@ export function Filters({
                 Date Range
               </Typography>
               <DateRangeInput
-                value={{ start: dateFrom ? new Date(dateFrom) : null, end: dateTo ? new Date(dateTo) : null }}
+                value={{ start: parseLocalDate(dateFrom), end: parseLocalDate(dateTo) }}
                 onChange={({ start, end }) => {
                   if (!start && !end) {
                     onDateFromChange(null);
@@ -363,7 +372,7 @@ export function Filters({
                 Date Range
               </Typography>
               <DateRangeInput
-                value={{ start: dateFrom ? new Date(dateFrom) : null, end: dateTo ? new Date(dateTo) : null }}
+                value={{ start: parseLocalDate(dateFrom), end: parseLocalDate(dateTo) }}
                 onChange={({ start, end }) => {
                   if (!start && !end) {
                     onDateFromChange(null);
@@ -385,7 +394,7 @@ export function Filters({
                 Date Range
               </Typography>
               <DateRangeInput
-                value={{ start: dateFrom ? new Date(dateFrom) : null, end: dateTo ? new Date(dateTo) : null }}
+                value={{ start: parseLocalDate(dateFrom), end: parseLocalDate(dateTo) }}
                 onChange={({ start, end }) => {
                   if (!start && !end) {
                     onDateFromChange(null);
@@ -458,7 +467,7 @@ export function Filters({
                 Date Range
               </Typography>
               <DateRangeInput
-                value={{ start: dateFrom ? new Date(dateFrom) : null, end: dateTo ? new Date(dateTo) : null }}
+                value={{ start: parseLocalDate(dateFrom), end: parseLocalDate(dateTo) }}
                 onChange={({ start, end }) => {
                   if (!start && !end) {
                     onDateFromChange(null);
