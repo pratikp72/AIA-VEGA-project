@@ -18,11 +18,24 @@ import DateRangeInput from '../../../../analytics-dashboard/admin/src/components
 
 const DEFAULT_PAGE_SIZE = 10;
 const TABLE_FONT_STYLE = { fontSize: '14px' };
+const REJECTION_REASON_COLUMN_WIDTH = 500;
+const COMPANY_COLUMN_WIDTH = 50;
 const COMPANY_OPTIONS = [
   { value: '', label: 'All Companies' },
   { value: 'AIA', label: 'AIA' },
   { value: 'VEGA', label: 'VEGA' },
 ];
+const STATUS_OPTIONS = [
+  { value: '', label: 'All Status' },
+  { value: 'Pending', label: 'Pending' },
+  { value: 'Approved', label: 'Approved' },
+  { value: 'Rejected', label: 'Rejected' },
+];
+
+const normalizeRejectionReason = (value) => {
+  if (typeof value !== 'string') return '';
+  return value.trim();
+};
 
 export default function ProfileEditRequestsPage() {
   const [list, setList] = useState([]);
@@ -31,12 +44,16 @@ export default function ProfileEditRequestsPage() {
   const [updatingId, setUpdatingId] = useState(null);
   const [search, setSearch] = useState('');
   const [companyFilter, setCompanyFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [showModal, setShowModal] = useState(false);
   const [dateRange, setDateRange] = useState({ start: null, end: null });
   const [mediaCache, setMediaCache] = useState({}); // Cache for media URLs
+  const [rejectionReason, setRejectionReason] = useState('');
+  const [rejectionReasonError, setRejectionReasonError] = useState('');
+  const [showRejectReasonInput, setShowRejectReasonInput] = useState(false);
   
   const { get, put } = getFetchClient();
   const isMounted = useRef(true);
@@ -69,15 +86,17 @@ export default function ProfileEditRequestsPage() {
     };
   }, []);
 
-  const updateStatus = async (documentId, newStatus) => {
+  const updateStatus = async (documentId, newStatus, options = {}) => {
     const id = documentId != null ? String(documentId) : null;
     if (!id) return;
     setUpdatingId(id);
     setError(null);
     try {
+      const normalizedReason = normalizeRejectionReason(options.reason_for_rejection);
       await put(`/profile-edit-requests/requests/${encodeURIComponent(id)}`, {
         data: {
           request_status: newStatus,
+          ...(newStatus === 'Rejected' ? { reason_for_rejection: normalizedReason } : {}),
         },
       });
       
@@ -86,12 +105,19 @@ export default function ProfileEditRequestsPage() {
           prev.map((e) => {
             const eid = e.documentId ?? e.id ?? e._id;
             if (eid == null || String(eid) !== id) return e;
-            return { ...e, request_status: newStatus };
+            return {
+              ...e,
+              request_status: newStatus,
+              reason_for_rejection: newStatus === 'Rejected' ? normalizedReason : null,
+            };
           })
         );
         await fetchList();
         setShowModal(false);
         setSelectedRequest(null);
+        setRejectionReason('');
+        setRejectionReasonError('');
+        setShowRejectReasonInput(false);
       }
     } catch (e) {
       if (isMounted.current) {
@@ -189,9 +215,14 @@ export default function ProfileEditRequestsPage() {
   const filteredList = useMemo(() => {
     const q = (search || '').toLowerCase().trim();
     const company = (companyFilter || '').trim();
+    const status = (statusFilter || '').trim();
     return list.filter((entry) => {
       const { userName, userCompany, attrs } = getDisplayValues(entry);
       const entryIdVal = entry.documentId ?? entry.id ?? entry._id;
+      const rowStatus = getStatusValue(entry);
+
+      if (status && rowStatus !== status) return false;
+
       // Company filtering
       if (company) {
         if (!userCompany || userCompany.toLowerCase() !== company.toLowerCase()) return false;
@@ -220,13 +251,16 @@ export default function ProfileEditRequestsPage() {
       // Otherwise, allow match by any of the above
       return matches;
     });
-  }, [list, search, companyFilter, dateRange]);
+  }, [list, search, companyFilter, statusFilter, dateRange]);
 
   const totalFiltered = filteredList.length;
   const totalPages = Math.max(1, Math.ceil(totalFiltered / pageSize));
   const currentPage = Math.min(Math.max(1, page), totalPages);
   const start = (currentPage - 1) * pageSize;
   const pageList = filteredList.slice(start, start + pageSize);
+  const shouldShowRejectionReasonColumn = statusFilter !== 'Pending' && filteredList.some(
+    (entry) => getStatusValue(entry) !== 'Approved'
+  );
 
   useEffect(() => {
     if (currentPage !== page) setPage(currentPage);
@@ -237,13 +271,44 @@ export default function ProfileEditRequestsPage() {
     setShowModal(true);
     // Clear media cache when opening a new request
     setMediaCache({});
+    setRejectionReason('');
+    setRejectionReasonError('');
+    setShowRejectReasonInput(false);
   };
 
-  const handleDecision = async (status) => {
+  const handleApprove = async () => {
     if (!selectedRequest) return;
     const id = entryId(selectedRequest);
     if (!id) return;
-    await updateStatus(id, status);
+    setShowRejectReasonInput(false);
+    setRejectionReasonError('');
+    await updateStatus(id, 'Approved');
+  };
+
+  const handleStartReject = () => {
+    setShowRejectReasonInput(true);
+    setRejectionReasonError('');
+  };
+
+  const handleCancelReject = () => {
+    setShowRejectReasonInput(false);
+    setRejectionReason('');
+    setRejectionReasonError('');
+  };
+
+  const handleConfirmReject = async () => {
+    if (!selectedRequest) return;
+    const id = entryId(selectedRequest);
+    if (!id) return;
+
+    const normalizedReason = normalizeRejectionReason(rejectionReason);
+    if (!normalizedReason) {
+      setRejectionReasonError('Reason for rejection is required.');
+      return;
+    }
+
+    setRejectionReasonError('');
+    await updateStatus(id, 'Rejected', { reason_for_rejection: normalizedReason });
   };
 
   const MEDIA_FIELDS = ['photograph'];
@@ -438,6 +503,13 @@ export default function ProfileEditRequestsPage() {
     );
   };
 
+  const getRejectionReasonValue = (entry) => {
+    const attrs = entry?.attributes || entry || {};
+    return normalizeRejectionReason(attrs.reason_for_rejection || '');
+  };
+
+  const getRejectionReasonDisplay = (entry) => getRejectionReasonValue(entry) || '\u2014';
+
   return (
     <Layouts.Root>
       <Layouts.Header
@@ -499,6 +571,24 @@ export default function ProfileEditRequestsPage() {
                   width: '100%',
                 }}
               />
+            </Box>
+            <Box style={{ minWidth: 180 }}>
+              <Typography variant="pi" textColor="neutral600" style={{ marginBottom: 4, display: 'block' }}>
+                Status
+              </Typography>
+              <SingleSelect
+                value={statusFilter}
+                onChange={(v) => {
+                  setStatusFilter(String(v || ''));
+                  setPage(1);
+                }}
+              >
+                {STATUS_OPTIONS.map((opt) => (
+                  <SingleSelectOption key={opt.value || 'all'} value={opt.value}>
+                    {opt.label}
+                  </SingleSelectOption>
+                ))}
+              </SingleSelect>
             </Box>
             <Box style={{ minWidth: 260 }}>
               <Typography variant="pi" textColor="neutral600" style={{ marginBottom: 4, display: 'block' }}>
@@ -570,7 +660,82 @@ export default function ProfileEditRequestsPage() {
                               </Button>
                             ),
                           },
-                          { key: 'company', label: 'Company', render: (val, row) => (row?.userCompany || '\u2014') },
+                          ...(shouldShowRejectionReasonColumn
+                            ? [
+                                {
+                                  key: 'reason_for_rejection',
+                                  label: 'Rejection Reason',
+                                  thStyle: { maxWidth: `${REJECTION_REASON_COLUMN_WIDTH}px`, overflow: 'hidden' },
+                                  tdStyle: { maxWidth: `${REJECTION_REASON_COLUMN_WIDTH}px`, overflow: 'hidden' },
+                                  header: (
+                                    <Box
+                                      style={{
+                                        width: `${REJECTION_REASON_COLUMN_WIDTH}px`,
+                                        maxWidth: `${REJECTION_REASON_COLUMN_WIDTH}px`,
+                                      }}
+                                    >
+                                      <Typography variant="sigma" textColor="neutral600">
+                                        Rejection Reason
+                                      </Typography>
+                                    </Box>
+                                  ),
+                                  exportValue: (val, row) => getRejectionReasonDisplay(row),
+                                  render: (val, row) => {
+                                    const reason = getRejectionReasonDisplay(row);
+                                    return (
+                                      <Box
+                                        title={reason === '\u2014' ? undefined : reason}
+                                        style={{
+                                          width: `${REJECTION_REASON_COLUMN_WIDTH}px`,
+
+                                          maxWidth: `${REJECTION_REASON_COLUMN_WIDTH}px`,
+                                          overflow: 'hidden',
+                                          display: '-webkit-box',
+                                          WebkitLineClamp: 2,
+                                          WebkitBoxOrient: 'vertical',
+                                          whiteSpace: 'normal',
+                                          textOverflow: 'ellipsis',
+                                        }}
+                                      >
+                                        <Typography variant="omega" style={TABLE_FONT_STYLE}>
+                                          {reason}
+                                        </Typography>
+                                      </Box>
+                                    );
+                                  },
+                                },
+                              ]
+                            : []),
+                          {
+                            key: 'company',
+                            label: 'Company',
+                            header: (
+                              <Box
+                                style={{
+                                  width: `${COMPANY_COLUMN_WIDTH}px`,
+                                  minWidth: `${COMPANY_COLUMN_WIDTH}px`,
+                                  maxWidth: `${COMPANY_COLUMN_WIDTH}px`,
+                                }}
+                              >
+                                <Typography variant="sigma" textColor="neutral600">
+                                  Company
+                                </Typography>
+                              </Box>
+                            ),
+                            render: (val, row) => (
+                              <Box
+                                style={{
+                                  width: `${COMPANY_COLUMN_WIDTH}px`,
+                                  minWidth: `${COMPANY_COLUMN_WIDTH}px`,
+                                  maxWidth: `${COMPANY_COLUMN_WIDTH}px`,
+                                }}
+                              >
+                                <Typography variant="omega" style={TABLE_FONT_STYLE}>
+                                  {row?.userCompany || '\u2014'}
+                                </Typography>
+                              </Box>
+                            ),
+                          },
                         ]}
                 pagination={{
                   page: currentPage,
@@ -604,25 +769,87 @@ export default function ProfileEditRequestsPage() {
                     Employee: {getDisplayValues(selectedRequest).userName}
                   </Typography>
                   {renderChangesPreview(getDisplayValues(selectedRequest).requestedChanges)}
+                  {getStatusValue(selectedRequest) === 'Rejected' && (
+                    <Box marginTop={4}>
+                      <Typography variant="omega">
+                        <Typography as="span" variant="omega" fontWeight="bold">
+                          Rejection Reason:{' '}
+                        </Typography>
+                        {getRejectionReasonValue(selectedRequest) || 'No rejection reason recorded.'}
+                      </Typography>
+                    </Box>
+                  )}
+                  {getStatusValue(selectedRequest) === 'Pending' && showRejectReasonInput && (
+                    <Box marginTop={4}>
+                      <Typography variant="pi" fontWeight="bold" marginBottom={2}>
+                        Reason for Rejection
+                      </Typography>
+                      <textarea
+                        value={rejectionReason}
+                        onChange={(event) => {
+                          setRejectionReason(event.target.value);
+                          if (rejectionReasonError) {
+                            setRejectionReasonError('');
+                          }
+                        }}
+                        rows={4}
+                        placeholder="Enter the reason that will be sent to the requester"
+                        style={{
+                          width: '100%',
+                          border: '1px solid #dcdce4',
+                          borderRadius: '4px',
+                          padding: '8px 12px',
+                          fontSize: '14px',
+                          resize: 'vertical',
+                        }}
+                      />
+                      {rejectionReasonError ? (
+                        <Typography variant="pi" textColor="danger600" marginTop={2}>
+                          {rejectionReasonError}
+                        </Typography>
+                      ) : null}
+                    </Box>
+                  )}
                 </Box>
               </Modal.Body>
               <Modal.Footer>
                 {getStatusValue(selectedRequest) === 'Pending' && (
                   <>
-                    <Button
-                      variant="danger"
-                      disabled={updatingId === String(entryId(selectedRequest))}
-                      onClick={() => handleDecision('Rejected')}
-                    >
-                      Reject
-                    </Button>
-                    <Button
-                      variant="secondary"
-                      disabled={updatingId === String(entryId(selectedRequest))}
-                      onClick={() => handleDecision('Approved')}
-                    >
-                      Approve
-                    </Button>
+                    {showRejectReasonInput ? (
+                      <>
+                        <Button
+                          variant="danger"
+                          disabled={updatingId === String(entryId(selectedRequest))}
+                          onClick={handleConfirmReject}
+                        >
+                          Confirm Reject
+                        </Button>
+                        <Button
+                          variant="tertiary"
+                          disabled={updatingId === String(entryId(selectedRequest))}
+                          onClick={handleCancelReject}
+                        >
+                          Cancel
+                        </Button>
+                      </>
+                    ) : (
+                      <>
+                        <Button
+                          variant="danger"
+                          disabled={updatingId === String(entryId(selectedRequest))}
+                          onClick={handleStartReject}
+                        >
+                          Reject
+                        </Button>
+                        <Button
+                          variant="secondary"
+                          disabled={updatingId === String(entryId(selectedRequest))}
+                          onClick={handleApprove}
+                        >
+                          Approve
+                        </Button>
+                      </>
+                    )}
                   </>
                 )}
                 <Button variant="tertiary" onClick={() => setShowModal(false)}>

@@ -33,6 +33,12 @@ function parseMeta(meta) {
   return null;
 }
 
+function normalizeRejectionReason(value) {
+  if (typeof value !== 'string') return null;
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : null;
+}
+
 async function findRequesterNameFromNotification(strapi, request) {
   try {
     const requestIds = [request?.documentId, request?.id]
@@ -136,11 +142,16 @@ module.exports = ({ strapi }) => ({
     return count || 0;
   },
 
-  async updateStatus(id, newStatus, adminUser) {
+  async updateStatus(id, newStatus, adminUser, options = {}) {
     try {
       const allowedStatus = ['Approved', 'Rejected'];
       if (!allowedStatus.includes(newStatus)) {
         throw new Error('Invalid request_status. Allowed values: Approved, Rejected');
+      }
+
+      const rejectionReason = normalizeRejectionReason(options.reason_for_rejection);
+      if (newStatus === 'Rejected' && !rejectionReason) {
+        throw new Error('reason_for_rejection is required when rejecting a request');
       }
 
       // Support both documentId and numeric id to be resilient across callers.
@@ -168,6 +179,7 @@ module.exports = ({ strapi }) => ({
         request_status: newStatus,
         reviewed_by: adminUser?.id || null,
         reviewed_at: new Date(),
+        reason_for_rejection: newStatus === 'Rejected' ? rejectionReason : null,
       };
 
       const updated = await strapi.db.query('api::profile-edit-request.profile-edit-request').update({
@@ -185,6 +197,7 @@ module.exports = ({ strapi }) => ({
         request_status: newStatus,
         reviewed_by: adminUser?.id || null,
         reviewed_at: baseUpdateData.reviewed_at,
+        reason_for_rejection: baseUpdateData.reason_for_rejection,
       };
     } catch (error) {
       strapi.log.error('Failed to update status:', error);

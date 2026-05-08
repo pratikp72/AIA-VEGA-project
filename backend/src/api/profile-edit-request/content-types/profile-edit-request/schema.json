@@ -47,6 +47,10 @@
     "reviewed_at": {
       "type": "datetime"
     },
+    "reason_for_rejection": {
+      "type": "text",
+      "required": false
+    },
     "company": {
       "type": "enumeration",
       "enum": ["AIA", "Vega"],

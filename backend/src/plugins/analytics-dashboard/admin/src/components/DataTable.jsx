@@ -209,7 +209,7 @@ export function DataTable({
                   : 'Click to sort by this column';
                 const headerContent = col.header != null ? col.header : <Typography variant="sigma" textColor="neutral600">{col.label}</Typography>;
                 return (
-                  <Th key={col.key}>
+                  <Th key={col.key} style={col.thStyle || undefined}>
                     <Flex
                       alignItems="center"
                       gap={1}
@@ -236,7 +236,7 @@ export function DataTable({
             {data.map((row, i) => (
               <Tr key={i}>
                 {columns.map((col) => (
-                  <Td key={col.key}>
+                  <Td key={col.key} style={col.tdStyle || undefined}>
                     {col.render ? col.render(row[col.key], row) : row[col.key]}
                   </Td>
                 ))}
