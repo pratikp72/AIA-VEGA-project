@@ -1,4 +1,4 @@
-//@ts-ignore
+//@ts-nocheck
 
 import React, { useState, useEffect, useRef } from 'react';
 import { Layouts } from '@strapi/strapi/admin';
@@ -41,8 +41,8 @@ const AuditLogPage = () => {
         sortOrder: 'desc',
       });
 
-      if (dateRange.start) params.append('dateFrom', dateRange.start.toISOString().slice(0, 10));
-      if (dateRange.end) params.append('dateTo', dateRange.end.toISOString().slice(0, 10));
+      if (dateRange.start) params.append('dateFrom', `${dateRange.start.getFullYear()}-${String(dateRange.start.getMonth()+1).padStart(2,'0')}-${String(dateRange.start.getDate()).padStart(2,'0')}`);
+      if (dateRange.end) params.append('dateTo', `${dateRange.end.getFullYear()}-${String(dateRange.end.getMonth()+1).padStart(2,'0')}-${String(dateRange.end.getDate()).padStart(2,'0')}`);
       params.append('contentType', contentType); // Always filter by user collection
       if (action) params.append('action', action);
       if (companyFilter) params.append('company', companyFilter);
@@ -63,8 +63,8 @@ const AuditLogPage = () => {
             sortBy: 'createdAt',
             sortOrder: 'desc',
           });
-          if (dateRange.start) allParams.append('dateFrom', dateRange.start.toISOString().slice(0, 10));
-          if (dateRange.end) allParams.append('dateTo', dateRange.end.toISOString().slice(0, 10));
+          if (dateRange.start) allParams.append('dateFrom', `${dateRange.start.getFullYear()}-${String(dateRange.start.getMonth()+1).padStart(2,'0')}-${String(dateRange.start.getDate()).padStart(2,'0')}`);
+          if (dateRange.end) allParams.append('dateTo', `${dateRange.end.getFullYear()}-${String(dateRange.end.getMonth()+1).padStart(2,'0')}-${String(dateRange.end.getDate()).padStart(2,'0')}`);
           allParams.append('contentType', contentType);
           if (action) allParams.append('action', action);
           if (companyFilter) allParams.append('company', companyFilter);
@@ -210,7 +210,11 @@ const AuditLogPage = () => {
           </Box>
 
           {/* Audit Log Table */}
-          {/* <Box background="neutral0" hasRadius shadow="tableShadow" padding={6}> */}
+          {loading ? (
+            <Flex justifyContent="center" padding={6}>
+              <Loader>Loading...</Loader>
+            </Flex>
+          ) : (
             <DataTable
               data={
                 logs.filter((log) => {
@@ -265,7 +269,7 @@ const AuditLogPage = () => {
               exportFileName={`audit-log-${new Date().toISOString().split('T')[0]}.xlsx`}
               fontSize={TABLE_FONT_STYLE.fontSize}
             />
-          {/* </Box> */}
+          )}
         </Box>
       </Layouts.Content>
     </Layouts.Root>

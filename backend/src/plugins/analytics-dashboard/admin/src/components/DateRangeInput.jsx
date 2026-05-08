@@ -1,27 +1,67 @@
 // Usage: import DateRangeInput from './DateRangeInput';
 // <DateRangeInput value={{start: ..., end: ...}} onChange={({start, end}) => ...} />
-// @ts-ignore
+// @ts-nocheck
 
-import React, { useState, useRef } from 'react';
-import { format } from 'date-fns';
+import React, { useState, useRef, useEffect } from 'react';
 import { DateRange } from 'react-date-range';
 import 'react-date-range/dist/styles.css';
 import 'react-date-range/dist/theme/default.css';
 
 export default function DateRangeInput({ value, onChange }) {
   const [open, setOpen] = useState(false);
+  const [pickingEnd, setPickingEnd] = useState(false);
   const ref = useRef();
+
+  // Close on outside click
+  useEffect(() => {
+    if (!open) return;
+    const handleClickOutside = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) {
+        setOpen(false);
+        setPickingEnd(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [open]);
+
+  const formatDate = (date) => {
+    const d = new Date(date);
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    const year = d.getFullYear();
+    return `${month}/${day}/${year}`;
+  };
+
+  // Normalize a date to local start-of-day
+  const toLocalStartOfDay = (date) => {
+    const d = new Date(date);
+    return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0);
+  };
+
+  // Normalize a date to local end-of-day
+  const toLocalEndOfDay = (date) => {
+    const d = new Date(date);
+    return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59, 999);
+  };
+
   const handleSelect = (ranges) => {
-    const start = ranges.selection.startDate;
-    const end = ranges.selection.endDate;
+    const rawStart = ranges.selection.startDate;
+    const rawEnd = ranges.selection.endDate;
+    const start = rawStart ? toLocalStartOfDay(rawStart) : null;
+    const end = rawEnd ? toLocalEndOfDay(rawEnd) : null;
     onChange({ start, end });
-    // Only close if both dates are set and not the same day
-    if (start && end && start.getTime() !== end.getTime()) {
+    if (!pickingEnd) {
+      // First click: user picked start date, now wait for end date
+      setPickingEnd(true);
+    } else {
+      // Second click: close the picker
+      setPickingEnd(false);
       setOpen(false);
     }
   };
   const formatted = value && value.start && value.end
-    ? `${format(value.start, 'MM/dd/yyyy')} - ${format(value.end, 'MM/dd/yyyy')}`
+    ? `${formatDate(value.start)} - ${formatDate(value.end)}`
     : '';
   return (
     <div style={{ position: 'relative', minWidth: 220 }} ref={ref}>
@@ -45,7 +85,7 @@ export default function DateRangeInput({ value, onChange }) {
           boxShadow: 'none',
           transition: 'outline 0.2s',
         }}
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => { setOpen((v) => !v); setPickingEnd(false); }}
       >
         <svg width="20" height="20" fill="none" viewBox="0 0 24 24" style={{marginRight:8, color:'#8e8ea9'}}><rect x="3" y="5" width="18" height="16" rx="2" stroke="currentColor" strokeWidth="1.5"/><path d="M16 3v4M8 3v4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/><path d="M3 9h18" stroke="currentColor" strokeWidth="1.5"/></svg>
         {formatted || 'MM/DD/YYYY - MM/DD/YYYY'}
@@ -82,6 +122,7 @@ export default function DateRangeInput({ value, onChange }) {
               }}
               onClick={() => {
                 onChange({ start: null, end: null });
+                setPickingEnd(false);
                 setOpen(false);
               }}
               disabled={!value?.start && !value?.end}
