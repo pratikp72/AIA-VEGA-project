@@ -1,5 +1,5 @@
 
-
+// @ts-nocheck
 
 import React, { useCallback } from 'react';
 import { Box, Flex, Typography, SingleSelect, SingleSelectOption } from '@strapi/design-system';
@@ -142,8 +142,8 @@ export function Filters({
                     onDateFromChange(null);
                     onDateToChange(null);
                   } else if (start && end) {
-                    onDateFromChange(start ? start.toISOString().slice(0, 10) : null);
-                    onDateToChange(end ? end.toISOString().slice(0, 10) : null);
+                    onDateFromChange(start ? `${start.getFullYear()}-${String(start.getMonth()+1).padStart(2,'0')}-${String(start.getDate()).padStart(2,'0')}` : null);
+                    onDateToChange(end ? `${end.getFullYear()}-${String(end.getMonth()+1).padStart(2,'0')}-${String(end.getDate()).padStart(2,'0')}` : null);
                   }
                 }}
               />
@@ -369,8 +369,8 @@ export function Filters({
                     onDateFromChange(null);
                     onDateToChange(null);
                   } else if (start && end) {
-                    onDateFromChange(start ? start.toISOString().slice(0, 10) : null);
-                    onDateToChange(end ? end.toISOString().slice(0, 10) : null);
+                    onDateFromChange(start ? `${start.getFullYear()}-${String(start.getMonth()+1).padStart(2,'0')}-${String(start.getDate()).padStart(2,'0')}` : null);
+                    onDateToChange(end ? `${end.getFullYear()}-${String(end.getMonth()+1).padStart(2,'0')}-${String(end.getDate()).padStart(2,'0')}` : null);
                   }
                 }}
               />
@@ -391,8 +391,8 @@ export function Filters({
                     onDateFromChange(null);
                     onDateToChange(null);
                   } else if (start && end) {
-                    onDateFromChange(start ? start.toISOString().slice(0, 10) : null);
-                    onDateToChange(end ? end.toISOString().slice(0, 10) : null);
+                    onDateFromChange(start ? `${start.getFullYear()}-${String(start.getMonth()+1).padStart(2,'0')}-${String(start.getDate()).padStart(2,'0')}` : null);
+                    onDateToChange(end ? `${end.getFullYear()}-${String(end.getMonth()+1).padStart(2,'0')}-${String(end.getDate()).padStart(2,'0')}` : null);
                   }
                 }}
               />
@@ -464,8 +464,8 @@ export function Filters({
                     onDateFromChange(null);
                     onDateToChange(null);
                   } else if (start && end) {
-                    onDateFromChange(start ? start.toISOString().slice(0, 10) : null);
-                    onDateToChange(end ? end.toISOString().slice(0, 10) : null);
+                    onDateFromChange(start ? `${start.getFullYear()}-${String(start.getMonth()+1).padStart(2,'0')}-${String(start.getDate()).padStart(2,'0')}` : null);
+                    onDateToChange(end ? `${end.getFullYear()}-${String(end.getMonth()+1).padStart(2,'0')}-${String(end.getDate()).padStart(2,'0')}` : null);
                   }
                 }}
               />
