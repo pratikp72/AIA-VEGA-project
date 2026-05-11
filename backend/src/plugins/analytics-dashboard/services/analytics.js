@@ -17,9 +17,9 @@ const normalizeDateBound = (value, endOfDay = false) => {
   const match = String(value).trim().match(/^(\d{4})-(\d{2})-(\d{2})/);
   if (!match) return value;
   const [, year, month, day] = match;
-  return endOfDay
-    ? `${year}-${month}-${day}T23:59:59.999Z`
-    : `${year}-${month}-${day}T00:00:00.000Z`;
+  const date = new Date(Number(year), Number(month) - 1, Number(day), 0, 0, 0, 0);
+  if (endOfDay) date.setHours(23, 59, 59, 999);
+  return date.toISOString();
 };
 
 module.exports = ({ strapi }) => {
@@ -494,11 +494,9 @@ module.exports = ({ strapi }) => {
       }
     }
 
-    // Normalize date bounds: start of day for from, end of day for to (so full day is included)
-    const wantDateFromNorm = wantDateFrom && /^\d{4}-\d{2}-\d{2}/.test(String(wantDateFrom))
-      ? String(wantDateFrom).slice(0, 10) + 'T00:00:00.000Z' : wantDateFrom;
-    const wantDateToNorm = wantDateTo && /^\d{4}-\d{2}-\d{2}/.test(String(wantDateTo))
-      ? String(wantDateTo).slice(0, 10) + 'T23:59:59.999Z' : wantDateTo;
+    // Normalize date bounds using server local day boundaries.
+    const wantDateFromNorm = normalizeDateBound(wantDateFrom, false);
+    const wantDateToNorm = normalizeDateBound(wantDateTo, true);
 
     // Optional: load quiz and feedback submission sets for (userId, courseId) when filters requested (only when a course is selected)
     let quizPassedByUserCourse = null;
@@ -2361,12 +2359,8 @@ module.exports = ({ strapi }) => {
    * LEARNING ANALYTICS - Employee Table (Option B: one row per employee, aggregated)
    */
   async getLearningEmployeeTable(params = {}) {
-    const dateFromNorm = params.dateFrom && /^\d{4}-\d{2}-\d{2}/.test(String(params.dateFrom))
-      ? String(params.dateFrom).slice(0, 10) + 'T00:00:00.000Z'
-      : params.dateFrom;
-    const dateToNorm = params.dateTo && /^\d{4}-\d{2}-\d{2}/.test(String(params.dateTo))
-      ? String(params.dateTo).slice(0, 10) + 'T23:59:59.999Z'
-      : params.dateTo;
+    const dateFromNorm = normalizeDateBound(params.dateFrom, false);
+    const dateToNorm = normalizeDateBound(params.dateTo, true);
 
     const userWhere = { blocked: { $eq: false } };
     if (params.company) userWhere.company = params.company;
@@ -2830,12 +2824,8 @@ module.exports = ({ strapi }) => {
    * Internal: Employee table data for export (all rows, no pagination)
    */
   async getLearningEmployeeTableForExport(params = {}) {
-    const dateFromNorm = params.dateFrom && /^\d{4}-\d{2}-\d{2}/.test(String(params.dateFrom))
-      ? String(params.dateFrom).slice(0, 10) + 'T00:00:00.000Z'
-      : params.dateFrom;
-    const dateToNorm = params.dateTo && /^\d{4}-\d{2}-\d{2}/.test(String(params.dateTo))
-      ? String(params.dateTo).slice(0, 10) + 'T23:59:59.999Z'
-      : params.dateTo;
+    const dateFromNorm = normalizeDateBound(params.dateFrom, false);
+    const dateToNorm = normalizeDateBound(params.dateTo, true);
 
     const userWhere = { blocked: { $eq: false } };
     if (params.company) userWhere.company = params.company;
