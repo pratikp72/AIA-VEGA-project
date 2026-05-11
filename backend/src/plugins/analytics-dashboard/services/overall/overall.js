@@ -1,4 +1,15 @@
+//@ts-nocheck
 'use strict';
+
+const normalizeDateBound = (value, endOfDay = false) => {
+  if (!value) return null;
+  const match = String(value).trim().match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!match) return value;
+  const [, year, month, day] = match;
+  return endOfDay
+    ? `${year}-${month}-${day}T23:59:59.999Z`
+    : `${year}-${month}-${day}T00:00:00.000Z`;
+};
 
 /**
  * Overall Analytics – Global and Personal portal engagement.
@@ -26,8 +37,10 @@ module.exports = ({ strapi }) => {
         const filters = {};
         if (params.dateFrom || params.dateTo) {
           filters.publishedAt = {};
-          if (params.dateFrom) filters.publishedAt.$gte = params.dateFrom;
-          if (params.dateTo) filters.publishedAt.$lte = params.dateTo;
+          const dateFrom = normalizeDateBound(params.dateFrom, false);
+          const dateTo = normalizeDateBound(params.dateTo, true);
+          if (dateFrom) filters.publishedAt.$gte = dateFrom;
+          if (dateTo) filters.publishedAt.$lte = dateTo;
         }
         const companyFilter = params.company && String(params.company).trim() && !/^all\s*companies?$/i.test(String(params.company));
         if (companyFilter) filters.company = { name: params.company };
@@ -128,8 +141,10 @@ module.exports = ({ strapi }) => {
         const townhallFilters = {};
         if (params.dateFrom || params.dateTo) {
           townhallFilters.publishedAt = {};
-          if (params.dateFrom) townhallFilters.publishedAt.$gte = params.dateFrom;
-          if (params.dateTo) townhallFilters.publishedAt.$lte = params.dateTo;
+          const dateFrom = normalizeDateBound(params.dateFrom, false);
+          const dateTo = normalizeDateBound(params.dateTo, true);
+          if (dateFrom) townhallFilters.publishedAt.$gte = dateFrom;
+          if (dateTo) townhallFilters.publishedAt.$lte = dateTo;
         }
         let townhalls = [];
         try {
@@ -187,8 +202,10 @@ module.exports = ({ strapi }) => {
         const filters = {};
         if (params.dateFrom || params.dateTo) {
           filters.publishedAt = {};
-          if (params.dateFrom) filters.publishedAt.$gte = params.dateFrom;
-          if (params.dateTo) filters.publishedAt.$lte = params.dateTo;
+          const dateFrom = normalizeDateBound(params.dateFrom, false);
+          const dateTo = normalizeDateBound(params.dateTo, true);
+          if (dateFrom) filters.publishedAt.$gte = dateFrom;
+          if (dateTo) filters.publishedAt.$lte = dateTo;
         }
         if (params.company) filters.company = { name: params.company };
 

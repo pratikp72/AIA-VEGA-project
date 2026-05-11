@@ -1,3 +1,4 @@
+// @ts-nocheck
 'use strict';
 
 const VALID_EVENT_NAMES = new Set([

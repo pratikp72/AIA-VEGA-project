@@ -680,7 +680,7 @@ module.exports = ({ strapi }) => {
 
   self.getActivityLog = async function (params = {}) {
     const page = Math.max(1, parseInt(params.page, 10) || 1);
-    const pageSize = Math.min(50, Math.max(5, parseInt(params.pageSize, 10) || 10));
+    const pageSize = Math.min(10000, Math.max(5, parseInt(params.pageSize, 10) || 10));
     const offset = (page - 1) * pageSize;
     const where = await self._buildActivityWhere(params);
     if (where === null) return { rows: [], total: 0, page, pageSize };

@@ -1,4 +1,15 @@
+//@ts-nocheck
 'use strict';
+
+const normalizeDateBound = (value, endOfDay = false) => {
+  if (!value) return null;
+  const match = String(value).trim().match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!match) return value;
+  const [, year, month, day] = match;
+  return endOfDay
+    ? `${year}-${month}-${day}T23:59:59.999Z`
+    : `${year}-${month}-${day}T00:00:00.000Z`;
+};
 
 /**
  * Learning Analytics – Quiz (global + personal).
@@ -13,8 +24,10 @@ module.exports = ({ strapi }) => {
 
     // Build date filter
     const dateWhere = {};
-    if (params.dateFrom) dateWhere.$gte = params.dateFrom;
-    if (params.dateTo) dateWhere.$lte = params.dateTo;
+    const dateFrom = normalizeDateBound(params.dateFrom, false);
+    const dateTo = normalizeDateBound(params.dateTo, true);
+    if (dateFrom) dateWhere.$gte = dateFrom;
+    if (dateTo) dateWhere.$lte = dateTo;
 
     // Resolve courseId → set of numeric IDs (handles Strapi v5 draft+published dual rows)
     let resolvedCourseIds = new Set();

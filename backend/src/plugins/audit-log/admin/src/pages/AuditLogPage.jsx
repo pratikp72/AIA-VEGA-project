@@ -14,6 +14,7 @@ const AuditLogPage = () => {
   const [logs, setLogs] = useState([]);
   const [allLogs, setAllLogs] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [fullDataLoading, setFullDataLoading] = useState(false);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [total, setTotal] = useState(0);
@@ -109,7 +110,9 @@ const AuditLogPage = () => {
   };
 
   const formatDate = (dateString) => {
+    if (!dateString) return '—';
     const date = new Date(dateString);
+    if (Number.isNaN(date.getTime())) return '—';
     return date.toLocaleString('en-US', {
       year: 'numeric',
       month: 'short',
@@ -126,6 +129,40 @@ const AuditLogPage = () => {
   const handlePageSizeChange = (newSize) => {
     setPageSize(Number(newSize));
     setPage(1);
+  };
+
+  const handleDownloadStyleChange = (newStyle) => {
+    // When user selects "All rows", fetch all data immediately
+    if (newStyle === 'all' && allLogs.length === 0) {
+      setFullDataLoading(true);
+      const params = new URLSearchParams({
+        page: '1',
+        pageSize: String(total),
+        sortBy: 'createdAt',
+        sortOrder: 'desc',
+      });
+      if (dateRange.start) params.append('dateFrom', `${dateRange.start.getFullYear()}-${String(dateRange.start.getMonth()+1).padStart(2,'0')}-${String(dateRange.start.getDate()).padStart(2,'0')}`);
+      if (dateRange.end) params.append('dateTo', `${dateRange.end.getFullYear()}-${String(dateRange.end.getMonth()+1).padStart(2,'0')}-${String(dateRange.end.getDate()).padStart(2,'0')}`);
+      params.append('contentType', contentType);
+      if (action) params.append('action', action);
+      if (companyFilter) params.append('company', companyFilter);
+      const q = (search || '').trim();
+      if (q && /^\d+$/.test(q)) params.append('search', q);
+      
+      get(`/audit-log/logs?${params}`)
+        .then(({ data: allData }) => {
+          if (isMounted.current) {
+            setAllLogs(allData.data || []);
+            setFullDataLoading(false);
+          }
+        })
+        .catch(() => {
+          if (isMounted.current) {
+            setAllLogs([]);
+            setFullDataLoading(false);
+          }
+        });
+    }
   };
 
   return (
@@ -215,60 +252,84 @@ const AuditLogPage = () => {
               <Loader>Loading...</Loader>
             </Flex>
           ) : (
-            <DataTable
-              data={
-                logs.filter((log) => {
-                  const q = (search || '').toLowerCase().trim();
-                  const company = (log.user?.company || log.company || '').toLowerCase();
-                  if (companyFilter && company !== companyFilter.toLowerCase()) return false;
-                  if (!q) return true;
-                  const user = log.user || {};
-                  const matches = (
-                    (user.username && user.username.toLowerCase().includes(q)) ||
-                    (user.firstname && user.firstname.toLowerCase().includes(q)) ||
-                    (user.lastname && user.lastname.toLowerCase().includes(q)) ||
-                    (user.emp_code && String(user.emp_code).toLowerCase().includes(q)) ||
-                    (user.emp_id && String(user.emp_id).toLowerCase().includes(q)) ||
-                    (user.id && String(user.id).toLowerCase().includes(q)) ||
-                    (log.userId && String(log.userId).toLowerCase().includes(q))
-                  );
-                  if (company === 'aia' && /^\d+$/.test(q)) return user.emp_code && String(user.emp_code).includes(q);
-                  if (company === 'vega' && /^emp\d+$/i.test(q)) return user.emp_id && String(user.emp_id).toLowerCase().includes(q);
-                  return matches;
-                })
-              }
-              fullData={allLogs.length > 0 ? allLogs : logs}
-              paginatedData={logs}
-              columns={[
-                { key: 'createdAt', label: 'Date & Time', render: (val) => <Typography variant="omega">{formatDate(val)}</Typography> },
-                { key: 'action', label: 'Action', render: (val) => <Badge variant={getActionColor(val)}>{val}</Badge> },
-                { key: 'userId', label: 'User ID', render: (val, row) => {
-                    const user = row.user || {};
-                    const company = (user.company || row.company || '').toLowerCase();
-                    if (company === 'aia') {
-                      return <Typography variant="omega" style={TABLE_FONT_STYLE}>{user.emp_code || '—'}</Typography>;
-                    } else if (company === 'vega') {
-                      return <Typography variant="omega" style={TABLE_FONT_STYLE}>{user.emp_id || '—'}</Typography>;
-                    } else {
-                      return <Typography variant="omega" style={TABLE_FONT_STYLE}>{row.userId || '—'}</Typography>;
+            <Box style={{ position: 'relative' }}>
+              {fullDataLoading && (
+                <Flex
+                  justifyContent="center"
+                  alignItems="center"
+                  style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    backgroundColor: 'rgba(255, 255, 255, 0.7)',
+                    zIndex: 10,
+                    borderRadius: '4px',
+                  }}
+                  padding={6}
+                >
+                  <Flex direction="column" alignItems="center" gap={2}>
+                    <Loader>Fetching all rows...</Loader>
+                  </Flex>
+                </Flex>
+              )}
+              <DataTable
+                data={
+                  logs.filter((log) => {
+                    const q = (search || '').toLowerCase().trim();
+                    const company = (log.user?.company || log.company || '').toLowerCase();
+                    if (companyFilter && company !== companyFilter.toLowerCase()) return false;
+                    if (!q) return true;
+                    const user = log.user || {};
+                    const matches = (
+                      (user.username && user.username.toLowerCase().includes(q)) ||
+                      (user.firstname && user.firstname.toLowerCase().includes(q)) ||
+                      (user.lastname && user.lastname.toLowerCase().includes(q)) ||
+                      (user.emp_code && String(user.emp_code).toLowerCase().includes(q)) ||
+                      (user.emp_id && String(user.emp_id).toLowerCase().includes(q)) ||
+                      (user.id && String(user.id).toLowerCase().includes(q)) ||
+                      (log.userId && String(log.userId).toLowerCase().includes(q))
+                    );
+                    if (company === 'aia' && /^\d+$/.test(q)) return user.emp_code && String(user.emp_code).includes(q);
+                    if (company === 'vega' && /^emp\d+$/i.test(q)) return user.emp_id && String(user.emp_id).toLowerCase().includes(q);
+                    return matches;
+                  })
+                }
+                fullData={allLogs.length > 0 ? allLogs : logs}
+                paginatedData={logs}
+                columns={[
+                  { key: 'createdAt', label: 'Date & Time', render: (val) => <Typography variant="omega">{formatDate(val)}</Typography> },
+                  { key: 'action', label: 'Action', render: (val) => <Badge variant={getActionColor(val)}>{val}</Badge> },
+                  { key: 'userId', label: 'User ID', render: (val, row) => {
+                      const user = row.user || {};
+                      const company = (user.company || row.company || '').toLowerCase();
+                      if (company === 'aia') {
+                        return <Typography variant="omega" style={TABLE_FONT_STYLE}>{user.emp_code || '—'}</Typography>;
+                      } else if (company === 'vega') {
+                        return <Typography variant="omega" style={TABLE_FONT_STYLE}>{user.emp_id || '—'}</Typography>;
+                      } else {
+                        return <Typography variant="omega" style={TABLE_FONT_STYLE}>{row.userId || '—'}</Typography>;
+                      }
                     }
-                  }
-                },
-                { key: 'userName', label: 'User Name', render: (val, row) => row.user?.username || row.userName || '—' },
-                { key: 'company', label: 'Company', render: (val, row) => row.user?.company || row.company || '—' },
-                { key: 'adminUser', label: 'Changed By', render: (val, row) => val ? `${val.firstname} ${val.lastname}` : 'System' },
-                { key: 'changes', label: 'Changes', render: (val) => val && val.length > 0 ? val.map(c => c.field).join(', ') : '—' },
-              ]}
-              pagination={{
-                page,
-                pageSize,
-                total,
-                onPageChange: handlePageChange,
-                onPageSizeChange: handlePageSizeChange,
-              }}
-              exportFileName={`audit-log-${new Date().toISOString().split('T')[0]}.xlsx`}
-              fontSize={TABLE_FONT_STYLE.fontSize}
-            />
+                  },
+                  { key: 'userName', label: 'User Name', render: (val, row) => row.user?.username || row.userName || '—' },
+                  { key: 'company', label: 'Company', render: (val, row) => row.user?.company || row.company || '—' },
+                  { key: 'adminUser', label: 'Changed By', render: (val, row) => val ? `${val.firstname} ${val.lastname}` : 'System' },
+                  { key: 'changes', label: 'Changes', render: (val) => val && val.length > 0 ? val.map(c => c.field).join(', ') : '—' },
+                ]}
+                pagination={{
+                  page,
+                  pageSize,
+                  total,
+                  onPageChange: handlePageChange,
+                  onPageSizeChange: handlePageSizeChange,
+                }}
+                onDownloadStyleChange={handleDownloadStyleChange}
+                exportFileName={`audit-log-${new Date().toISOString().split('T')[0]}.xlsx`}
+                fontSize={TABLE_FONT_STYLE.fontSize}
+              />
+            </Box>
           )}
         </Box>
       </Layouts.Content>

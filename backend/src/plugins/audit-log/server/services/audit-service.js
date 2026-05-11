@@ -1,3 +1,6 @@
+// @ts-nocheck
+'use strict';
+
 module.exports = ({ strapi }) => ({
   async logChange({ action, contentType, entryId, adminUser, changes, data }) {
     try {
@@ -35,11 +38,13 @@ module.exports = ({ strapi }) => ({
     company = null,
     search = null,
   }) {
-    const where = {};
+    const where = {
+      // Historical bad rows may have null createdAt; exclude them from time-ordered log views.
+      createdAt: { $notNull: true },
+    };
 
     // Date filtering
     if (dateFrom || dateTo) {
-      where.createdAt = {};
       if (dateFrom) where.createdAt.$gte = new Date(dateFrom);
       if (dateTo) {
         const endDate = new Date(dateTo);
@@ -73,7 +78,7 @@ module.exports = ({ strapi }) => ({
     }
 
     const offset = Math.max(0, (Number(page) || 1) - 1) * Math.max(1, Number(pageSize) || 25);
-    const limit = Math.max(1, Math.min(500, Number(pageSize) || 25));
+    const limit = Math.max(1, Math.min(10000, Number(pageSize) || 25));
     const orderDir = (sortOrder || 'desc').toLowerCase() === 'asc' ? 'asc' : 'desc';
     const orderField = sortBy || 'createdAt';
 
