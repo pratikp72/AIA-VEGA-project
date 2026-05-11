@@ -1,4 +1,16 @@
+//@ts-nocheck
 'use strict';
+
+
+const normalizeDateBound = (value, endOfDay = false) => {
+  if (!value) return null;
+  const match = String(value).trim().match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!match) return value;
+  const [, year, month, day] = match;
+  return endOfDay
+    ? `${year}-${month}-${day}T23:59:59.999Z`
+    : `${year}-${month}-${day}T00:00:00.000Z`;
+};
 
 /**
  * Analytics Common – Shared helpers for Learning views (filters, course load, modules).
@@ -62,8 +74,10 @@ module.exports = ({ strapi }) => ({
     const filters = {};
     if (params.dateFrom || params.dateTo) {
       filters.last_accessed_at = {};
-      if (params.dateFrom) filters.last_accessed_at.$gte = params.dateFrom;
-      if (params.dateTo) filters.last_accessed_at.$lte = params.dateTo;
+      const dateFrom = normalizeDateBound(params.dateFrom, false);
+      const dateTo = normalizeDateBound(params.dateTo, true);
+      if (dateFrom) filters.last_accessed_at.$gte = dateFrom;
+      if (dateTo) filters.last_accessed_at.$lte = dateTo;
     }
     const department = params.department && String(params.department).trim() && String(params.department) !== 'all';
     const company = params.company && String(params.company).trim() && String(params.company).toLowerCase() !== 'all companies' && String(params.company).toLowerCase() !== 'all';

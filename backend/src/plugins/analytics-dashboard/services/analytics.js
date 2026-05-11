@@ -12,6 +12,16 @@ const getLearningQuiz = (strapi) => require('./learning/learningQuiz')({ strapi 
 const getOverall = (strapi) => require('./overall/overall')({ strapi });
 const getTelemetry = (strapi) => require('./analyticsTelemetry')({ strapi });
 
+const normalizeDateBound = (value, endOfDay = false) => {
+  if (!value) return null;
+  const match = String(value).trim().match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!match) return value;
+  const [, year, month, day] = match;
+  return endOfDay
+    ? `${year}-${month}-${day}T23:59:59.999Z`
+    : `${year}-${month}-${day}T00:00:00.000Z`;
+};
+
 module.exports = ({ strapi }) => {
   if (strapi.__analyticsDashboardService) {
     return strapi.__analyticsDashboardService;
@@ -1627,8 +1637,10 @@ module.exports = ({ strapi }) => {
           const where = { [userKey]: userKey === 'user' ? { id: numericUserId } : numericUserId };
           if (params.dateFrom || params.dateTo) {
             const dateFilter = {};
-            if (params.dateFrom) dateFilter.$gte = params.dateFrom;
-            if (params.dateTo) dateFilter.$lte = params.dateTo;
+            const dateFrom = normalizeDateBound(params.dateFrom, false);
+            const dateTo = normalizeDateBound(params.dateTo, true);
+            if (dateFrom) dateFilter.$gte = dateFrom;
+            if (dateTo) dateFilter.$lte = dateTo;
             // @ts-ignore - Dynamic query builder
             where['last_accessed_at'] = dateFilter;
           }
@@ -1690,8 +1702,10 @@ module.exports = ({ strapi }) => {
       progresses = progresses.filter((p) => {
         const at = p.last_accessed_at;
         if (!at) return true;
-        if (params.dateFrom && at < params.dateFrom) return false;
-        if (params.dateTo && at > params.dateTo) return false;
+        const dateFrom = normalizeDateBound(params.dateFrom, false);
+        const dateTo = normalizeDateBound(params.dateTo, true);
+        if (dateFrom && at < dateFrom) return false;
+        if (dateTo && at > dateTo) return false;
         return true;
       });
     }
@@ -2122,8 +2136,10 @@ module.exports = ({ strapi }) => {
           const filters = { user: { id: numericUserId } };
           if (params.dateFrom || params.dateTo) {
             filters.last_updated = {};
-            if (params.dateFrom) filters.last_updated.$gte = params.dateFrom;
-            if (params.dateTo) filters.last_updated.$lte = params.dateTo;
+            const dateFrom = normalizeDateBound(params.dateFrom, false);
+            const dateTo = normalizeDateBound(params.dateTo, true);
+            if (dateFrom) filters.last_updated.$gte = dateFrom;
+            if (dateTo) filters.last_updated.$lte = dateTo;
           }
           const docRecords = await strapi.documents('api::module-video-progress.module-video-progress').findMany({
             status,
@@ -2149,8 +2165,10 @@ module.exports = ({ strapi }) => {
       for (const whereVariant of userWhereVariants) {
         try {
           const dateFilter = {};
-          if (params.dateFrom) dateFilter.$gte = params.dateFrom;
-          if (params.dateTo) dateFilter.$lte = params.dateTo;
+          const dateFrom = normalizeDateBound(params.dateFrom, false);
+          const dateTo = normalizeDateBound(params.dateTo, true);
+          if (dateFrom) dateFilter.$gte = dateFrom;
+          if (dateTo) dateFilter.$lte = dateTo;
           const where = (params.dateFrom || params.dateTo) ? { ...whereVariant, last_updated: dateFilter } : whereVariant;
           const raw = await strapi.db.query('api::module-video-progress.module-video-progress').findMany({
             where,
