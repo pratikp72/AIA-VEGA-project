@@ -78,7 +78,7 @@ module.exports = ({ strapi }) => ({
     }
 
     const offset = Math.max(0, (Number(page) || 1) - 1) * Math.max(1, Number(pageSize) || 25);
-    const limit = Math.max(1, Math.min(500, Number(pageSize) || 25));
+    const limit = Math.max(1, Math.min(10000, Number(pageSize) || 25));
     const orderDir = (sortOrder || 'desc').toLowerCase() === 'asc' ? 'asc' : 'desc';
     const orderField = sortBy || 'createdAt';
 

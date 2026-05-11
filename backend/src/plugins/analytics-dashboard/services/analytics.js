@@ -2519,7 +2519,7 @@ module.exports = ({ strapi }) => {
     }
 
     const page = Math.max(1, parseInt(params.page, 10) || 1);
-    const pageSize = Math.min(100, Math.max(5, parseInt(params.pageSize, 10) || 10));
+    const pageSize = Math.min(10000, Math.max(5, parseInt(params.pageSize, 10) || 10));
     const offset = (page - 1) * pageSize;
 
     const totalCount = await strapi.db.query('plugin::users-permissions.user').count({
