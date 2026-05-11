@@ -7,9 +7,9 @@ const normalizeDateBound = (value, endOfDay = false) => {
   const match = String(value).trim().match(/^(\d{4})-(\d{2})-(\d{2})/);
   if (!match) return value;
   const [, year, month, day] = match;
-  return endOfDay
-    ? `${year}-${month}-${day}T23:59:59.999Z`
-    : `${year}-${month}-${day}T00:00:00.000Z`;
+  const date = new Date(Number(year), Number(month) - 1, Number(day), 0, 0, 0, 0);
+  if (endOfDay) date.setHours(23, 59, 59, 999);
+  return date.toISOString();
 };
 
 /**
