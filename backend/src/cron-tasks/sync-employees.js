@@ -225,6 +225,13 @@ function buildUserData(record, roleId, usernameOverride, emailOverride) {
   };
 }
 
+function shouldPreserveManualBlock(existingUser, hasExitDate) {
+  if (hasExitDate) return false;
+  if (!existingUser?.blocked) return false;
+  // If exit_date is already set in DB, the block likely came from HR exit logic.
+  return !existingUser?.exit_date;
+}
+
 function resolveUserLocation(userData) {
   const company = String(userData?.company || '').trim();
   if (!company) return null;
@@ -344,7 +351,7 @@ async function syncEmployeesFromHrms(strapi) {
           if (hasEmpCode) {
             existing = await strapi.db.query(USER_UID).findOne({
               where: { emp_code: empCode },
-              select: ['id', 'username', 'email'],
+              select: ['id', 'username', 'email', 'blocked', 'exit_date'],
             });
           }
 
@@ -353,6 +360,11 @@ async function syncEmployeesFromHrms(strapi) {
           const preferredUsername = safeString(record?.Emp_Name, empCode || 'employee');
           const username = buildUsername(preferredUsername);
           const userData = buildUserData(record, roleId, username, resolvedEmail);
+          const keepManualBlock = shouldPreserveManualBlock(existing, Boolean(record?.Exit_Date));
+          if (keepManualBlock) {
+            userData.blocked = true;
+            userData.active = false;
+          }
 
           const photoUrl = resolvePhotoUrl(record?.Photograph, baseUrl);
           if (photoUrl) {
@@ -365,6 +377,9 @@ async function syncEmployeesFromHrms(strapi) {
 
           if (existing) {
             await strapi.db.query(USER_UID).update({ where: { id: existing.id }, data: userData });
+            if (keepManualBlock) {
+              strapi.log.info(`[employee-sync] preserved manual block for ${resolvedEmail || empCode}`);
+            }
             updatedCount += 1;
             pageUpdated += 1;
           } else {
