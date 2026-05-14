@@ -109,6 +109,15 @@ const AuditLogPage = () => {
     }
   };
 
+  const getEmployeeIdentifier = (row) => {
+    const user = row?.user || {};
+    const company = String(user.company || row?.company || '').toLowerCase();
+
+    if (company === 'aia') return user.emp_code || '—';
+    if (company === 'vega') return user.emp_id || '—';
+    return user.emp_code || user.emp_id || row?.userId || user.id || '—';
+  };
+
   const formatDate = (dateString) => {
     if (!dateString) return '—';
     const date = new Date(dateString);
@@ -301,21 +310,22 @@ const AuditLogPage = () => {
                 columns={[
                   { key: 'createdAt', label: 'Date & Time', render: (val) => <Typography variant="omega">{formatDate(val)}</Typography> },
                   { key: 'action', label: 'Action', render: (val) => <Badge variant={getActionColor(val)}>{val}</Badge> },
-                  { key: 'userId', label: 'User ID', render: (val, row) => {
-                      const user = row.user || {};
-                      const company = (user.company || row.company || '').toLowerCase();
-                      if (company === 'aia') {
-                        return <Typography variant="omega" style={TABLE_FONT_STYLE}>{user.emp_code || '—'}</Typography>;
-                      } else if (company === 'vega') {
-                        return <Typography variant="omega" style={TABLE_FONT_STYLE}>{user.emp_id || '—'}</Typography>;
-                      } else {
-                        return <Typography variant="omega" style={TABLE_FONT_STYLE}>{row.userId || '—'}</Typography>;
-                      }
+                  { key: 'userId', label: 'User ID', exportValue: (val, row) => getEmployeeIdentifier(row), render: (val, row) => {
+                      return <Typography variant="omega" style={TABLE_FONT_STYLE}>{getEmployeeIdentifier(row)}</Typography>;
                     }
                   },
                   { key: 'userName', label: 'User Name', render: (val, row) => row.user?.username || row.userName || '—' },
                   { key: 'company', label: 'Company', render: (val, row) => row.user?.company || row.company || '—' },
-                  { key: 'adminUser', label: 'Changed By', render: (val, row) => val ? `${val.firstname} ${val.lastname}` : 'System' },
+                  {
+                    key: 'adminUser',
+                    label: 'Changed By',
+                    exportValue: (val) => {
+                      if (!val) return 'System';
+                      const fullName = `${val.firstname || ''} ${val.lastname || ''}`.trim();
+                      return fullName || val.username || val.email || 'System';
+                    },
+                    render: (val, row) => val ? `${val.firstname} ${val.lastname}` : 'System',
+                  },
                   { key: 'changes', label: 'Changes', render: (val) => val && val.length > 0 ? val.map(c => c.field).join(', ') : '—' },
                 ]}
                 pagination={{
