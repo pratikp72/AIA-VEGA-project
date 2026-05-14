@@ -138,12 +138,23 @@ export default function ProfileEditRequestsPage() {
     return attrs.request_status ?? entry?.request_status ?? 'Pending';
   };
 
+  const getEmployeeIdentifier = (entry) => {
+    const attrs = entry?.attributes || entry || {};
+    const user = attrs.users_permissions_user?.data ?? attrs.users_permissions_user ?? {};
+    const userAttrs = user.attributes ?? user;
+    const company = String(userAttrs.company || attrs.company || '').toLowerCase();
+
+    if (company === 'aia') return userAttrs.emp_code || '—';
+    if (company === 'vega') return userAttrs.emp_id || '—';
+    return userAttrs.emp_code || userAttrs.emp_id || user.id || attrs.userId || entry?.userId || '—';
+  };
+
   const getDisplayValues = (entry) => {
     const attrs = entry.attributes || entry;
     const user = attrs.users_permissions_user?.data ?? attrs.users_permissions_user ?? {};
     const userAttrs = user.attributes ?? user;
     const userName = attrs.requester_name ?? userAttrs.username ?? userAttrs.email ?? userAttrs.employee_name ?? '—';
-    const userId = user.id ?? '—';
+    const userId = getEmployeeIdentifier(entry);
     const requestedChanges = attrs.requested_changes ?? entry.requested_changes ?? {};
     // Prefer company from user, fallback to company on request
     const userCompany = userAttrs.company || attrs.company || attrs.companyName || '';
@@ -648,18 +659,8 @@ export default function ProfileEditRequestsPage() {
                 paginatedData={pageList}
                         columns={[
                           { key: 'userName', label: 'Employee' },
-                          { key: 'userId', label: 'User ID', render: (val, row) => {
-                              const attrs = row.attributes || row;
-                              const user = attrs.users_permissions_user?.data ?? attrs.users_permissions_user ?? {};
-                              const userAttrs = user.attributes ?? user;
-                              const company = (userAttrs.company || attrs.company || '').toLowerCase();
-                              if (company === 'aia') {
-                                return <Typography variant="omega" style={TABLE_FONT_STYLE}>{userAttrs.emp_code || '\u2014'}</Typography>;
-                              } else if (company === 'vega') {
-                                return <Typography variant="omega" style={TABLE_FONT_STYLE}>{userAttrs.emp_id || '\u2014'}</Typography>;
-                              } else {
-                                return <Typography variant="omega" style={TABLE_FONT_STYLE}>{row.userId || '\u2014'}</Typography>;
-                              }
+                          { key: 'userId', label: 'User ID', exportValue: (val, row) => getEmployeeIdentifier(row), render: (val, row) => {
+                              return <Typography variant="omega" style={TABLE_FONT_STYLE}>{getEmployeeIdentifier(row)}</Typography>;
                             }
                           },
                           {
