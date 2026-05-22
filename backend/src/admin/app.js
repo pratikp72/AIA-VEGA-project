@@ -34,7 +34,7 @@ import EventCompanyFilter from './components/EventCompanyFilter.jsx';
 import HolidayCompanyFilter from './components/HolidayCompanyFilter.jsx';
 import CourseAssignmentExcelUserUpload from './components/CourseAssignmentExcelUserUpload.jsx';
 import KeepRelationDropdownOpen from './components/KeepRelationDropdownOpen.jsx';
-import { installVegaDuplicateCourseFetchInterceptor } from './utils/vegaDuplicateCourseFetch.js';
+import { installVegaDuplicateCourseFetchInterceptor, installCourseAssignmentCoursesTablePatch } from './utils/vegaDuplicateCourseFetch.js';
 
 const ADMIN_HOME_PATH = '/admin';
 const ADMIN_TAB_TITLE = 'AIA-VEGA';
@@ -731,6 +731,7 @@ export default {
     // Keep browser tab title fixed to AIA-VEGA and force logo clicks to admin home
     if (typeof window !== 'undefined') {
       installVegaDuplicateCourseFetchInterceptor();
+      installCourseAssignmentCoursesTablePatch();
 
       enforceAdminTabTitle();
       installAdminLogoHomeRedirect();
