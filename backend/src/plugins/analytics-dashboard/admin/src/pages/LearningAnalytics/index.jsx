@@ -442,6 +442,7 @@ export default function LearningAnalyticsPage() {
               allRows={allEmployeeRows}
               search={search}
               filterCourse={filterCourse}
+              company={company}
               sortOrder={sortOrder}
               setSortOrder={setSortOrder}
               setPage={setPage}

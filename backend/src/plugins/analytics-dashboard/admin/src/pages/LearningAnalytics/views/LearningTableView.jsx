@@ -52,6 +52,7 @@ export function LearningTableView({
   allRows = [],
   search,
   filterCourse,
+  company,
   sortOrder,
   setSortOrder,
   setPage,
@@ -61,6 +62,7 @@ export function LearningTableView({
   const rows = data?.rows || [];
   const tableRows = allRows.length > 0 ? applyEmployeeFilters(allRows, search, filterCourse) : applyEmployeeFilters(rows, search, filterCourse);
   const paginatedTableData = data?.rows || [];
+  const normalizedCompany = String(company || '').toLowerCase();
 
   const page = data?.page || 1;
   const pageSize = data?.pageSize || 10;
@@ -86,35 +88,47 @@ export function LearningTableView({
           },
         }}
         sortBy="courseCompletionTimeMinutes"
-              sortOrder={sortOrder}
-              onSortChange={(_, order) => {
-                setSortOrder(order);
-                setPage(1);
-              }}
-              columns={[
-                { key: 'employeeName', label: 'Employee Name' },
-                { key: 'company', label: 'Company' },
-                // { key: 'coursesEnrolled', label: 'Courses Enrolled' },
-                { key: 'courseStatus', label: 'Course Status' },
-                // { key: 'totalModulesDone', label: 'Total Modules Done' },
-                { key: 'progressPercent', label: 'Progress %', render: (v) => `${v ?? 0}%` },
-                { key: 'avgScore', label: 'Quiz Score' },
-                {
-                  key: 'courseCompletionTimeMinutes',
-                  label: 'Completion Time',
-                  sortable: true,
-                  render: (v) => {
-                    const m = Number(v);
-                    if (Number.isNaN(m) || m < 0) return '—';
-                    const h = Math.floor(m / 60);
-                    const min = m % 60;
-                    if (h === 0) return `${min}m`;
-                    if (min === 0) return `${h}h`;
-                    return `${h}h${min}m`;
-                  },
-                },
-              ]}
-            />
+        sortOrder={sortOrder}
+        onSortChange={(_, order) => {
+          setSortOrder(order);
+          setPage(1);
+        }}
+        columns={[
+          { key: 'employeeName', label: 'Employee Name' },
+          ...(normalizedCompany === 'aia'
+            ? [{ key: 'emp_code', label: 'Employee ID' }]
+            : [{ key: 'emp_id', label: 'Employee ID' }]),
+          { key: 'company', label: 'Company' },
+          ...(normalizedCompany === 'aia'
+            ? [{ key: 'branch', label: 'Location' }]
+            : [{ key: 'working_location', label: 'Location' }]),
+          { key: 'courseStatus', label: 'Course Status' },
+          {
+            key: 'feedbackStatus',
+            label: 'Feedback',
+            render: (v) => {
+              if (v == null || String(v).trim() === '') return filterCourse ? 'No' : '-';
+              return String(v);
+            },
+          },
+          { key: 'progressPercent', label: 'Progress %', render: (v) => `${v ?? 0}%` },
+          { key: 'avgScore', label: 'Quiz Score' },
+          {
+            key: 'courseCompletionTimeMinutes',
+            label: 'Completion Time',
+            sortable: true,
+            render: (v) => {
+              const m = Number(v);
+              if (Number.isNaN(m) || m < 0) return '—';
+              const h = Math.floor(m / 60);
+              const min = m % 60;
+              if (h === 0) return `${min}m`;
+              if (min === 0) return `${h}h`;
+              return `${h}h${min}m`;
+            },
+          },
+        ]}
+      />
     </Box>
   );
 }

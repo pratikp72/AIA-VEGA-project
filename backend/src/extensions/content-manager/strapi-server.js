@@ -180,6 +180,54 @@ function mergeFilterIfPresent(baseFilter, nextFilter) {
   return mergeWithAnd(baseFilter, nextFilter);
 }
 
+function makeFiltersCaseInsensitive(input) {
+  if (Array.isArray(input)) {
+    return input.map((item) => makeFiltersCaseInsensitive(item));
+  }
+
+  if (!input || typeof input !== 'object') {
+    return input;
+  }
+
+  const output = {};
+  const operatorMap = {
+    $eq: '$containsi',
+    $ne: '$nei',
+    $contains: '$containsi',
+    $notContains: '$notContainsi',
+    $startsWith: '$startsWithi',
+    $endsWith: '$endsWithi',
+  };
+
+  Object.entries(input).forEach(([key, value]) => {
+    const mappedKey = operatorMap[key];
+    if (mappedKey && typeof value === 'string') {
+      output[mappedKey] = value;
+      return;
+    }
+
+    if (!key.startsWith('$') && typeof value === 'string') {
+      output[key] = { $containsi: value };
+      return;
+    }
+
+    output[key] = makeFiltersCaseInsensitive(value);
+  });
+
+  return output;
+}
+
+function normalizeCaseInsensitiveQueryFilters(ctx) {
+  const filters = ctx?.request?.query?.filters;
+  if (!filters || typeof filters !== 'object') return;
+
+  const normalized = makeFiltersCaseInsensitive(filters);
+  ctx.request.query.filters = normalized;
+  if (ctx.query && typeof ctx.query === 'object') {
+    ctx.query.filters = normalized;
+  }
+}
+
 const COURSE_CLONE_ASSIGNMENTS_LOG = '[course-clone-assignments]';
 
 function extractCourseIdentityFromCmBody(body) {
@@ -442,6 +490,7 @@ module.exports = (plugin) => {
 
   if (defaultCollectionFind) {
     collectionTypesController.find = async function find(ctx) {
+      normalizeCaseInsensitiveQueryFilters(ctx);
       await defaultCollectionFind(ctx);
       const modelUid = ctx.params?.model;
       await hydrateRelationsInCmBody(strapi, modelUid, ctx.body);
