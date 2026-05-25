@@ -2529,6 +2529,16 @@ module.exports = ({ strapi }) => {
     if (userList.length === 0) return { rows: [], total: totalCount, page, pageSize };
 
     const userIdsNumeric = userList.map((u) => u.id).filter(Boolean);
+    const toBool = (value) => {
+      if (value === true || value === 1) return true;
+      if (typeof value === 'string') {
+        const v = value.trim().toLowerCase();
+        return v === 'true' || v === 'yes' || v === '1';
+      }
+      return false;
+    };
+    let isFeedbackMandatoryForCourse = false;
+    const feedbackGivenUserIds = new Set();
     const userById = {};
     const userByDocumentId = {};
     userList.forEach((u, i) => {
@@ -2650,6 +2660,69 @@ module.exports = ({ strapi }) => {
         const cid = s.course?.id ?? s.course?.documentId ?? s.course_id ?? s.courseId ?? s.course;
         return cid != null && String(cid) === courseIdStr;
       });
+
+      try {
+        const courseList = await strapi.documents('api::course.course').findMany({
+          filters: {
+            $or: [
+              { id: courseIdStr },
+              { documentId: courseIdStr },
+            ],
+          },
+          status: 'published',
+          populate: ['feedback'],
+          pagination: { limit: 1 },
+        });
+        const course = Array.isArray(courseList) ? courseList[0] : null;
+        const feedbackRows = Array.isArray(course?.feedback) ? course.feedback : [];
+        isFeedbackMandatoryForCourse = feedbackRows.some((f) => toBool(f?.compulsory));
+      } catch (_) {
+        try {
+          const course = await strapi.db.query('api::course.course').findOne({
+            where: /^\d+$/.test(courseIdStr) ? { id: Number(courseIdStr) } : { document_id: courseIdStr },
+            populate: ['feedback'],
+          });
+          const feedbackRows = Array.isArray(course?.feedback) ? course.feedback : [];
+          isFeedbackMandatoryForCourse = feedbackRows.some((f) => toBool(f?.compulsory));
+        } catch (_) {}
+      }
+
+      try {
+        const feedbackSubs = await strapi.documents('api::feedback-submission.feedback-submission').findMany({
+          filters: {
+            users_permissions_user: { id: { $in: userIdsNumeric } },
+            $or: [
+              { course: { id: courseIdStr } },
+              { course: { documentId: courseIdStr } },
+            ],
+          },
+          status: 'published',
+          populate: ['users_permissions_user'],
+          pagination: { limit: 50000 },
+        });
+        (Array.isArray(feedbackSubs) ? feedbackSubs : []).forEach((f) => {
+          const uid = f?.users_permissions_user?.id;
+          if (uid != null) feedbackGivenUserIds.add(Number(uid));
+        });
+      } catch (_) {
+        try {
+          const feedbackSubs = await strapi.db.query('api::feedback-submission.feedback-submission').findMany({
+            where: {
+              users_permissions_user: { id: { $in: userIdsNumeric } },
+              $or: [
+                { course: { id: courseIdStr } },
+                { course: { documentId: courseIdStr } },
+              ],
+            },
+            populate: ['users_permissions_user'],
+            limit: 50000,
+          });
+          (Array.isArray(feedbackSubs) ? feedbackSubs : []).forEach((f) => {
+            const uid = f?.users_permissions_user?.id;
+            if (uid != null) feedbackGivenUserIds.add(Number(uid));
+          });
+        } catch (_) {}
+      }
     }
 
     // Group by user (support Document Service user.id/documentId and db.query user_id/submitted_by_id)
@@ -2671,6 +2744,12 @@ module.exports = ({ strapi }) => {
     let rows = userList.map((u, i) => {
       const progs = progressByUserIdx[i] || [];
       const subs = submissionByUserIdx[i] || [];
+      const hasFeedbackForSelectedCourse = params.courseId ? feedbackGivenUserIds.has(Number(u.id)) : false;
+      const feedbackStatus = !params.courseId
+        ? '-'
+        : hasFeedbackForSelectedCourse
+          ? 'Yes'
+          : (isFeedbackMandatoryForCourse ? 'No' : '-');
       const statusOrder = ['Not_started', 'In_progress', 'Completed', 'Failed'];
       const statusCounts = {};
       progs.forEach((p) => {
@@ -2704,8 +2783,13 @@ module.exports = ({ strapi }) => {
         employeeId: u.id,
         employeeName: u.username || u.email || `User ${u.id}`,
         company: u.company || '—',
+        emp_code: u.emp_code ?? '—',
+        emp_id: u.emp_id ?? '—',
+        branch: u.branch ?? '—',
+        working_location: u.working_location ?? '—',
         coursesEnrolled,
         courseStatus,
+        feedbackStatus,
         courseCompletionTimeMinutes: Math.round(totalTimeSpent),
         totalModulesDone,
         progressPercent: avgProgress,
@@ -2899,6 +2983,16 @@ module.exports = ({ strapi }) => {
     if (userList.length === 0) return { rows: [] };
 
     const userIdsNumeric = userList.map((u) => u.id).filter(Boolean);
+    const toBool = (value) => {
+      if (value === true || value === 1) return true;
+      if (typeof value === 'string') {
+        const v = value.trim().toLowerCase();
+        return v === 'true' || v === 'yes' || v === '1';
+      }
+      return false;
+    };
+    let isFeedbackMandatoryForCourse = false;
+    const feedbackGivenUserIds = new Set();
     const userById = {};
     const userByDocumentId = {};
     userList.forEach((u, i) => {
@@ -3012,6 +3106,69 @@ module.exports = ({ strapi }) => {
         const cid = s.course?.id ?? s.course?.documentId ?? s.course_id ?? s.courseId ?? s.course;
         return cid != null && String(cid) === courseIdStr;
       });
+
+      try {
+        const courseList = await strapi.documents('api::course.course').findMany({
+          filters: {
+            $or: [
+              { id: courseIdStr },
+              { documentId: courseIdStr },
+            ],
+          },
+          status: 'published',
+          populate: ['feedback'],
+          pagination: { limit: 1 },
+        });
+        const course = Array.isArray(courseList) ? courseList[0] : null;
+        const feedbackRows = Array.isArray(course?.feedback) ? course.feedback : [];
+        isFeedbackMandatoryForCourse = feedbackRows.some((f) => toBool(f?.compulsory));
+      } catch (_) {
+        try {
+          const course = await strapi.db.query('api::course.course').findOne({
+            where: /^\d+$/.test(courseIdStr) ? { id: Number(courseIdStr) } : { document_id: courseIdStr },
+            populate: ['feedback'],
+          });
+          const feedbackRows = Array.isArray(course?.feedback) ? course.feedback : [];
+          isFeedbackMandatoryForCourse = feedbackRows.some((f) => toBool(f?.compulsory));
+        } catch (_) {}
+      }
+
+      try {
+        const feedbackSubs = await strapi.documents('api::feedback-submission.feedback-submission').findMany({
+          filters: {
+            users_permissions_user: { id: { $in: userIdsNumeric } },
+            $or: [
+              { course: { id: courseIdStr } },
+              { course: { documentId: courseIdStr } },
+            ],
+          },
+          status: 'published',
+          populate: ['users_permissions_user'],
+          pagination: { limit: 50000 },
+        });
+        (Array.isArray(feedbackSubs) ? feedbackSubs : []).forEach((f) => {
+          const uid = f?.users_permissions_user?.id;
+          if (uid != null) feedbackGivenUserIds.add(Number(uid));
+        });
+      } catch (_) {
+        try {
+          const feedbackSubs = await strapi.db.query('api::feedback-submission.feedback-submission').findMany({
+            where: {
+              users_permissions_user: { id: { $in: userIdsNumeric } },
+              $or: [
+                { course: { id: courseIdStr } },
+                { course: { documentId: courseIdStr } },
+              ],
+            },
+            populate: ['users_permissions_user'],
+            limit: 50000,
+          });
+          (Array.isArray(feedbackSubs) ? feedbackSubs : []).forEach((f) => {
+            const uid = f?.users_permissions_user?.id;
+            if (uid != null) feedbackGivenUserIds.add(Number(uid));
+          });
+        } catch (_) {}
+      }
     }
 
     const progressByUserIdx = {};
@@ -3032,6 +3189,12 @@ module.exports = ({ strapi }) => {
     let rows = userList.map((u, i) => {
       const progs = progressByUserIdx[i] || [];
       const subs = submissionByUserIdx[i] || [];
+      const hasFeedbackForSelectedCourse = params.courseId ? feedbackGivenUserIds.has(Number(u.id)) : false;
+      const feedbackStatus = !params.courseId
+        ? '-'
+        : hasFeedbackForSelectedCourse
+          ? 'Yes'
+          : (isFeedbackMandatoryForCourse ? 'No' : '-');
       const statusOrder = ['Not_started', 'In_progress', 'Completed', 'Failed'];
       const statusCounts = {};
       progs.forEach((p) => {
@@ -3059,8 +3222,13 @@ module.exports = ({ strapi }) => {
       return {
         employeeName: u.username || u.email || `User ${u.id}`,
         company: u.company || '—',
+        emp_code: u.emp_code ?? '—',
+        emp_id: u.emp_id ?? '—',
+        branch: u.branch ?? '—',
+        working_location: u.working_location ?? '—',
         coursesEnrolled,
         courseStatus,
+        feedbackStatus,
         totalModulesDone,
         progressPercent: avgProgress,
         avgScore,

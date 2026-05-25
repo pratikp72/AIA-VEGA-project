@@ -180,6 +180,54 @@ function mergeFilterIfPresent(baseFilter, nextFilter) {
   return mergeWithAnd(baseFilter, nextFilter);
 }
 
+function makeFiltersCaseInsensitive(input) {
+  if (Array.isArray(input)) {
+    return input.map((item) => makeFiltersCaseInsensitive(item));
+  }
+
+  if (!input || typeof input !== 'object') {
+    return input;
+  }
+
+  const output = {};
+  const operatorMap = {
+    $eq: '$containsi',
+    $ne: '$nei',
+    $contains: '$containsi',
+    $notContains: '$notContainsi',
+    $startsWith: '$startsWithi',
+    $endsWith: '$endsWithi',
+  };
+
+  Object.entries(input).forEach(([key, value]) => {
+    const mappedKey = operatorMap[key];
+    if (mappedKey && typeof value === 'string') {
+      output[mappedKey] = value;
+      return;
+    }
+
+    if (!key.startsWith('$') && typeof value === 'string') {
+      output[key] = { $containsi: value };
+      return;
+    }
+
+    output[key] = makeFiltersCaseInsensitive(value);
+  });
+
+  return output;
+}
+
+function normalizeCaseInsensitiveQueryFilters(ctx) {
+  const filters = ctx?.request?.query?.filters;
+  if (!filters || typeof filters !== 'object') return;
+
+  const normalized = makeFiltersCaseInsensitive(filters);
+  ctx.request.query.filters = normalized;
+  if (ctx.query && typeof ctx.query === 'object') {
+    ctx.query.filters = normalized;
+  }
+}
+
 const COURSE_CLONE_ASSIGNMENTS_LOG = '[course-clone-assignments]';
 
 function extractCourseIdentityFromCmBody(body) {
@@ -274,6 +322,99 @@ async function hydrateRelationsInCmBody(strapi, uid, body) {
 
   if (body.results == null && body.data == null) {
     return hydrateRelationsForEntry(strapi, uid, body);
+  }
+
+  return body;
+}
+
+async function hydrateCourseAssignmentCoursesInBody(strapi, body) {
+  if (!body || typeof body !== 'object') return body;
+
+  const hydrateEntry = async (entry) => {
+    if (!entry || typeof entry !== 'object') return entry;
+
+    const where = Number.isFinite(Number(entry?.id))
+      ? { id: Number(entry.id) }
+      : entry?.documentId
+        ? { documentId: String(entry.documentId) }
+        : null;
+
+    if (!where) return entry;
+
+    const hydrated = await strapi.db.query(COURSE_ASSIGNMENT_UID).findOne({
+      where,
+      populate: {
+        courses: { select: ['id', 'documentId', 'title'] },
+      },
+    });
+
+    if (!hydrated) return entry;
+
+    return {
+      ...entry,
+      courses: hydrated.courses ?? entry.courses ?? null,
+    };
+  };
+
+  if (Array.isArray(body.results)) {
+    body.results = await Promise.all(body.results.map(hydrateEntry));
+    return body;
+  }
+
+  if (Array.isArray(body.data)) {
+    body.data = await Promise.all(body.data.map(hydrateEntry));
+    return body;
+  }
+
+  if (body.data && typeof body.data === 'object' && !Array.isArray(body.data)) {
+    body.data = await hydrateEntry(body.data);
+    return body;
+  }
+
+  if (body.results == null && body.data == null) {
+    return hydrateEntry(body);
+  }
+
+  return body;
+}
+
+function getCourseLabel(course) {
+  if (course == null) return '—';
+  if (typeof course === 'string' || typeof course === 'number') return String(course);
+  return course.title || course.name || course.documentId || String(course.id ?? '—');
+}
+
+function flattenCourseAssignmentCoursesInBody(body) {
+  if (!body || typeof body !== 'object') return body;
+
+  const flattenEntry = (entry) => {
+    if (!entry || typeof entry !== 'object') return entry;
+    const courses = entry.courses;
+    if (Array.isArray(courses)) {
+      entry.courses = courses.length > 0 ? courses.map(getCourseLabel).join(', ') : '—';
+    } else if (courses && typeof courses === 'object') {
+      entry.courses = getCourseLabel(courses);
+    }
+    return entry;
+  };
+
+  if (Array.isArray(body.results)) {
+    body.results = body.results.map(flattenEntry);
+    return body;
+  }
+
+  if (Array.isArray(body.data)) {
+    body.data = body.data.map(flattenEntry);
+    return body;
+  }
+
+  if (body.data && typeof body.data === 'object' && !Array.isArray(body.data)) {
+    body.data = flattenEntry(body.data);
+    return body;
+  }
+
+  if (body.results == null && body.data == null) {
+    return flattenEntry(body);
   }
 
   return body;
@@ -442,9 +583,14 @@ module.exports = (plugin) => {
 
   if (defaultCollectionFind) {
     collectionTypesController.find = async function find(ctx) {
+      normalizeCaseInsensitiveQueryFilters(ctx);
       await defaultCollectionFind(ctx);
       const modelUid = ctx.params?.model;
       await hydrateRelationsInCmBody(strapi, modelUid, ctx.body);
+      if (modelUid === COURSE_ASSIGNMENT_UID) {
+        await hydrateCourseAssignmentCoursesInBody(strapi, ctx.body);
+        flattenCourseAssignmentCoursesInBody(ctx.body);
+      }
       normalizeUserEmailInBody(modelUid, ctx.body);
     };
   }

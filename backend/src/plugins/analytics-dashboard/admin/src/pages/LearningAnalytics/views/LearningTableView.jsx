@@ -47,11 +47,26 @@ function applyEmployeeFilters(rows, search, filterCourse) {
   return filtered;
 }
 
+function getRowCompany(row, fallbackCompany) {
+  return String(row?.company || fallbackCompany || '').toLowerCase().trim();
+}
+
+function getEmployeeIdValue(row, fallbackCompany) {
+  const rowCompany = getRowCompany(row, fallbackCompany);
+  return rowCompany === 'aia' ? row?.emp_code : row?.emp_id;
+}
+
+function getLocationValue(row, fallbackCompany) {
+  const rowCompany = getRowCompany(row, fallbackCompany);
+  return rowCompany === 'aia' ? row?.branch : row?.working_location;
+}
+
 export function LearningTableView({
   data,
   allRows = [],
   search,
   filterCourse,
+  company,
   sortOrder,
   setSortOrder,
   setPage,
@@ -61,6 +76,7 @@ export function LearningTableView({
   const rows = data?.rows || [];
   const tableRows = allRows.length > 0 ? applyEmployeeFilters(allRows, search, filterCourse) : applyEmployeeFilters(rows, search, filterCourse);
   const paginatedTableData = data?.rows || [];
+  const normalizedCompany = String(company || '').toLowerCase();
 
   const page = data?.page || 1;
   const pageSize = data?.pageSize || 10;
@@ -86,35 +102,53 @@ export function LearningTableView({
           },
         }}
         sortBy="courseCompletionTimeMinutes"
-              sortOrder={sortOrder}
-              onSortChange={(_, order) => {
-                setSortOrder(order);
-                setPage(1);
-              }}
-              columns={[
-                { key: 'employeeName', label: 'Employee Name' },
-                { key: 'company', label: 'Company' },
-                // { key: 'coursesEnrolled', label: 'Courses Enrolled' },
-                { key: 'courseStatus', label: 'Course Status' },
-                // { key: 'totalModulesDone', label: 'Total Modules Done' },
-                { key: 'progressPercent', label: 'Progress %', render: (v) => `${v ?? 0}%` },
-                { key: 'avgScore', label: 'Quiz Score' },
-                {
-                  key: 'courseCompletionTimeMinutes',
-                  label: 'Completion Time',
-                  sortable: true,
-                  render: (v) => {
-                    const m = Number(v);
-                    if (Number.isNaN(m) || m < 0) return '—';
-                    const h = Math.floor(m / 60);
-                    const min = m % 60;
-                    if (h === 0) return `${min}m`;
-                    if (min === 0) return `${h}h`;
-                    return `${h}h${min}m`;
-                  },
-                },
-              ]}
-            />
+        sortOrder={sortOrder}
+        onSortChange={(_, order) => {
+          setSortOrder(order);
+          setPage(1);
+        }}
+        columns={[
+          { key: 'employeeName', label: 'Employee Name' },
+          {
+            key: 'employeeIdValue',
+            label: 'Employee ID',
+            render: (_, row) => getEmployeeIdValue(row, normalizedCompany) || '—',
+            exportValue: (_, row) => getEmployeeIdValue(row, normalizedCompany) || '—',
+          },
+          { key: 'company', label: 'Company' },
+          {
+            key: 'locationValue',
+            label: 'Location',
+            render: (_, row) => getLocationValue(row, normalizedCompany) || '—',
+            exportValue: (_, row) => getLocationValue(row, normalizedCompany) || '—',
+          },
+          { key: 'courseStatus', label: 'Course Status' },
+          {
+            key: 'feedbackStatus',
+            label: 'Feedback',
+            render: (v) => {
+              if (v == null || String(v).trim() === '') return filterCourse ? 'No' : '-';
+              return String(v);
+            },
+          },
+          { key: 'progressPercent', label: 'Progress %', render: (v) => `${v ?? 0}%` },
+          { key: 'avgScore', label: 'Quiz Score' },
+          {
+            key: 'courseCompletionTimeMinutes',
+            label: 'Completion Time',
+            sortable: true,
+            render: (v) => {
+              const m = Number(v);
+              if (Number.isNaN(m) || m < 0) return '—';
+              const h = Math.floor(m / 60);
+              const min = m % 60;
+              if (h === 0) return `${min}m`;
+              if (min === 0) return `${h}h`;
+              return `${h}h${min}m`;
+            },
+          },
+        ]}
+      />
     </Box>
   );
 }
