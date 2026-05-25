@@ -47,6 +47,20 @@ function applyEmployeeFilters(rows, search, filterCourse) {
   return filtered;
 }
 
+function getRowCompany(row, fallbackCompany) {
+  return String(row?.company || fallbackCompany || '').toLowerCase().trim();
+}
+
+function getEmployeeIdValue(row, fallbackCompany) {
+  const rowCompany = getRowCompany(row, fallbackCompany);
+  return rowCompany === 'aia' ? row?.emp_code : row?.emp_id;
+}
+
+function getLocationValue(row, fallbackCompany) {
+  const rowCompany = getRowCompany(row, fallbackCompany);
+  return rowCompany === 'aia' ? row?.branch : row?.working_location;
+}
+
 export function LearningTableView({
   data,
   allRows = [],
@@ -95,13 +109,19 @@ export function LearningTableView({
         }}
         columns={[
           { key: 'employeeName', label: 'Employee Name' },
-          ...(normalizedCompany === 'aia'
-            ? [{ key: 'emp_code', label: 'Employee ID' }]
-            : [{ key: 'emp_id', label: 'Employee ID' }]),
+          {
+            key: 'employeeIdValue',
+            label: 'Employee ID',
+            render: (_, row) => getEmployeeIdValue(row, normalizedCompany) || '—',
+            exportValue: (_, row) => getEmployeeIdValue(row, normalizedCompany) || '—',
+          },
           { key: 'company', label: 'Company' },
-          ...(normalizedCompany === 'aia'
-            ? [{ key: 'branch', label: 'Location' }]
-            : [{ key: 'working_location', label: 'Location' }]),
+          {
+            key: 'locationValue',
+            label: 'Location',
+            render: (_, row) => getLocationValue(row, normalizedCompany) || '—',
+            exportValue: (_, row) => getLocationValue(row, normalizedCompany) || '—',
+          },
           { key: 'courseStatus', label: 'Course Status' },
           {
             key: 'feedbackStatus',
