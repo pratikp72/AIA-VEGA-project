@@ -69,6 +69,57 @@ function extractCurrentRelationIds(raw) {
   return [];
 }
 
+function extractCompanySelection(raw) {
+  const first = (arr) => (Array.isArray(arr) && arr.length > 0 ? arr[0] : null);
+
+  if (!raw) return { id: null, documentId: null };
+
+  if (typeof raw === 'string' || typeof raw === 'number') {
+    return { id: raw, documentId: null };
+  }
+
+  if (Array.isArray(raw)) {
+    const item = first(raw);
+    if (!item) return { id: null, documentId: null };
+    return {
+      id: item.id ?? item.value?.id ?? null,
+      documentId: item.documentId ?? item.value?.documentId ?? null,
+    };
+  }
+
+  if (typeof raw === 'object') {
+    if (raw.data) {
+      const dataVal = raw.data;
+      if (Array.isArray(dataVal)) {
+        const item = first(dataVal);
+        return {
+          id: item?.id ?? item?.value?.id ?? null,
+          documentId: item?.documentId ?? item?.value?.documentId ?? null,
+        };
+      }
+      return {
+        id: dataVal?.id ?? dataVal?.value?.id ?? null,
+        documentId: dataVal?.documentId ?? dataVal?.value?.documentId ?? null,
+      };
+    }
+
+    const pending = first(raw.connect) || first(raw.set);
+    if (pending) {
+      return {
+        id: pending.id ?? null,
+        documentId: pending.documentId ?? null,
+      };
+    }
+
+    return {
+      id: raw.id ?? raw.value?.id ?? null,
+      documentId: raw.documentId ?? raw.value?.documentId ?? null,
+    };
+  }
+
+  return { id: null, documentId: null };
+}
+
 function isPublishButton(element) {
   const button = element?.closest?.('button');
   if (!button) return false;
@@ -208,6 +259,7 @@ const S = {
   },
   found:    { color: '#328048', fontWeight: 600 },
   notFound: { color: '#c4162a', fontWeight: 600 },
+  skipped: { color: '#b26a00', fontWeight: 600 },
   notFoundList: {
     marginTop: '4px',
     fontSize: '11px',
@@ -239,6 +291,7 @@ const S = {
   },
   modal: {
     background: '#fff',
+    color: '#2b2f36',
     borderRadius: '8px',
     width: '520px',
     maxWidth: '92vw',
@@ -254,6 +307,7 @@ const S = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
+    color: '#2b2f36',
     fontWeight: 600,
     fontSize: '14px',
   },
@@ -270,6 +324,7 @@ const S = {
     padding: '14px 18px',
     overflowY: 'auto',
     flex: 1,
+    color: '#2b2f36',
     fontSize: '13px',
   },
   modalSection: {
@@ -293,11 +348,13 @@ const S = {
     padding: '5px 8px',
     background: '#f0f0f6',
     borderBottom: '1px solid #e0e0e9',
+    color: '#3a3f4b',
     fontWeight: 600,
   },
   modalTd: {
     padding: '5px 8px',
     borderBottom: '1px solid #f0f0f6',
+    color: '#2b2f36',
     wordBreak: 'break-all',
   },
 };
@@ -310,7 +367,7 @@ function UploadCore() {
 
   const fileInputRef = useRef(null);
   const [status,   setStatus]   = useState('idle');   // idle | loading | done | error
-  const [result,   setResult]   = useState(null);      // { found, notFound }
+  const [result,   setResult]   = useState(null);      // { found, notFound, skippedInactiveOrExited }
   const [errorMsg, setErrorMsg] = useState('');
   const [selectedFileName, setSelectedFileName] = useState('');
   const [showPreview, setShowPreview] = useState(false);
@@ -349,6 +406,13 @@ function UploadCore() {
 
   // ── Process selected file ──
   async function processFile(file) {
+    const selectedCompany = extractCompanySelection(values?.company);
+    if (!selectedCompany.id && !selectedCompany.documentId) {
+      setStatus('error');
+      setErrorMsg('Select a company before importing users.');
+      return;
+    }
+
     setSelectedFileName(file?.name || '');
     setStatus('loading');
     setResult(null);
@@ -356,7 +420,10 @@ function UploadCore() {
 
     try {
       const ext = file.name.split('.').pop().toLowerCase();
-      let payload;
+      const payload = {
+        companyId: selectedCompany.id ?? undefined,
+        companyDocumentId: selectedCompany.documentId ?? undefined,
+      };
 
       if (ext === 'csv' || file.type === 'text/csv' || file.type === 'text/plain') {
         const text = await readAsText(file);
@@ -366,11 +433,12 @@ function UploadCore() {
           setErrorMsg('No identifiers found in the CSV file. Ensure column 1 contains email / emp_code / username.');
           return;
         }
-        payload = { identifiers };
+        payload.identifiers = identifiers;
       } else {
         // xlsx / xls → send raw bytes to backend, parsed with the xlsx package server-side
         const fileContent = await readAsBase64(file);
-        payload = { fileContent, fileName: file.name };
+        payload.fileContent = fileContent;
+        payload.fileName = file.name;
       }
 
       const data = await apiPost(IMPORT_API_PATH, payload);
@@ -378,12 +446,37 @@ function UploadCore() {
       // Client flow: importing a file should directly set Individual users from that file.
       const foundUsers = Array.isArray(data?.found) ? data.found : [];
       if (typeof setValues === 'function') {
+        const existing = extractCurrentRelationIds(values?.individual_user);
         const incoming = foundUsers.map((u) => ({ id: u.id, documentId: u.documentId }));
-        setValues({ ...values, individual_user: { set: incoming } });
+
+        // Merge existing manual selection + imported users; dedupe by numeric id.
+        const mergedById = new Map();
+        for (const user of [...existing, ...incoming]) {
+          if (!user || user.id == null) continue;
+          mergedById.set(Number(user.id), {
+            id: Number(user.id),
+            documentId: user.documentId || null,
+          });
+        }
+
+        // Use Strapi relation `set` shape for stable form serialization.
+        setValues({
+          ...values,
+          individual_user: {
+            set: [...mergedById.values()].map((u) => ({
+              id: u.id,
+              ...(u.documentId ? { documentId: u.documentId } : {}),
+            })),
+          },
+        });
       }
 
       setStatus('done');
-      setResult({ found: foundUsers, notFound: data.notFound || [] });
+      setResult({
+        found: foundUsers,
+        notFound: data.notFound || [],
+        skippedInactiveOrExited: data.skippedInactiveOrExited || [],
+      });
     } catch (e) {
       setStatus('error');
       setErrorMsg(e?.message || 'An unexpected error occurred while importing');
@@ -459,6 +552,11 @@ function UploadCore() {
                 ✗ {result.notFound.length} not found
               </span>
             )}
+            {Array.isArray(result.skippedInactiveOrExited) && result.skippedInactiveOrExited.length > 0 && (
+              <span style={{ ...S.skipped, marginLeft: '10px' }}>
+                ⚠ {result.skippedInactiveOrExited.length} inactive/exited skipped
+              </span>
+            )}
           </div>
 
           {result.notFound.length > 0 && (
@@ -466,6 +564,14 @@ function UploadCore() {
               Not found:{' '}
               {result.notFound.slice(0, 15).join(', ')}
               {result.notFound.length > 15 ? ` … +${result.notFound.length - 15} more` : ''}
+            </div>
+          )}
+
+          {Array.isArray(result.skippedInactiveOrExited) && result.skippedInactiveOrExited.length > 0 && (
+            <div style={S.notFoundList}>
+              Skipped (inactive/exited):{' '}
+              {result.skippedInactiveOrExited.slice(0, 10).map((item) => item.identifier).join(', ')}
+              {result.skippedInactiveOrExited.length > 10 ? ` … +${result.skippedInactiveOrExited.length - 10} more` : ''}
             </div>
           )}
 
@@ -539,6 +645,32 @@ function UploadCore() {
                         <tr key={i}>
                           <td style={{ ...S.modalTd, color: '#999', width: '32px' }}>{i + 1}</td>
                           <td style={{ ...S.modalTd, color: '#c4162a' }}>{id}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {Array.isArray(result.skippedInactiveOrExited) && result.skippedInactiveOrExited.length > 0 && (
+                <div style={S.modalSection}>
+                  <div style={{ ...S.modalSectionTitle, color: '#b26a00' }}>
+                    ⚠ {result.skippedInactiveOrExited.length} user{result.skippedInactiveOrExited.length !== 1 ? 's' : ''} skipped (inactive/exited)
+                  </div>
+                  <table style={S.modalTable}>
+                    <thead>
+                      <tr>
+                        <th style={S.modalTh}>#</th>
+                        <th style={S.modalTh}>Identifier</th>
+                        <th style={S.modalTh}>Reason</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {result.skippedInactiveOrExited.map((item, i) => (
+                        <tr key={`${item.identifier || 'id'}-${i}`}>
+                          <td style={{ ...S.modalTd, color: '#999', width: '32px' }}>{i + 1}</td>
+                          <td style={S.modalTd}>{item.identifier || '—'}</td>
+                          <td style={{ ...S.modalTd, color: '#b26a00' }}>{item.reason || 'ineligible'}</td>
                         </tr>
                       ))}
                     </tbody>
