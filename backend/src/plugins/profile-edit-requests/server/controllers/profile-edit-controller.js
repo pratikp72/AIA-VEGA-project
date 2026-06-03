@@ -27,6 +27,40 @@ module.exports = ({ strapi }) => ({
     }
   },
 
+  async getLocationOptions(ctx) {
+    try {
+      const company = ctx.query?.company || '';
+      const locations = await strapi.plugin('profile-edit-requests').service('profileEditService').getLocationOptions(company);
+      ctx.body = { data: locations };
+    } catch (error) {
+      ctx.throw(500, error);
+    }
+  },
+
+  async addPendingComment(ctx) {
+    try {
+      const { id } = ctx.params;
+      const { comment } = ctx.request.body.data || {};
+      const updated = await strapi.plugin('profile-edit-requests').service('profileEditService').addPendingComment(
+        id,
+        comment,
+        ctx.state.user
+      );
+      ctx.body = { data: updated };
+    } catch (error) {
+      if (error?.message?.includes('not found')) {
+        return ctx.throw(404, error.message);
+      }
+      if (error?.message?.includes('Comments can only be added')) {
+        return ctx.throw(400, error.message);
+      }
+      if (error?.message?.includes('comment is required')) {
+        return ctx.throw(400, error.message);
+      }
+      ctx.throw(500, error.message || 'Failed to add pending comment');
+    }
+  },
+
   async updateStatus(ctx) {
     try {
       const { id } = ctx.params;

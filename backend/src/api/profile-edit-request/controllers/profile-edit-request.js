@@ -6,6 +6,7 @@
  */
 
 const { createCoreController } = require('@strapi/strapi').factories;
+const { resolveUserLocation } = require('../../../utils/profile-edit-request-helpers');
 
 const ALLOWED_PROFILE_FIELDS = [
 	'username',
@@ -70,7 +71,7 @@ module.exports = createCoreController('api::profile-edit-request.profile-edit-re
 		// Populate related fields for table display
 		ctx.query = ctx.query || {};
 		const existingFields = Array.isArray(ctx.query.fields) ? ctx.query.fields : [];
-		ctx.query.fields = Array.from(new Set([...existingFields, 'company', 'reason_for_rejection']));
+		ctx.query.fields = Array.from(new Set([...existingFields, 'company', 'reason_for_rejection', 'user_location', 'pending_admin_comments']));
 		ctx.query.populate = {
 			...(ctx.query.populate && typeof ctx.query.populate === 'object' ? ctx.query.populate : {}),
 			users_permissions_user: true,
@@ -82,7 +83,7 @@ module.exports = createCoreController('api::profile-edit-request.profile-edit-re
 	async findOne(ctx) {
 		ctx.query = ctx.query || {};
 		const existingFields = Array.isArray(ctx.query.fields) ? ctx.query.fields : [];
-		ctx.query.fields = Array.from(new Set([...existingFields, 'company', 'reason_for_rejection']));
+		ctx.query.fields = Array.from(new Set([...existingFields, 'company', 'reason_for_rejection', 'user_location', 'pending_admin_comments']));
 		ctx.query.populate = {
 			...(ctx.query.populate && typeof ctx.query.populate === 'object' ? ctx.query.populate : {}),
 			users_permissions_user: true,
@@ -98,7 +99,7 @@ module.exports = createCoreController('api::profile-edit-request.profile-edit-re
 		}
 
 		const userData = await strapi.entityService.findOne('plugin::users-permissions.user', user.id, {
-			fields: ['company'],
+			fields: ['company', 'branch', 'working_location'],
 		});
 
 		if (!userData || !userData.company) {
@@ -141,6 +142,7 @@ module.exports = createCoreController('api::profile-edit-request.profile-edit-re
 			requester_name: requesterName,
 			users_permissions_user: user.id,
 			company: userData.company,
+			user_location: resolveUserLocation(userData, userData.company),
 			request_status: 'Pending',
 		};
 

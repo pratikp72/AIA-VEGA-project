@@ -55,8 +55,12 @@ export default function ProfileEditRequestsPage() {
   const [rejectionReason, setRejectionReason] = useState('');
   const [rejectionReasonError, setRejectionReasonError] = useState('');
   const [showRejectReasonInput, setShowRejectReasonInput] = useState(false);
+  const [pendingComment, setPendingComment] = useState('');
+  const [pendingCommentError, setPendingCommentError] = useState('');
+  const [locationFilter, setLocationFilter] = useState('');
+  const [locationOptions, setLocationOptions] = useState([]);
   
-  const { get, put } = getFetchClient();
+  const { get, put, post } = getFetchClient();
   const isMounted = useRef(true);
 
   const fetchList = async () => {
@@ -86,6 +90,28 @@ export default function ProfileEditRequestsPage() {
       isMounted.current = false;
     };
   }, []);
+
+  const fetchLocationOptions = async (company = companyFilter) => {
+    try {
+      const query = company ? `?company=${encodeURIComponent(company)}` : '';
+      const { data } = await get(`/profile-edit-requests/requests/locations${query}`);
+      const locations = Array.isArray(data?.data) ? data.data : [];
+      if (isMounted.current) {
+        setLocationOptions(locations);
+        if (locationFilter && !locations.includes(locationFilter)) {
+          setLocationFilter('');
+        }
+      }
+    } catch (e) {
+      if (isMounted.current) {
+        setLocationOptions([]);
+      }
+    }
+  };
+
+  useEffect(() => {
+    fetchLocationOptions(companyFilter);
+  }, [companyFilter]);
 
   const updateStatus = async (documentId, newStatus, options = {}) => {
     const id = documentId != null ? String(documentId) : null;
@@ -131,6 +157,54 @@ export default function ProfileEditRequestsPage() {
     }
   };
 
+  const addPendingComment = async (documentId, comment) => {
+    const id = documentId != null ? String(documentId) : null;
+    if (!id) return;
+    setUpdatingId(id);
+    setError(null);
+    try {
+      const normalizedComment = normalizeRejectionReason(comment);
+      const { data } = await post(`/profile-edit-requests/requests/${encodeURIComponent(id)}/pending-comment`, {
+        data: { comment: normalizedComment },
+      });
+      const updatedComments = data?.data?.pending_admin_comments || [];
+
+      if (isMounted.current) {
+        setList((prev) =>
+          prev.map((e) => {
+            const eid = e.documentId ?? e.id ?? e._id;
+            if (eid == null || String(eid) !== id) return e;
+            return {
+              ...e,
+              pending_admin_comments: updatedComments,
+              latest_pending_comment: data?.data?.latest_pending_comment || normalizedComment,
+            };
+          })
+        );
+        setSelectedRequest((prev) => {
+          if (!prev) return prev;
+          const prevId = entryId(prev);
+          if (prevId == null || String(prevId) !== id) return prev;
+          return {
+            ...prev,
+            pending_admin_comments: updatedComments,
+            latest_pending_comment: data?.data?.latest_pending_comment || normalizedComment,
+          };
+        });
+        setPendingComment('');
+        setPendingCommentError('');
+      }
+    } catch (e) {
+      if (isMounted.current) {
+        setError(e.message || 'Failed to send comment');
+      }
+    } finally {
+      if (isMounted.current) {
+        setUpdatingId(null);
+      }
+    }
+  };
+
   const entryId = (entry) => entry.documentId ?? entry.id ?? entry._id;
 
   const getStatusValue = (entry) => {
@@ -159,6 +233,46 @@ export default function ProfileEditRequestsPage() {
     // Prefer company from user, fallback to company on request
     const userCompany = userAttrs.company || attrs.company || attrs.companyName || '';
     return { userName, userId, requestedChanges, attrs, userCompany };
+  };
+
+  const getUserLocationValue = (entry) => {
+    const attrs = entry?.attributes || entry || {};
+    if (attrs.user_location) return attrs.user_location;
+    if (entry?.user_location) return entry.user_location;
+
+    const user = attrs.users_permissions_user?.data ?? attrs.users_permissions_user ?? {};
+    const userAttrs = user.attributes ?? user;
+    const company = String(userAttrs.company || attrs.company || '').toLowerCase();
+    if (company === 'aia') return userAttrs.branch || '—';
+    if (company === 'vega') return userAttrs.working_location || '—';
+    return userAttrs.branch || userAttrs.working_location || '—';
+  };
+
+  const getPendingComments = (entry) => {
+    const attrs = entry?.attributes || entry || {};
+    const comments = attrs.pending_admin_comments ?? entry?.pending_admin_comments;
+    return Array.isArray(comments) ? comments : [];
+  };
+
+  const getPendingCommentsTooltipText = (entry) => {
+    const comments = getPendingComments(entry);
+    if (comments.length === 0) return '';
+
+    return comments
+      .map((item, index) => {
+        const text = typeof item?.comment === 'string' ? item.comment.trim() : '';
+        if (!text) return null;
+        const author = item?.commented_by?.name || 'Admin';
+        const when = item?.commented_at
+          ? new Date(item.commented_at).toLocaleString()
+          : '';
+        const prefix = comments.length > 1 ? `${index + 1}. ` : '';
+        return when
+          ? `${prefix}${author} (${when}): ${text}`
+          : `${prefix}${author}: ${text}`;
+      })
+      .filter(Boolean)
+      .join('\n\n');
   };
 
   const formatChangeValue = (value) => {
@@ -228,12 +342,16 @@ export default function ProfileEditRequestsPage() {
     const q = (search || '').toLowerCase().trim();
     const company = (companyFilter || '').trim();
     const status = (statusFilter || '').trim();
+    const location = (locationFilter || '').trim();
     return list.filter((entry) => {
       const { userName, userCompany, attrs } = getDisplayValues(entry);
       const entryIdVal = entry.documentId ?? entry.id ?? entry._id;
       const rowStatus = getStatusValue(entry);
+      const rowLocation = getUserLocationValue(entry);
 
       if (status && rowStatus !== status) return false;
+
+      if (location && rowLocation !== location) return false;
 
       // Company filtering
       if (company) {
@@ -263,7 +381,7 @@ export default function ProfileEditRequestsPage() {
       // Otherwise, allow match by any of the above
       return matches;
     });
-  }, [list, search, companyFilter, statusFilter, dateRange]);
+  }, [list, search, companyFilter, statusFilter, locationFilter, dateRange]);
 
   const totalFiltered = filteredList.length;
   const totalPages = Math.max(1, Math.ceil(totalFiltered / pageSize));
@@ -286,6 +404,8 @@ export default function ProfileEditRequestsPage() {
     setRejectionReason('');
     setRejectionReasonError('');
     setShowRejectReasonInput(false);
+    setPendingComment('');
+    setPendingCommentError('');
   };
 
   const handleApprove = async () => {
@@ -321,6 +441,21 @@ export default function ProfileEditRequestsPage() {
 
     setRejectionReasonError('');
     await updateStatus(id, 'Rejected', { reason_for_rejection: normalizedReason });
+  };
+
+  const handleSendPendingComment = async () => {
+    if (!selectedRequest) return;
+    const id = entryId(selectedRequest);
+    if (!id) return;
+
+    const normalizedComment = normalizeRejectionReason(pendingComment);
+    if (!normalizedComment) {
+      setPendingCommentError('Comment is required.');
+      return;
+    }
+
+    setPendingCommentError('');
+    await addPendingComment(id, normalizedComment);
   };
 
   const MEDIA_FIELDS = ['photograph'];
@@ -573,12 +708,32 @@ export default function ProfileEditRequestsPage() {
                 value={companyFilter}
                 onChange={(v) => {
                   setCompanyFilter(String(v || ''));
+                  setLocationFilter('');
                   setPage(1);
                 }}
               >
                 {COMPANY_OPTIONS.map((opt) => (
                   <SingleSelectOption key={opt.value || 'all'} value={opt.value}>
                     {opt.label}
+                  </SingleSelectOption>
+                ))}
+              </SingleSelect>
+            </Box>
+            <Box style={{ minWidth: 200 }}>
+              <Typography variant="pi" textColor="neutral600" style={{ marginBottom: 4, display: 'block' }}>
+                Location
+              </Typography>
+              <SingleSelect
+                value={locationFilter}
+                onChange={(v) => {
+                  setLocationFilter(String(v || ''));
+                  setPage(1);
+                }}
+              >
+                <SingleSelectOption value="">All Locations</SingleSelectOption>
+                {locationOptions.map((loc) => (
+                  <SingleSelectOption key={loc} value={loc}>
+                    {loc}
                   </SingleSelectOption>
                 ))}
               </SingleSelect>
@@ -658,18 +813,38 @@ export default function ProfileEditRequestsPage() {
                 fullData={filteredList}
                 paginatedData={pageList}
                         columns={[
-                          { key: 'userName', label: 'Employee' },
+                          {
+                            key: 'userName',
+                            label: 'Employee',
+                            exportValue: (val, row) => getDisplayValues(row).userName,
+                          },
                           { key: 'userId', label: 'User ID', exportValue: (val, row) => getEmployeeIdentifier(row), render: (val, row) => {
                               return <Typography variant="omega" style={TABLE_FONT_STYLE}>{getEmployeeIdentifier(row)}</Typography>;
                             }
                           },
                           {
-                            key: 'status',
+                            key: 'request_status',
                             label: 'Status',
+                            exportValue: (val, row) => getStatusValue(row),
                             render: (val, row) => {
                               const status = getStatusValue(row);
                               const tone = status === 'Approved' ? 'success' : status === 'Rejected' ? 'danger' : 'secondary';
-                              return <Badge tone={tone}>{status}</Badge>;
+                              const pendingTooltip = status === 'Pending'
+                                ? getPendingCommentsTooltipText(row)
+                                : '';
+
+                              if (!pendingTooltip) {
+                                return <Badge tone={tone}>{status}</Badge>;
+                              }
+
+                              return (
+                                <span
+                                  title={pendingTooltip}
+                                  style={{ cursor: 'help', display: 'inline-flex' }}
+                                >
+                                  <Badge tone={tone}>{status}</Badge>
+                                </span>
+                              );
                             },
                           },
                           {
@@ -685,6 +860,7 @@ export default function ProfileEditRequestsPage() {
                           {
                             key: 'company',
                             label: 'Company',
+                            exportValue: (val, row) => getDisplayValues(row).userCompany || '—',
                             header: (
                               <Box
                                 style={{
@@ -710,6 +886,16 @@ export default function ProfileEditRequestsPage() {
                                   {row?.userCompany || '\u2014'}
                                 </Typography>
                               </Box>
+                            ),
+                          },
+                          {
+                            key: 'user_location',
+                            label: 'Location',
+                            exportValue: (val, row) => getUserLocationValue(row),
+                            render: (val, row) => (
+                              <Typography variant="omega" style={TABLE_FONT_STYLE}>
+                                {getUserLocationValue(row)}
+                              </Typography>
                             ),
                           },
                           ...(shouldShowRejectionReasonColumn
@@ -810,6 +996,68 @@ export default function ProfileEditRequestsPage() {
                         </Typography>
                         {getRejectionReasonValue(selectedRequest) || 'No rejection reason recorded.'}
                       </Typography>
+                    </Box>
+                  )}
+                  {getStatusValue(selectedRequest) === 'Pending' && getPendingComments(selectedRequest).length > 0 && (
+                    <Box marginTop={4}>
+                      <Typography variant="pi" fontWeight="bold" marginBottom={2}>
+                        Pending Notes Sent to User
+                      </Typography>
+                      {getPendingComments(selectedRequest).map((item, index) => (
+                        <Box
+                          key={`${item.commented_at || index}-${index}`}
+                          padding={3}
+                          background="neutral100"
+                          hasRadius
+                          marginBottom={2}
+                        >
+                          <Typography variant="omega">{item.comment}</Typography>
+                          <Typography variant="pi" textColor="neutral600" marginTop={1}>
+                            {item.commented_by?.name || 'Admin'}
+                            {item.commented_at ? ` • ${new Date(item.commented_at).toLocaleString()}` : ''}
+                          </Typography>
+                        </Box>
+                      ))}
+                    </Box>
+                  )}
+                  {getStatusValue(selectedRequest) === 'Pending' && (
+                    <Box marginTop={4}>
+                      <Typography variant="pi" fontWeight="bold" marginBottom={2}>
+                        Send Pending Note to User
+                      </Typography>
+                      <textarea
+                        value={pendingComment}
+                        onChange={(event) => {
+                          setPendingComment(event.target.value);
+                          if (pendingCommentError) {
+                            setPendingCommentError('');
+                          }
+                        }}
+                        rows={3}
+                        placeholder="Explain why this request is still pending"
+                        style={{
+                          width: '100%',
+                          border: '1px solid #dcdce4',
+                          borderRadius: '4px',
+                          padding: '8px 12px',
+                          fontSize: '14px',
+                          resize: 'vertical',
+                        }}
+                      />
+                      {pendingCommentError ? (
+                        <Typography variant="pi" textColor="danger600" marginTop={2}>
+                          {pendingCommentError}
+                        </Typography>
+                      ) : null}
+                      <Box marginTop={2}>
+                        <Button
+                          variant="secondary"
+                          disabled={updatingId === String(entryId(selectedRequest))}
+                          onClick={handleSendPendingComment}
+                        >
+                          Send Comment
+                        </Button>
+                      </Box>
                     </Box>
                   )}
                   {getStatusValue(selectedRequest) === 'Pending' && showRejectReasonInput && (
