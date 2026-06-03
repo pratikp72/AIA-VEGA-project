@@ -1,4 +1,14 @@
 // @ts-nocheck
+const {
+  normalizeComment,
+  resolveUserLocation,
+  normalizePendingComments,
+  getLatestPendingComment,
+  buildAdminDisplayName,
+  normalizeCompany,
+  getProfileEditNotificationDeliveryOptions,
+} = require('../../../../utils/profile-edit-request-helpers');
+
 const ALLOWED_PROFILE_FIELDS = [
   'username',
   'contact_no',
@@ -122,14 +132,30 @@ module.exports = ({ strapi }) => ({
         const user = entry.users_permissions_user;
         entry.userName = entry.requester_name || user.username || user.employee_name || user.name || '—';
         entry.userId = user.id || user.emp_id || '—';
-        entry.userCompany = user.company || '—';
+        entry.userCompany = user.company || entry.company || '—';
         entry.userContact = user.contact_no || '—';
+
+        if (!entry.user_location) {
+          const resolvedLocation = resolveUserLocation(user, entry.company || user.company);
+          if (resolvedLocation) {
+            entry.user_location = resolvedLocation;
+            runDetached(strapi, `persist user_location for request ${entry.id || entry.documentId}`, async () => {
+              await strapi.db.query('api::profile-edit-request.profile-edit-request').update({
+                where: { id: entry.id },
+                data: { user_location: resolvedLocation },
+              });
+            });
+          }
+        }
       } else {
         entry.userName = entry.requester_name || '—';
         entry.userId = '—';
-        entry.userCompany = '—';
+        entry.userCompany = entry.company || '—';
         entry.userContact = '—';
       }
+
+      entry.pending_admin_comments = normalizePendingComments(entry.pending_admin_comments);
+      entry.latest_pending_comment = getLatestPendingComment(entry.pending_admin_comments);
     }
 
     return entries;
@@ -140,6 +166,128 @@ module.exports = ({ strapi }) => ({
       where: { request_status: 'Pending' },
     });
     return count || 0;
+  },
+
+  async getLocationOptions(companyFilter = '') {
+    const entries = await strapi.entityService.findMany('api::profile-edit-request.profile-edit-request', {
+      fields: ['user_location', 'company'],
+      populate: {
+        users_permissions_user: {
+          fields: ['branch', 'working_location', 'company'],
+        },
+      },
+      limit: -1,
+    });
+
+    const normalizedCompany = normalizeCompany(companyFilter);
+    const locations = new Set();
+
+    for (const entry of entries) {
+      const entryCompany = normalizeCompany(entry.company || entry.users_permissions_user?.company);
+      if (normalizedCompany && entryCompany !== normalizedCompany) continue;
+
+      const location = entry.user_location
+        || resolveUserLocation(entry.users_permissions_user, entry.company || entry.users_permissions_user?.company);
+      if (location) locations.add(location);
+    }
+
+    return Array.from(locations).sort((a, b) => a.localeCompare(b));
+  },
+
+  async addPendingComment(id, commentText, adminUser) {
+    const comment = normalizeComment(commentText);
+    if (!comment) {
+      throw new Error('comment is required');
+    }
+
+    let request = await strapi.db.query('api::profile-edit-request.profile-edit-request').findOne({
+      where: { documentId: id },
+      populate: ['users_permissions_user'],
+    });
+
+    if (!request && Number.isInteger(Number(id))) {
+      request = await strapi.db.query('api::profile-edit-request.profile-edit-request').findOne({
+        where: { id: Number(id) },
+        populate: ['users_permissions_user'],
+      });
+    }
+
+    if (!request) {
+      throw new Error('Profile edit request not found');
+    }
+
+    if (request.request_status !== 'Pending') {
+      throw new Error('Comments can only be added to pending requests');
+    }
+
+    const requester = request.users_permissions_user;
+    const requesterId = requester?.id ?? request.users_permissions_user_id;
+    if (!requesterId) {
+      throw new Error('Requester not found for this profile edit request');
+    }
+
+    const existingComments = normalizePendingComments(request.pending_admin_comments);
+    const newCommentEntry = {
+      comment,
+      commented_at: new Date().toISOString(),
+      commented_by: {
+        id: adminUser?.id || null,
+        name: buildAdminDisplayName(adminUser),
+      },
+    };
+    const updatedComments = [...existingComments, newCommentEntry];
+
+    const updated = await strapi.db.query('api::profile-edit-request.profile-edit-request').update({
+      where: { id: request.id },
+      data: { pending_admin_comments: updatedComments },
+    });
+
+    if (!updated) {
+      throw new Error('Failed to save pending comment');
+    }
+
+    runDetached(strapi, `notify pending comment for request ${request.id || request.documentId}`, async () => {
+      const notifUtil = strapi.utils?.notification;
+      if (!notifUtil) return;
+
+      const requesterName = requester?.username
+        || requester?.employee_name
+        || requester?.name
+        || requester?.email
+        || `User ${requesterId}`;
+      const changedFields = Object.keys(request.requested_changes || {}).filter(Boolean).join(', ');
+      const title = 'Profile Edit Request Still Pending';
+      const message = changedFields
+        ? `Your profile edit request for ${changedFields} is still pending. Note from HR: ${comment}`
+        : `Your profile edit request is still pending. Note from HR: ${comment}`;
+
+      await notifUtil.sendNotification(
+        'profile_edit_request',
+        title,
+        message,
+        [{ id: requesterId, email: requester?.email }],
+        {
+          requestId: request.id ?? request.documentId,
+          userId: requesterId,
+          userName: requesterName,
+          changedFields,
+          pending_comment: comment,
+          pending_admin_comments: updatedComments,
+          source: 'profile_edit_request',
+          action: 'pending_comment',
+        },
+        [],
+        getProfileEditNotificationDeliveryOptions(notifUtil)
+      );
+    });
+
+    return {
+      id: request.id,
+      documentId: request.documentId,
+      request_status: request.request_status,
+      pending_admin_comments: updatedComments,
+      latest_pending_comment: comment,
+    };
   },
 
   async updateStatus(id, newStatus, adminUser, options = {}) {

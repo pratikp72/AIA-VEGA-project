@@ -55,6 +55,14 @@
       "type": "enumeration",
       "enum": ["AIA", "Vega"],
       "required": false
+    },
+    "user_location": {
+      "type": "string",
+      "required": false
+    },
+    "pending_admin_comments": {
+      "type": "json",
+      "required": false
     }
   }
 }

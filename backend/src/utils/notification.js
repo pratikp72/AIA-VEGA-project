@@ -514,6 +514,8 @@ module.exports = (strapi) => {
    * @param {Object} meta - Additional metadata
    * @param {Array} adminRoles - Admin role codes: ['admin','LMadmin','HRadmin']
    * @param {Object} options - { sendEmail: true, sendSocket: true }
+   *   Email is sent only when options.sendEmail is true AND process.env.EMAIL_ENABLED is true.
+   *   In-app (DB) and socket delivery are independent of EMAIL_ENABLED.
    */
   async function sendNotification(type, title, message, usersArray = [], meta = {}, adminRoles = [], options = {}) {
     const { sendEmail: doEmail = true, sendSocket: doSocket = true } = options;
@@ -591,6 +593,7 @@ module.exports = (strapi) => {
   return {
     sendNotification,
     sendEmail,
+    isEmailEnabled,
     enrichMeta,
     triggerSocket,
     triggerAdminSocket,

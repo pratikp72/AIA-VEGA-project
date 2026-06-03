@@ -8,6 +8,7 @@
  */
 
 const PROFILE_EDIT_REQUEST_UID = 'api::profile-edit-request.profile-edit-request';
+const { getProfileEditNotificationDeliveryOptions } = require('../utils/profile-edit-request-helpers');
 
 function runDetached(strapi, label, work) {
   Promise.resolve()
@@ -100,7 +101,7 @@ function registerProfileEditRequestNotificationLifecycles(strapi) {
               action: 'created',
             },
             ['admin', 'HRadmin'],
-            { sendEmail: true, sendSocket: true }
+            getProfileEditNotificationDeliveryOptions(notifUtil)
           );
         });
       } catch (e) {
@@ -158,7 +159,7 @@ function registerProfileEditRequestNotificationLifecycles(strapi) {
               action: 'status_update',
             },
             [],
-            { sendEmail: true, sendSocket: true }
+            getProfileEditNotificationDeliveryOptions(notifUtil)
           );
         });
       } catch (e) {
