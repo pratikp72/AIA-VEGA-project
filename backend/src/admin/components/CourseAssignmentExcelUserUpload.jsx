@@ -69,6 +69,19 @@ function extractCurrentRelationIds(raw) {
   return [];
 }
 
+/** True when content-manager is editing an existing entry (not /create). */
+function isCourseAssignmentEditEntry() {
+  if (typeof window === 'undefined') return false;
+  try {
+    const path = decodeURIComponent(window.location.pathname || '');
+    if (!path.includes('course-assignment.course-assignment')) return false;
+    if (path.endsWith('/create')) return false;
+    return /course-assignment\.course-assignment\/[^/]+/.test(path);
+  } catch {
+    return false;
+  }
+}
+
 function extractCompanySelection(raw) {
   const first = (arr) => (Array.isArray(arr) && arr.length > 0 ? arr[0] : null);
 
@@ -374,6 +387,7 @@ function UploadCore() {
   const [publishValidationMsg, setPublishValidationMsg] = useState('');
 
   const isIndividual = String(values?.assignment_target_type || '').toLowerCase() === 'individual';
+  const isEditEntry = isCourseAssignmentEditEntry() || Boolean(values?.documentId);
   const selectedUsers = extractCurrentRelationIds(values?.individual_user);
   const hasImportedUsers = selectedUsers.length > 0;
 
@@ -389,7 +403,7 @@ function UploadCore() {
 
   useEffect(() => {
     const handlePublishAttempt = (event) => {
-      if (!isIndividual || hasImportedUsers) return;
+      if (!isIndividual || isEditEntry || hasImportedUsers) return;
       if (!isPublishButton(event.target)) return;
 
       event.preventDefault();
@@ -402,7 +416,7 @@ function UploadCore() {
     return () => {
       document.removeEventListener('click', handlePublishAttempt, true);
     };
-  }, [isIndividual, hasImportedUsers]);
+  }, [isIndividual, isEditEntry, hasImportedUsers]);
 
   // ── Process selected file ──
   async function processFile(file) {
@@ -499,6 +513,9 @@ function UploadCore() {
   }
 
   if (!isIndividual) return null;
+
+  // Edit entry: due date updates only — hide CSV/Excel import to avoid overwriting users.
+  if (isEditEntry) return null;
 
   // ── Render ──
   return (
@@ -701,7 +718,7 @@ function UploadCore() {
 
 // ── Public Component ──────────────────────────────────────────────────────────
 
-/** Guard wrapper — only active on the Course Assignment edit view. */
+/** Guard wrapper — only active on the Course Assignment create view (import hidden on edit). */
 export default function CourseAssignmentExcelUserUpload({ slug, model }) {
   const uid = slug || model;
   if (uid !== COURSE_ASSIGNMENT_MODEL) return null;

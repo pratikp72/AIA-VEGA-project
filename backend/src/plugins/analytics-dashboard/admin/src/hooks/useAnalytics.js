@@ -5,12 +5,16 @@ const getBaseUrl = () => window.strapi?.backendURL || 'http://localhost:1337';
 
 const getToken = (state) => state?.admin_app?.token;
 
+export function isAbortError(error) {
+  return error?.name === 'AbortError';
+}
+
 export function useAnalytics() {
   const token = useSelector(getToken);
   const baseUrl = getBaseUrl();
 
   const fetchApi = useCallback(
-    async (path, params = {}) => {
+    async (path, params = {}, options = {}) => {
       const cleanParams = Object.fromEntries(
         Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== '')
       );
@@ -18,6 +22,7 @@ export function useAnalytics() {
       const url = `${baseUrl}${path}${qs ? `?${qs}` : ''}`;
       const res = await fetch(url, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
+        signal: options.signal,
       });
       if (!res.ok) throw new Error(`API error: ${res.status}`);
       return res.json();
@@ -47,10 +52,23 @@ export function useAnalytics() {
     [baseUrl, token]
   );
 
+  const fetchLearningGlobal = useCallback(
+    (params, options) => fetchApi('/api/analytics/learning/global', params, options),
+    [fetchApi]
+  );
+  const fetchLearningPersonal = useCallback(
+    (params, options) => fetchApi('/api/analytics/learning/personal', params, options),
+    [fetchApi]
+  );
+  const fetchLearningEmployeeTable = useCallback(
+    (params, options) => fetchApi('/api/analytics/learning/employee-table', params, options),
+    [fetchApi]
+  );
+
   return {
-    fetchLearningGlobal: (params) => fetchApi('/api/analytics/learning/global', params),
-    fetchLearningPersonal: (params) => fetchApi('/api/analytics/learning/personal', params),
-    fetchLearningEmployeeTable: (params) => fetchApi('/api/analytics/learning/employee-table', params),
+    fetchLearningGlobal,
+    fetchLearningPersonal,
+    fetchLearningEmployeeTable,
     exportLearningEmployeeTable,
     fetchOverallGlobal: (params) => fetchApi('/api/analytics/overall/global', params),
     fetchOverallPersonal: (params) => fetchApi('/api/analytics/overall/personal', params),
@@ -98,20 +116,25 @@ export function useAnalyticsData(fetcher, params, enabled = true) {
       setLoading(false);
       return;
     }
+    const abortController = new AbortController();
     let cancelled = false;
     setLoading(true);
     setError(null);
-    fetcher(params)
+    const run = fetcher(params, { signal: abortController.signal });
+    Promise.resolve(run)
       .then((res) => {
         if (!cancelled) setData(res);
       })
       .catch((err) => {
-        if (!cancelled) setError(err.message);
+        if (!cancelled && !isAbortError(err)) setError(err.message);
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
       });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+      abortController.abort();
+    };
   }, [JSON.stringify(params), enabled]);
 
   return { data, loading, error };

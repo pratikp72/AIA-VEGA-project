@@ -22,6 +22,210 @@ const normalizeDateBound = (value, endOfDay = false) => {
   return date.toISOString();
 };
 
+const LEARNING_TIME_EVENTS = new Set([
+  'learning_module_exit',
+  'learning_video_progress',
+  'learning_video_completed',
+  'learning_quiz_submitted',
+  'learning_feedback_submitted',
+]);
+
+function sumQuizTimeMinutes(submissions) {
+  return (submissions || []).reduce((sum, s) => {
+    const minutes = Number(s?.time_taken_minutes);
+    return sum + (Number.isFinite(minutes) && minutes >= 0 ? minutes : 0);
+  }, 0);
+}
+
+function sumProgressMinutes(progressList) {
+  return (progressList || []).reduce((sum, p) => {
+    const minutes = Number(p?.time_spent_minutes);
+    return sum + (Number.isFinite(minutes) && minutes >= 0 ? minutes : 0);
+  }, 0);
+}
+
+function sumVideoWatchMinutes(videoRows) {
+  return (videoRows || []).reduce((sum, row) => {
+    const minutes = Number(row?.time_watched_min);
+    return sum + (Number.isFinite(minutes) && minutes >= 0 ? minutes : 0);
+  }, 0);
+}
+
+function telemetryBucketToMinutes(bucket) {
+  if (!bucket) {
+    return { module: 0, video: 0, quiz: 0, feedback: 0 };
+  }
+  return {
+    module: (Number(bucket.moduleSeconds) || 0) / 60,
+    video: (Number(bucket.videoSeconds) || 0) / 60,
+    quiz: (Number(bucket.quizSeconds) || 0) / 60,
+    feedback: (Number(bucket.feedbackSeconds) || 0) / 60,
+  };
+}
+
+async function resolveCourseIdKeys(strapi, courseIdStr) {
+  const keys = new Set();
+  if (!courseIdStr) return keys;
+  const trimmed = String(courseIdStr).trim();
+  if (!trimmed) return keys;
+  keys.add(trimmed);
+  if (/^\d+$/.test(trimmed)) keys.add(String(Number(trimmed)));
+  try {
+    const where = /^\d+$/.test(trimmed) ? { id: Number(trimmed) } : { documentId: trimmed };
+    const course = await strapi.db.query('api::course.course').findOne({
+      where,
+      select: ['id', 'documentId'],
+    });
+    if (course?.id != null) keys.add(String(course.id));
+    if (course?.documentId) keys.add(String(course.documentId));
+  } catch (_) {}
+  return keys;
+}
+
+async function loadVideoProgressByUser(strapi, userIds, courseIdStr) {
+  const byUser = new Map();
+  if (!Array.isArray(userIds) || userIds.length === 0) return byUser;
+
+  const where = { user: { id: { $in: userIds } } };
+  if (courseIdStr) {
+    const trimmed = String(courseIdStr).trim();
+    if (/^\d+$/.test(trimmed)) {
+      where.course = { id: Number(trimmed) };
+    } else {
+      where.course = { documentId: trimmed };
+    }
+  }
+
+  let rows = [];
+  try {
+    rows = await strapi.db.query('api::module-video-progress.module-video-progress').findMany({
+      where,
+      select: ['time_watched_min', 'user_id'],
+      populate: { user: { select: ['id'] } },
+      limit: 50000,
+    });
+  } catch (_) {}
+
+  (rows || []).forEach((row) => {
+    const uid = row.user?.id ?? row.user_id;
+    if (uid == null) return;
+    const key = String(uid);
+    if (!byUser.has(key)) byUser.set(key, []);
+    byUser.get(key).push(row);
+  });
+
+  return byUser;
+}
+
+async function loadLearningActivityTimeByUser(strapi, userIds, params = {}) {
+  const result = new Map();
+  if (!Array.isArray(userIds) || userIds.length === 0) return result;
+
+  const dateFromNorm = normalizeDateBound(params.dateFrom, false);
+  const dateToNorm = normalizeDateBound(params.dateTo, true);
+  const courseIdStr = params.courseId ? String(params.courseId).trim() : null;
+  const courseIdKeys = courseIdStr ? await resolveCourseIdKeys(strapi, courseIdStr) : null;
+
+  const where = {
+    user: { id: { $in: userIds } },
+    activity_description: { $in: Array.from(LEARNING_TIME_EVENTS) },
+  };
+  if (dateFromNorm || dateToNorm) {
+    where.timestamp = {};
+    if (dateFromNorm) where.timestamp.$gte = dateFromNorm;
+    if (dateToNorm) where.timestamp.$lte = dateToNorm;
+  }
+
+  let events = [];
+  try {
+    events = await strapi.db.query('api::activity-log.activity-log').findMany({
+      where,
+      select: ['activity_description', 'entity_type', 'entity_id', 'activity_duration', 'user_id'],
+      populate: { user: { select: ['id'] } },
+      limit: 100000,
+    });
+  } catch (_) {}
+
+  (events || []).forEach((row) => {
+    const uid = row.user?.id ?? row.user_id;
+    if (uid == null) return;
+
+    const eventName = row.activity_description || '';
+    if (!LEARNING_TIME_EVENTS.has(eventName)) return;
+
+    const entityType = String(row.entity_type || '').toLowerCase();
+    const entityId = row.entity_id != null ? String(row.entity_id).trim() : '';
+    if (courseIdKeys && courseIdKeys.size > 0) {
+      if (entityType !== 'course' || !entityId || !courseIdKeys.has(entityId)) return;
+    }
+
+    const mapKey = courseIdStr ? `${uid}::${courseIdStr}` : String(uid);
+    if (!result.has(mapKey)) {
+      result.set(mapKey, {
+        moduleSeconds: 0,
+        videoSeconds: 0,
+        quizSeconds: 0,
+        feedbackSeconds: 0,
+      });
+    }
+
+    const duration = Math.max(0, Number(row.activity_duration) || 0);
+    const bucket = result.get(mapKey);
+    if (eventName.includes('module')) bucket.moduleSeconds += duration;
+    else if (eventName.includes('video')) bucket.videoSeconds += duration;
+    else if (eventName.includes('quiz')) bucket.quizSeconds += duration;
+    else if (eventName.includes('feedback')) bucket.feedbackSeconds += duration;
+  });
+
+  return result;
+}
+
+function getEmployeeTimeContextKey(userId, courseIdStr) {
+  return courseIdStr ? `${userId}::${courseIdStr}` : String(userId);
+}
+
+function getLastQuizAttemptScore(submissions) {
+  const subs = Array.isArray(submissions) ? submissions : [];
+  if (subs.length === 0) return 0;
+  const last = [...subs].sort((a, b) => {
+    const attemptDiff = (Number(b?.attempt_number) || 0) - (Number(a?.attempt_number) || 0);
+    if (attemptDiff !== 0) return attemptDiff;
+    return new Date(b?.submitted_at || 0).getTime() - new Date(a?.submitted_at || 0).getTime();
+  })[0];
+  const score = Number(last?.score);
+  return Number.isFinite(score) ? Math.round(score) : 0;
+}
+
+function buildEmployeeTableRowMetrics(progs, subs, timeContext = {}) {
+  const { videoRows = [], telemetry = null } = timeContext;
+  const progressMinutes = sumProgressMinutes(progs);
+  const quizSubmissionMinutes = sumQuizTimeMinutes(subs);
+  const videoWatchMinutes = sumVideoWatchMinutes(videoRows);
+  const telemetryMinutes = telemetryBucketToMinutes(telemetry);
+
+  // Module + video: stored progress/video records, supplemented by activity telemetry when higher.
+  const moduleContentMinutes = Math.max(
+    progressMinutes + videoWatchMinutes,
+    telemetryMinutes.module + telemetryMinutes.video,
+  );
+
+  // Quiz: all submission attempts (reattempt-safe), supplemented by activity telemetry when higher.
+  const quizMinutes = Math.max(quizSubmissionMinutes, telemetryMinutes.quiz);
+
+  // Feedback: tracked via learning activity events.
+  const feedbackMinutes = telemetryMinutes.feedback;
+
+  const lastQuizScore = getLastQuizAttemptScore(subs);
+  const quizAttemptCount = Array.isArray(subs) ? subs.length : 0;
+
+  return {
+    courseCompletionTimeMinutes: Math.round(moduleContentMinutes + quizMinutes + feedbackMinutes),
+    lastQuizScore,
+    avgScore: lastQuizScore,
+    quizAttemptCount,
+  };
+}
+
 module.exports = ({ strapi }) => {
   if (strapi.__analyticsDashboardService) {
     return strapi.__analyticsDashboardService;
@@ -2741,9 +2945,19 @@ module.exports = ({ strapi }) => {
       if (idx !== undefined) submissionByUserIdx[idx].push(s);
     });
 
+    const courseIdStrForTime = params.courseId ? String(params.courseId).trim() : null;
+    const [videoProgressByUser, learningActivityByKey] = await Promise.all([
+      loadVideoProgressByUser(strapi, userIdsNumeric, courseIdStrForTime),
+      loadLearningActivityTimeByUser(strapi, userIdsNumeric, params),
+    ]);
+
     let rows = userList.map((u, i) => {
       const progs = progressByUserIdx[i] || [];
       const subs = submissionByUserIdx[i] || [];
+      const timeContext = {
+        videoRows: videoProgressByUser.get(String(u.id)) || [],
+        telemetry: learningActivityByKey.get(getEmployeeTimeContextKey(u.id, courseIdStrForTime)) || null,
+      };
       const hasFeedbackForSelectedCourse = params.courseId ? feedbackGivenUserIds.has(Number(u.id)) : false;
       const feedbackStatus = !params.courseId
         ? '-'
@@ -2762,10 +2976,6 @@ module.exports = ({ strapi }) => {
         .map((s) => s)
         .join(', ') || '—';
       const coursesEnrolled = progs.length;
-      const totalTimeSpent = progs.reduce((sum, p) => {
-        const minutes = Number(p?.time_spent_minutes);
-        return sum + (Number.isFinite(minutes) ? minutes : 0);
-      }, 0);
       const totalModulesDone = progs.reduce((sum, p) => {
         const cm = p.completed_modules;
         return sum + (Array.isArray(cm) ? cm.length : 0);
@@ -2775,13 +2985,12 @@ module.exports = ({ strapi }) => {
         : 0;
       const quizPassed = subs.filter((s) => s.passed).length;
       const quizPassRate = subs.length > 0 ? Math.round((quizPassed / subs.length) * 100) : 0;
-      const avgScore = subs.length > 0
-        ? Math.round(subs.reduce((s, x) => s + (x.score || 0), 0) / subs.length)
-        : 0;
+      const rowMetrics = buildEmployeeTableRowMetrics(progs, subs, timeContext);
 
       return {
         employeeId: u.id,
         employeeName: u.username || u.email || `User ${u.id}`,
+        email: u.email || '—',
         company: u.company || '—',
         emp_code: u.emp_code ?? '—',
         emp_id: u.emp_id ?? '—',
@@ -2790,11 +2999,13 @@ module.exports = ({ strapi }) => {
         coursesEnrolled,
         courseStatus,
         feedbackStatus,
-        courseCompletionTimeMinutes: Math.round(totalTimeSpent),
+        courseCompletionTimeMinutes: rowMetrics.courseCompletionTimeMinutes,
         totalModulesDone,
         progressPercent: avgProgress,
         quizPassRate,
-        avgScore,
+        avgScore: rowMetrics.avgScore,
+        lastQuizScore: rowMetrics.lastQuizScore,
+        quizAttemptCount: rowMetrics.quizAttemptCount,
       };
     });
 
@@ -2872,12 +3083,14 @@ module.exports = ({ strapi }) => {
     // Prepare data for Excel
     const exportData = (result.rows || []).map((r) => ({
       'Employee Name': r.employeeName || '—',
+      'Email': r.email || '—',
       'Company': r.company || '—',
       'Courses Enrolled': r.coursesEnrolled || 0,
       'Course Status': r.courseStatus || '—',
       'Total Modules Done': r.totalModulesDone || 0,
       'Progress %': r.progressPercent || 0,
-      'Avg Quiz Score': r.avgScore || 0,
+      'Quiz Score': r.lastQuizScore ?? r.avgScore ?? 0,
+      'Quiz Attempts': r.quizAttemptCount ?? 0,
       'Course Completion Time (min)': r.courseCompletionTimeMinutes || 0,
     }));
 
@@ -2887,7 +3100,7 @@ module.exports = ({ strapi }) => {
 
     // Auto-size columns
     const maxWidth = 50;
-    const headers = ['Employee Name', 'Company', 'Courses Enrolled', 'Course Status', 'Total Modules Done', 'Progress %', 'Avg Quiz Score', 'Course Completion Time (min)'];
+    const headers = ['Employee Name', 'Email', 'Company', 'Courses Enrolled', 'Course Status', 'Total Modules Done', 'Progress %', 'Quiz Score', 'Quiz Attempts', 'Course Completion Time (min)'];
     const wscols = headers.map((header) => {
       const maxLen = Math.max(
         header.length,
@@ -3186,9 +3399,19 @@ module.exports = ({ strapi }) => {
       if (idx !== undefined) submissionByUserIdx[idx].push(s);
     });
 
+    const courseIdStrForTimeExport = params.courseId ? String(params.courseId).trim() : null;
+    const [videoProgressByUserExport, learningActivityByKeyExport] = await Promise.all([
+      loadVideoProgressByUser(strapi, userIdsNumeric, courseIdStrForTimeExport),
+      loadLearningActivityTimeByUser(strapi, userIdsNumeric, params),
+    ]);
+
     let rows = userList.map((u, i) => {
       const progs = progressByUserIdx[i] || [];
       const subs = submissionByUserIdx[i] || [];
+      const timeContext = {
+        videoRows: videoProgressByUserExport.get(String(u.id)) || [],
+        telemetry: learningActivityByKeyExport.get(getEmployeeTimeContextKey(u.id, courseIdStrForTimeExport)) || null,
+      };
       const hasFeedbackForSelectedCourse = params.courseId ? feedbackGivenUserIds.has(Number(u.id)) : false;
       const feedbackStatus = !params.courseId
         ? '-'
@@ -3207,20 +3430,16 @@ module.exports = ({ strapi }) => {
         .map((s) => s)
         .join(', ') || '—';
       const coursesEnrolled = progs.length;
-      const totalTimeSpent = progs.reduce((sum, p) => {
-        const minutes = Number(p?.time_spent_minutes);
-        return sum + (Number.isFinite(minutes) ? minutes : 0);
-      }, 0);
       const totalModulesDone = progs.reduce((sum, p) => sum + (Array.isArray(p.completed_modules) ? p.completed_modules.length : 0), 0);
       const avgProgress =
         coursesEnrolled > 0
           ? Math.round(progs.reduce((s, p) => s + (p.progress_percentage || 0), 0) / coursesEnrolled)
           : 0;
-      const avgScore =
-        subs.length > 0 ? Math.round(subs.reduce((s, x) => s + (x.score || 0), 0) / subs.length) : 0;
+      const rowMetrics = buildEmployeeTableRowMetrics(progs, subs, timeContext);
 
       return {
         employeeName: u.username || u.email || `User ${u.id}`,
+        email: u.email || '—',
         company: u.company || '—',
         emp_code: u.emp_code ?? '—',
         emp_id: u.emp_id ?? '—',
@@ -3231,8 +3450,10 @@ module.exports = ({ strapi }) => {
         feedbackStatus,
         totalModulesDone,
         progressPercent: avgProgress,
-        avgScore,
-        courseCompletionTimeMinutes: Math.round(totalTimeSpent),
+        avgScore: rowMetrics.avgScore,
+        lastQuizScore: rowMetrics.lastQuizScore,
+        quizAttemptCount: rowMetrics.quizAttemptCount,
+        courseCompletionTimeMinutes: rowMetrics.courseCompletionTimeMinutes,
       };
     });
     if (dateFromNorm || dateToNorm || params.courseId || params.status) {
