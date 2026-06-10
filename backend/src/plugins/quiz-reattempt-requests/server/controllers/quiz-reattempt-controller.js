@@ -25,17 +25,29 @@ module.exports = ({ strapi }) => ({
   async updateStatus(ctx) {
     try {
       const { id } = ctx.params;
-      const { request_status } = ctx.request.body.data || ctx.request.body || {};
-      
+      const body = ctx.request.body.data || ctx.request.body || {};
+      const { request_status, extended_due_date: extendedDueDate } = body;
+
       if (!request_status) {
         return ctx.throw(400, 'request_status is required');
       }
 
-      const updated = await strapi.plugin('quiz-reattempt-requests').service('quizReattemptService').updateStatus(id, request_status);
+      const updated = await strapi
+        .plugin('quiz-reattempt-requests')
+        .service('quizReattemptService')
+        .updateStatus(id, request_status, { extendedDueDate });
+
       ctx.body = { data: updated };
     } catch (error) {
       strapi.log.error('Quiz reattempt updateStatus error:', error?.message || error);
-      ctx.throw(500, error?.message || 'Internal Server Error');
+      const message = error?.message || 'Internal Server Error';
+      if (
+        message.includes('Invalid extended due date') ||
+        message.includes('No course assignment found')
+      ) {
+        return ctx.throw(400, message);
+      }
+      ctx.throw(500, message);
     }
   },
 });
