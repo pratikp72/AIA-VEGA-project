@@ -5,6 +5,7 @@ import { DonutChart } from '../../../components/DonutChart';
 import { LineChart } from '../../../components/LineChart';
 import { BarChart } from '../../../components/BarChart';
 import { DataTable } from '../../../components/DataTable';
+import { DropOffEnrollmentsModal } from '../../../components/DropOffEnrollmentsModal';
 
 /**
  * Learning Analytics – Course (global) view.
@@ -24,8 +25,10 @@ export function LearningGlobalView({
   moduleDetailPageSize,
   setModuleDetailPage,
   setModuleDetailPageSize,
+  company = '',
 }) {
   const [downloadStyle, setDownloadStyle] = React.useState('shown'); // 'shown' or 'all'
+  const [showDropOffModal, setShowDropOffModal] = React.useState(false);
   const dataView = courseContentViewType === 'table' ? 'table' : 'chart';
   const setDataView = (v) => setCourseContentViewType(v === 'table' ? 'table' : 'statistics');
 
@@ -35,6 +38,7 @@ export function LearningGlobalView({
   const liveTotals = live?.totals || {};
 
   const courseProgress = Array.isArray(data?.courseProgress) ? data.courseProgress : [];
+  const dropOffEnrollments = Array.isArray(data?.dropOffEnrollments) ? data.dropOffEnrollments : [];
 
   const tableRows = useMemo(() => {
     const withoutUnknown = (courseProgress || []).filter((p) => {
@@ -154,7 +158,17 @@ export function LearningGlobalView({
           <StatCard label="Avg Quiz Score" value={kpis.avgQuizScore ?? quiz?.avgScore ?? 0} colorIndex={3} />
         </Box>
         <Box style={{ flex: '1 1 200px', minWidth: 160 }}>
-          <StatCard label="Drop Off Rate" value={`${kpis.dropOffRate ?? 0}%`} subtext={kpis.dropOffCount != null ? `${kpis.dropOffCount} enrollments inactive 14+ days` : undefined} colorIndex={4} />
+          <StatCard
+            label="Drop Off Rate"
+            value={`${kpis.dropOffRate ?? 0}%`}
+            subtext={kpis.dropOffCount != null ? `${kpis.dropOffCount} enrollments inactive 14+ days` : undefined}
+            colorIndex={4}
+            action={{
+              label: 'View',
+              onClick: () => setShowDropOffModal(true),
+              disabled: !(kpis.dropOffCount > 0),
+            }}
+          />
         </Box>
         <Box style={{ flex: '1 1 200px', minWidth: 160 }}>
           <StatCard label="Completed Course" value={kpis.completedCourse ?? 0} colorIndex={5} />
@@ -259,6 +273,12 @@ export function LearningGlobalView({
           />
         </Box>
       )}
+      <DropOffEnrollmentsModal
+        open={showDropOffModal}
+        onClose={() => setShowDropOffModal(false)}
+        rows={dropOffEnrollments}
+        company={company}
+      />
     </>
   );
 }

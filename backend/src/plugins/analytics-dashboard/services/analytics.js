@@ -184,6 +184,143 @@ function getEmployeeTimeContextKey(userId, courseIdStr) {
   return courseIdStr ? `${userId}::${courseIdStr}` : String(userId);
 }
 
+const DROP_OFF_INACTIVE_DAYS = 14;
+
+function getDropOffCutoffDateStr() {
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - DROP_OFF_INACTIVE_DAYS);
+  return cutoff.toISOString().slice(0, 10);
+}
+
+function parseDropOffOnlyParam(value) {
+  if (value === true || value === 1) return true;
+  const normalized = String(value ?? '').trim().toLowerCase();
+  return normalized === 'true' || normalized === '1' || normalized === 'yes';
+}
+
+function isDropOffProgress(progress, dropOffCutoffStr = getDropOffCutoffDateStr()) {
+  const status = progress?.progress_status ?? progress?.progressStatus;
+  const percentage = progress?.progress_percentage ?? progress?.progressPercentage ?? 0;
+  const lastAccess = progress?.last_accessed_at ?? progress?.lastAccessedAt;
+  const startedAt = progress?.started_at ?? progress?.startedAt;
+  const isStarted = status === 'In_progress' || (status === 'Not_started' && startedAt);
+  const notCompleted = status !== 'Completed' && status !== 'Failed';
+  const inactiveLongEnough = lastAccess && String(lastAccess).slice(0, 10) < dropOffCutoffStr;
+  return isStarted && notCompleted && percentage < 100 && inactiveLongEnough;
+}
+
+function buildDropOffEnrollments(progresses, dropOffCutoffStr = getDropOffCutoffDateStr()) {
+  const today = new Date();
+  return (Array.isArray(progresses) ? progresses : [])
+    .filter((p) => isDropOffProgress(p, dropOffCutoffStr))
+    .map((p) => {
+      const user = p.user || {};
+      const lastAccess = p.last_accessed_at ?? p.lastAccessedAt;
+      let inactiveDays = null;
+      if (lastAccess) {
+        const diffMs = today.getTime() - new Date(lastAccess).getTime();
+        inactiveDays = Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24)));
+      }
+      return {
+        employeeId: user.id ?? p.user_id ?? p.userId,
+        employeeName: user.username || user.email || `User ${user.id ?? p.user_id ?? ''}`,
+        email: user.email || '—',
+        company: user.company || '—',
+        emp_code: user.emp_code ?? '—',
+        emp_id: user.emp_id ?? '—',
+        branch: user.branch ?? '—',
+        working_location: user.working_location ?? '—',
+        courseId: p.course?.id ?? p.course?.documentId ?? p.course_id ?? p.courseId,
+        courseTitle: p.course?.title ?? 'Unknown',
+        status: p.progress_status ?? '—',
+        progressPercent: p.progress_percentage ?? p.progressPercentage ?? 0,
+        lastAccessedAt: lastAccess ? String(lastAccess).slice(0, 10) : '—',
+        inactiveDays,
+      };
+    })
+    .sort((a, b) => (b.inactiveDays ?? 0) - (a.inactiveDays ?? 0));
+}
+
+function intersectUserWhereWithIds(userWhere, filteredIds) {
+  const filtered = [...filteredIds].filter((n) => Number.isFinite(n));
+  if (filtered.length === 0) return false;
+
+  if (typeof userWhere.id === 'number') {
+    if (!filtered.includes(userWhere.id)) return false;
+    return true;
+  }
+  if (userWhere.id && Array.isArray(userWhere.id.$in)) {
+    const intersected = userWhere.id.$in.filter((id) => filtered.includes(Number(id)));
+    if (intersected.length === 0) return false;
+    userWhere.id = { $in: intersected };
+    return true;
+  }
+  userWhere.id = { $in: filtered };
+  return true;
+}
+
+async function loadDropOffUserIds(strapi, params = {}) {
+  const dropOffCutoffStr = getDropOffCutoffDateStr();
+  const dropOffUserIds = new Set();
+  const progressFilters = {};
+  if (params.courseId) {
+    const courseIdStr = String(params.courseId).trim();
+    progressFilters.$or = [
+      { course: { id: courseIdStr } },
+      { course: { documentId: courseIdStr } },
+    ];
+  }
+
+  let allProgress = [];
+  try {
+    const [published, draft] = await Promise.all([
+      strapi.documents('api::user-progress.user-progress').findMany({
+        filters: progressFilters,
+        status: 'published',
+        fields: ['progress_status', 'progress_percentage', 'last_accessed_at', 'started_at'],
+        populate: { user: { fields: ['id'] } },
+        pagination: { limit: 50000 },
+      }),
+      strapi.documents('api::user-progress.user-progress').findMany({
+        filters: progressFilters,
+        status: 'draft',
+        fields: ['progress_status', 'progress_percentage', 'last_accessed_at', 'started_at'],
+        populate: { user: { fields: ['id'] } },
+        pagination: { limit: 50000 },
+      }),
+    ]);
+    const merged = [
+      ...(Array.isArray(published) ? published : []),
+      ...(Array.isArray(draft) ? draft : []),
+    ];
+    const seen = new Set();
+    allProgress = merged.filter((p) => {
+      const key = p?.documentId ? `doc:${p.documentId}` : `id:${p?.id ?? ''}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  } catch (_) {
+    try {
+      const progressWhere = {};
+      if (params.courseId) progressWhere.course_id = String(params.courseId).trim();
+      allProgress = await strapi.db.query('api::user-progress.user-progress').findMany({
+        where: progressWhere,
+        select: ['user_id', 'progress_status', 'progress_percentage', 'last_accessed_at', 'started_at'],
+        limit: 50000,
+      }) || [];
+    } catch (_) {}
+  }
+
+  allProgress.forEach((p) => {
+    if (!isDropOffProgress(p, dropOffCutoffStr)) return;
+    const uid = p.user?.id ?? p.user_id;
+    if (uid != null) dropOffUserIds.add(Number(uid));
+  });
+
+  return dropOffUserIds;
+}
+
 function getLastQuizAttemptScore(submissions) {
   const subs = Array.isArray(submissions) ? submissions : [];
   if (subs.length === 0) return 0;
@@ -552,6 +689,7 @@ module.exports = ({ strapi }) => {
       monthlyCompletions: [],
       learningActivityByWeek: [],
       completionFunnel: [],
+      dropOffEnrollments: [],
     });
     try {
     let progresses = [];
@@ -942,14 +1080,7 @@ module.exports = ({ strapi }) => {
     // Drop-off: started but not completed, and no activity in last 14 days
     let dropOffCount = 0;
     progresses.forEach((p) => {
-      const status = p.progress_status;
-      const percentage = p.progress_percentage ?? p.progressPercentage ?? 0;
-      const lastAccess = p.last_accessed_at ?? p.lastAccessedAt;
-      const startedAt = p.started_at ?? p.startedAt;
-      const isStarted = status === 'In_progress' || (status === 'Not_started' && startedAt);
-      const notCompleted = status !== 'Completed' && status !== 'Failed';
-      const inactiveLongEnough = lastAccess && String(lastAccess).slice(0, 10) < dropOffCutoffStr;
-      if (isStarted && notCompleted && percentage < 100 && inactiveLongEnough) dropOffCount++;
+      if (isDropOffProgress(p, dropOffCutoffStr)) dropOffCount++;
     });
     const dropOffRate = total > 0 ? Math.round((dropOffCount / total) * 100) : 0;
 
@@ -1206,6 +1337,7 @@ module.exports = ({ strapi }) => {
       learningActivityByWeek: learningActivityByWeekArr,
       completionFunnel,
       courseProgress: courseProgressTable,
+      dropOffEnrollments: buildDropOffEnrollments(progresses, dropOffCutoffStr),
     };
 
     if (wantCourseId) {
@@ -2716,6 +2848,17 @@ module.exports = ({ strapi }) => {
       }
     }
 
+    if (parseDropOffOnlyParam(params.dropOffOnly)) {
+      const dropOffUserIds = await loadDropOffUserIds(strapi, params);
+      const emptyPageSize = Math.min(100, Math.max(5, parseInt(params.pageSize, 10) || 10));
+      if (dropOffUserIds.size === 0) {
+        return { rows: [], total: 0, page: 1, pageSize: emptyPageSize };
+      }
+      if (!intersectUserWhereWithIds(userWhere, dropOffUserIds)) {
+        return { rows: [], total: 0, page: 1, pageSize: emptyPageSize };
+      }
+    }
+
     const page = Math.max(1, parseInt(params.page, 10) || 1);
     const pageSize = Math.min(10000, Math.max(5, parseInt(params.pageSize, 10) || 10));
     const offset = (page - 1) * pageSize;
@@ -2823,6 +2966,10 @@ module.exports = ({ strapi }) => {
     // Filter progressList by progress_status if status filter is applied
     if (params.status) {
       progressList = progressList.filter((p) => p.progress_status === params.status);
+    }
+    if (parseDropOffOnlyParam(params.dropOffOnly)) {
+      const dropOffCutoffStr = getDropOffCutoffDateStr();
+      progressList = progressList.filter((p) => isDropOffProgress(p, dropOffCutoffStr));
     }
 
     const submissionFilters = { submitted_by: { id: { $in: userIdsNumeric } } };
@@ -3009,8 +3156,8 @@ module.exports = ({ strapi }) => {
       };
     });
 
-    // If date/course/status filters are applied, only include users with matching progress records.
-    if (dateFromNorm || dateToNorm || params.courseId || params.status) {
+    // If date/course/status/drop-off filters are applied, only include users with matching progress records.
+    if (dateFromNorm || dateToNorm || params.courseId || params.status || parseDropOffOnlyParam(params.dropOffOnly)) {
       rows = rows.filter((row, i) => (progressByUserIdx[i] || []).length > 0);
     }
 
@@ -3187,6 +3334,12 @@ module.exports = ({ strapi }) => {
       }
     }
 
+    if (parseDropOffOnlyParam(params.dropOffOnly)) {
+      const dropOffUserIds = await loadDropOffUserIds(strapi, params);
+      if (dropOffUserIds.size === 0) return { rows: [] };
+      if (!intersectUserWhereWithIds(userWhere, dropOffUserIds)) return { rows: [] };
+    }
+
     const maxExport = 10000;
     const users = await strapi.db.query('plugin::users-permissions.user').findMany({
       where: userWhere,
@@ -3280,6 +3433,10 @@ module.exports = ({ strapi }) => {
     }
     if (params.status) {
       progressList = progressList.filter((p) => p.progress_status === params.status);
+    }
+    if (parseDropOffOnlyParam(params.dropOffOnly)) {
+      const dropOffCutoffStr = getDropOffCutoffDateStr();
+      progressList = progressList.filter((p) => isDropOffProgress(p, dropOffCutoffStr));
     }
     let submissionList = [];
     try {
@@ -3456,7 +3613,7 @@ module.exports = ({ strapi }) => {
         courseCompletionTimeMinutes: rowMetrics.courseCompletionTimeMinutes,
       };
     });
-    if (dateFromNorm || dateToNorm || params.courseId || params.status) {
+    if (dateFromNorm || dateToNorm || params.courseId || params.status || parseDropOffOnlyParam(params.dropOffOnly)) {
       rows = rows.filter((_, i) => (progressByUserIdx[i] || []).length > 0);
     }
 

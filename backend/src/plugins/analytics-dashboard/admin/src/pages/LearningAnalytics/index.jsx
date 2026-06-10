@@ -232,6 +232,7 @@ export default function LearningAnalyticsPage() {
 
   const [filterStatus, setFilterStatus] = useState('');
   const [filterTimeValue, setFilterTimeValue] = useState('');
+
   const handleExportAllPersonalData = useCallback(() => {
     if (!data || !employeeDetail) return;
     const wb = XLSX.utils.book_new();
@@ -561,6 +562,7 @@ export default function LearningAnalyticsPage() {
                     moduleDetailPageSize={moduleDetailPageSize}
                     setModuleDetailPage={setModuleDetailPage}
                     setModuleDetailPageSize={setModuleDetailPageSize}
+                    company={company}
                   />
                 )}
                 {viewMode === 'personal' && (
