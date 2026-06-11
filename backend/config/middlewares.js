@@ -34,10 +34,10 @@ module.exports = [
   },
   'strapi::session',
   {
-  name: 'strapi::favicon',
-  config: {
-    path: './public/favicon.png', 
+    name: 'strapi::favicon',
+    config: {
+      path: './public/favicon.png',
+    },
   },
-},
   'strapi::public',
 ];

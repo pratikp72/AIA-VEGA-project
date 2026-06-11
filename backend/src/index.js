@@ -548,6 +548,19 @@ module.exports = {
 
     suppressEmailServiceIfDisabled(strapi);
 
+    const uploadsDir = path.join(strapi.dirs.static.public, 'uploads');
+    fs.mkdirSync(uploadsDir, { recursive: true });
+
+    const httpServer = strapi.server?.httpServer;
+    if (httpServer) {
+      httpServer.requestTimeout = 0;
+      httpServer.headersTimeout = 0;
+      httpServer.keepAliveTimeout = 5 * 60 * 1000;
+      strapi.log.info(
+        `[upload] HTTP timeouts — requestTimeout=${httpServer.requestTimeout}, headersTimeout=${httpServer.headersTimeout}, keepAliveTimeout=${httpServer.keepAliveTimeout}`
+      );
+    }
+
     // ── Serve AIA employee photos from cache dir (if configured) else direct mount ──
     // Route: GET /empimages/:filename  (e.g. /empimages/11000_06_06_2018_....JPG)
     // Serves from AIA_EMP_IMAGES_CACHE_DIR (persistent volume) when set,

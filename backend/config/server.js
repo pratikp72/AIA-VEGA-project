@@ -11,14 +11,18 @@ module.exports = ({ env }) => ({
   webhooks: {
     populateRelations: env.bool('WEBHOOKS_POPULATE_RELATIONS', false),
   },
-
+  // Trust X-Forwarded-* only in production (behind nginx / load balancer). Local dev unchanged.
+  proxy: {
+    koa: env('NODE_ENV') === 'production',
+  },
+  // Node default requestTimeout is 300000 ms (5 min) — too low for large video uploads.
   http: {
     serverOptions: {
-      requestTimeout: 30 * 60 * 1000, // 30 minutes in milliseconds
-      // keepAliveTimeout: 30 * 60 * 1000, // 30 minutes in milliseconds
+      requestTimeout: 0,
+      headersTimeout: 0,
+      keepAliveTimeout: 5 * 60 * 1000,
     },
   },
-
   watchIgnoreFiles: [
     '**/data/**',
   ],
