@@ -115,6 +115,7 @@ export function LearningTableView({
             render: (_, row) => getEmployeeIdValue(row, normalizedCompany) || '—',
             exportValue: (_, row) => getEmployeeIdValue(row, normalizedCompany) || '—',
           },
+          { key: 'email', label: 'Email' },
           { key: 'company', label: 'Company' },
           {
             key: 'locationValue',
@@ -132,7 +133,17 @@ export function LearningTableView({
             },
           },
           { key: 'progressPercent', label: 'Progress %', render: (v) => `${v ?? 0}%` },
-          { key: 'avgScore', label: 'Quiz Score' },
+          {
+            key: 'lastQuizScore',
+            label: 'Quiz Score',
+            render: (_, row) => row.lastQuizScore ?? row.avgScore ?? 0,
+            exportValue: (_, row) => row.lastQuizScore ?? row.avgScore ?? 0,
+          },
+          {
+            key: 'quizAttemptCount',
+            label: 'Quiz Attempts',
+            render: (v) => (v == null ? 0 : v),
+          },
           {
             key: 'courseCompletionTimeMinutes',
             label: 'Completion Time',

@@ -2,7 +2,7 @@
 // @ts-nocheck
 
 import React, { useCallback } from 'react';
-import { Box, Flex, Typography, SingleSelect, SingleSelectOption } from '@strapi/design-system';
+import { Box, Flex, Typography, SingleSelect, SingleSelectOption, Button } from '@strapi/design-system';
 import DateRangeInput from './DateRangeInput';
 
 // Parse YYYY-MM-DD string as local date (not UTC)
@@ -331,7 +331,7 @@ export function Filters({
               </Typography>
               <select
                 value={filterStatus || ''}
-                onChange={e => setFilterStatus(e.target.value)}
+                onChange={(e) => setFilterStatus(e.target.value)}
                 style={{
                   padding: '8px 12px',
                   border: '1px solid #dcdce4',

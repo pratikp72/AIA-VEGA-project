@@ -5,7 +5,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Page, Layouts } from '@strapi/admin/strapi-admin';
 import { Box, Flex, Typography, Loader } from '@strapi/design-system';
 import * as XLSX from 'xlsx';
-import { useAnalytics } from '../../hooks/useAnalytics';
+import { useAnalytics, isAbortError } from '../../hooks/useAnalytics';
 import { Filters } from '../../components/Filters';
 import { EmployeeSearch } from '../../components/EmployeeSearch';
 import { EmployeeDetailCard } from '../../components/EmployeeDetailCard';
@@ -14,6 +14,33 @@ import { LearningGlobalView } from './views/LearningGlobalView';
 import { LearningPersonalView } from './views/LearningPersonalView';
 
 const dedupeList = (arr) => (Array.isArray(arr) ? arr.filter((x, i, a) => a.findIndex((y) => String(y?.id ?? y) === String(x?.id ?? x)) === i) : []);
+
+function LearningAnalyticsLoadingOverlay({ label = 'Loading analytics…' }) {
+  return (
+    <Box
+      style={{
+        position: 'absolute',
+        inset: 0,
+        zIndex: 10,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: 'rgba(255, 255, 255, 0.72)',
+        borderRadius: '4px',
+        pointerEvents: 'auto',
+      }}
+      aria-live="polite"
+      aria-busy="true"
+    >
+      <Flex direction="column" alignItems="center" gap={3}>
+        <Loader>{label}</Loader>
+        <Typography variant="pi" textColor="neutral600">
+          Updating results for the selected filters…
+        </Typography>
+      </Flex>
+    </Box>
+  );
+}
 
 export default function LearningAnalyticsPage() {
   const [viewMode, setViewMode] = useState('global');
@@ -53,6 +80,8 @@ export default function LearningAnalyticsPage() {
   const coursesFetchKeyRef = useRef('');
   const coursesFetchInFlightRef = useRef(false);
   const departmentsFetchCompanyRef = useRef(null);
+  const loadRequestIdRef = useRef(0);
+  const lastFetchContextRef = useRef('');
   // Personal view: full list of enrolled courses so course dropdown shows all even when one course is selected
   const [personalEnrolledCourses, setPersonalEnrolledCourses] = useState([]);
   // Employee table: full list of rows for "All rows" export (when total > pageSize)
@@ -203,6 +232,7 @@ export default function LearningAnalyticsPage() {
 
   const [filterStatus, setFilterStatus] = useState('');
   const [filterTimeValue, setFilterTimeValue] = useState('');
+
   const handleExportAllPersonalData = useCallback(() => {
     if (!data || !employeeDetail) return;
     const wb = XLSX.utils.book_new();
@@ -253,89 +283,6 @@ export default function LearningAnalyticsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only re-run when company changes
   }, [company]);
 
-  const loadData = useCallback(() => {
-    setLoading(true);
-    setError(null);
-    const params = {};
-    if (dateFrom) params.dateFrom = dateFrom;
-    if (dateTo) params.dateTo = dateTo;
-    if (viewMode === 'global') {
-      if (department) params.department = department;
-      if (filterCourse) {
-        params.courseId = filterCourse;
-        if (filterQuizStatus) params.quizStatus = filterQuizStatus;
-        if (filterFeedbackGiven) params.feedbackGiven = filterFeedbackGiven;
-        if (filterModule !== '' && filterModule != null) {
-          const idx = Number(filterModule);
-          if (!Number.isNaN(idx) && idx >= 0) params.moduleIndex = idx;
-        }
-      }
-      if (filterCourseCategory) params.courseCategory = filterCourseCategory;
-      if (unitLocation) params.unitLocation = unitLocation;
-    }
-    if (viewMode === 'personal' && filterCourse) {
-      params.courseId = filterCourse;
-      if (filterModule !== '' && filterModule != null) {
-        // filterModule is now the module index (string) from dropdown value
-        const idx = Number(filterModule);
-        if (!Number.isNaN(idx) && idx >= 0) params.moduleIndex = idx;
-      }
-    }
-    if (company) params.company = company;
-    if (filterStatus) params.status = filterStatus;
-
-    let fetcher;
-    if (viewMode === 'table') {
-      const searchVal = searchDebounced?.trim();
-      const tableParams = {
-        ...params,
-        sortBy: 'courseCompletionTimeMinutes',
-        sortOrder,
-        page,
-        pageSize,
-        ...(searchVal && { search: searchVal }),
-        ...(filterCourse && { courseId: filterCourse }),
-        ...(filterStatus && { status: filterStatus }),
-        ...(filterTimeValue && { filterTimeValue }),
-      };
-      fetcher = () => fetchLearningEmployeeTable(tableParams);
-    } else if (viewMode === 'personal' && employeeId) {
-      fetcher = () => fetchLearningPersonal({ ...params, userId: employeeId });
-    } else {
-      fetcher = () => fetchLearningGlobal(params);
-    }
-
-    fetcher()
-      .then((res) => {
-        setData(res);
-        if (viewMode === 'table' && res?.rows && res?.total != null && res.total > (res.pageSize || 10)) {
-          const tableParams = {
-            ...params,
-            sortBy: 'courseCompletionTimeMinutes',
-            sortOrder,
-            page: 1,
-            pageSize: res.total,
-            ...(searchDebounced?.trim() && { search: searchDebounced.trim() }),
-            ...(filterCourse && { courseId: filterCourse }),
-            ...(filterStatus && { status: filterStatus }),
-            ...(filterTimeValue && { filterTimeValue }),
-          };
-          if (dateFrom) tableParams.dateFrom = dateFrom;
-          if (dateTo) tableParams.dateTo = dateTo;
-          if (company) tableParams.company = company;
-          fetchLearningEmployeeTable(tableParams)
-            .then((full) => setAllEmployeeRows(full?.rows || []))
-            .catch(() => setAllEmployeeRows([]));
-        } else if (viewMode === 'table' && res?.rows) {
-          setAllEmployeeRows(res.rows || []);
-        } else {
-          setAllEmployeeRows([]);
-        }
-      })
-      .catch((err) => setError(err.message))
-      .finally(() => setLoading(false));
-  }, [viewMode, employeeId, dateFrom, dateTo, department, company, searchDebounced, sortOrder, page, pageSize, filterCourse, filterModule, filterStatus, filterTimeValue, filterCourseCategory, unitLocation, filterQuizStatus, filterFeedbackGiven, courseModules]);
-
   useEffect(() => {
     if (viewMode === 'table') setPage(1);
   }, [viewMode, searchDebounced, company]);
@@ -363,13 +310,152 @@ export default function LearningAnalyticsPage() {
   }, [data, viewMode, selectedCourseForModules]);
 
   useEffect(() => {
-    if (viewMode === 'table' || viewMode === 'global' || (viewMode === 'personal' && employeeId)) {
-      loadData();
-    } else {
+    const shouldLoad =
+      viewMode === 'table' ||
+      viewMode === 'global' ||
+      (viewMode === 'personal' && employeeId);
+
+    if (!shouldLoad) {
+      loadRequestIdRef.current += 1;
+      lastFetchContextRef.current = '';
       setData(null);
+      setAllEmployeeRows([]);
       setLoading(false);
+      setError(null);
+      return undefined;
     }
-  }, [viewMode, employeeId, dateFrom, dateTo, department, company, searchDebounced, sortOrder, page, pageSize, filterCourse, filterModule, filterStatus, filterTimeValue, filterCourseCategory, unitLocation, filterQuizStatus, filterFeedbackGiven]);
+
+    const requestId = loadRequestIdRef.current + 1;
+    loadRequestIdRef.current = requestId;
+    const abortController = new AbortController();
+    const isStale = () => loadRequestIdRef.current !== requestId;
+    const fetchOptions = { signal: abortController.signal };
+
+    const fetchContextKey = `${viewMode}:${employeeId || ''}`;
+    if (lastFetchContextRef.current !== fetchContextKey) {
+      setData(null);
+      setAllEmployeeRows([]);
+      lastFetchContextRef.current = fetchContextKey;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    const params = {};
+    if (dateFrom) params.dateFrom = dateFrom;
+    if (dateTo) params.dateTo = dateTo;
+    if (viewMode === 'global') {
+      if (department) params.department = department;
+      if (filterCourse) {
+        params.courseId = filterCourse;
+        if (filterQuizStatus) params.quizStatus = filterQuizStatus;
+        if (filterFeedbackGiven) params.feedbackGiven = filterFeedbackGiven;
+        if (filterModule !== '' && filterModule != null) {
+          const idx = Number(filterModule);
+          if (!Number.isNaN(idx) && idx >= 0) params.moduleIndex = idx;
+        }
+      }
+      if (filterCourseCategory) params.courseCategory = filterCourseCategory;
+      if (unitLocation) params.unitLocation = unitLocation;
+    }
+    if (viewMode === 'personal' && filterCourse) {
+      params.courseId = filterCourse;
+      if (filterModule !== '' && filterModule != null) {
+        const idx = Number(filterModule);
+        if (!Number.isNaN(idx) && idx >= 0) params.moduleIndex = idx;
+      }
+    }
+    if (company) params.company = company;
+    if (filterStatus) params.status = filterStatus;
+
+    let tableParams = null;
+    let fetchPromise;
+    if (viewMode === 'table') {
+      const searchVal = searchDebounced?.trim();
+      tableParams = {
+        ...params,
+        sortBy: 'courseCompletionTimeMinutes',
+        sortOrder,
+        page,
+        pageSize,
+        ...(searchVal && { search: searchVal }),
+        ...(filterCourse && { courseId: filterCourse }),
+        ...(filterStatus && { status: filterStatus }),
+        ...(filterTimeValue && { filterTimeValue }),
+      };
+      fetchPromise = fetchLearningEmployeeTable(tableParams, fetchOptions);
+    } else if (viewMode === 'personal' && employeeId) {
+      fetchPromise = fetchLearningPersonal({ ...params, userId: employeeId }, fetchOptions);
+    } else {
+      fetchPromise = fetchLearningGlobal(params, fetchOptions);
+    }
+
+    const syncAllEmployeeRows = async (res) => {
+      if (isStale() || viewMode !== 'table') {
+        if (!isStale() && viewMode !== 'table') setAllEmployeeRows([]);
+        return;
+      }
+      if (res?.rows && res?.total != null && res.total > (res.pageSize || 10)) {
+        const fullParams = {
+          ...tableParams,
+          page: 1,
+          pageSize: res.total,
+        };
+        try {
+          const full = await fetchLearningEmployeeTable(fullParams, fetchOptions);
+          if (isStale()) return;
+          setAllEmployeeRows(full?.rows || []);
+        } catch (err) {
+          if (isAbortError(err) || isStale()) return;
+          setAllEmployeeRows(res.rows || []);
+        }
+      } else if (res?.rows) {
+        setAllEmployeeRows(res.rows || []);
+      } else {
+        setAllEmployeeRows([]);
+      }
+    };
+
+    fetchPromise
+      .then((res) => {
+        if (isStale()) return;
+        setData(res);
+        setLoading(false);
+        void syncAllEmployeeRows(res);
+      })
+      .catch((err) => {
+        if (isStale() || isAbortError(err)) return;
+        setError(err.message || 'Failed to load analytics');
+        setLoading(false);
+      })
+      .finally(() => {
+        if (!isStale()) setLoading(false);
+      });
+
+    return () => {
+      abortController.abort();
+    };
+  }, [
+    viewMode,
+    employeeId,
+    dateFrom,
+    dateTo,
+    department,
+    company,
+    searchDebounced,
+    sortOrder,
+    page,
+    pageSize,
+    filterCourse,
+    filterModule,
+    filterStatus,
+    filterTimeValue,
+    filterCourseCategory,
+    unitLocation,
+    filterQuizStatus,
+    filterFeedbackGiven,
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- fetchLearning* stable via useCallback; omit to avoid reload loop on setData
+  ]);
 
   const kpis = data?.kpis || {};
   const quiz = data?.quiz || {};
@@ -385,128 +471,136 @@ export default function LearningAnalyticsPage() {
       />
       <Layouts.Content>
         <Box paddingLeft={8} paddingRight={8} paddingTop={6} paddingBottom={8}>
-          <Filters
-            viewMode={viewMode}
-            onViewModeChange={setViewMode}
-            dateFrom={dateFrom}
-            dateTo={dateTo}
-            onDateFromChange={setDateFrom}
-            onDateToChange={setDateTo}
-            department={department}
-            onDepartmentChange={setDepartment}
-            departments={departments}
-            company={company}
-            onCompanyChange={setCompany}
-            showEmployeeSelector
-            showEmployeeTable
-            search={search}
-            onSearchChange={setSearch}
-            filterCourse={filterCourse}
-            setFilterCourse={setFilterCourse}
-            filterModule={filterModule}
-            setFilterModule={setFilterModule}
-            moduleOptions={moduleOptions}
-            courses={viewMode === 'personal' ? (employeeId && personalCourseOptions !== null ? personalCourseOptions : []) : courses}
-            filterStatus={filterStatus}
-            setFilterStatus={setFilterStatus}
-            filterTimeValue={filterTimeValue}
-            setFilterTimeValue={setFilterTimeValue}
-            filterCourseCategory={filterCourseCategory}
-            setFilterCourseCategory={setFilterCourseCategory}
-            unitLocation={unitLocation}
-            onUnitLocationChange={setUnitLocation}
-            unitLocations={unitLocations}
-            filterQuizStatus={filterQuizStatus}
-            setFilterQuizStatus={setFilterQuizStatus}
-            filterFeedbackGiven={filterFeedbackGiven}
-            setFilterFeedbackGiven={setFilterFeedbackGiven}
+          <Box
+            style={{
+              pointerEvents: loading ? 'none' : 'auto',
+              opacity: loading ? 0.72 : 1,
+              transition: 'opacity 0.15s ease',
+            }}
+            aria-busy={loading}
           >
-            <EmployeeSearch value={employeeId} onChange={setEmployeeId} onEmployeeFound={setEmployeeDetail} company={company} />
-          </Filters>
-
-          {loading && (
-            <Flex justifyContent="center" padding={8}>
-              <Loader>Loading analytics...</Loader>
-            </Flex>
-          )}
+            <Filters
+              viewMode={viewMode}
+              onViewModeChange={setViewMode}
+              dateFrom={dateFrom}
+              dateTo={dateTo}
+              onDateFromChange={setDateFrom}
+              onDateToChange={setDateTo}
+              department={department}
+              onDepartmentChange={setDepartment}
+              departments={departments}
+              company={company}
+              onCompanyChange={setCompany}
+              showEmployeeSelector
+              showEmployeeTable
+              search={search}
+              onSearchChange={setSearch}
+              filterCourse={filterCourse}
+              setFilterCourse={setFilterCourse}
+              filterModule={filterModule}
+              setFilterModule={setFilterModule}
+              moduleOptions={moduleOptions}
+              courses={viewMode === 'personal' ? (employeeId && personalCourseOptions !== null ? personalCourseOptions : []) : courses}
+              filterStatus={filterStatus}
+              setFilterStatus={setFilterStatus}
+              filterTimeValue={filterTimeValue}
+              setFilterTimeValue={setFilterTimeValue}
+              filterCourseCategory={filterCourseCategory}
+              setFilterCourseCategory={setFilterCourseCategory}
+              unitLocation={unitLocation}
+              onUnitLocationChange={setUnitLocation}
+              unitLocations={unitLocations}
+              filterQuizStatus={filterQuizStatus}
+              setFilterQuizStatus={setFilterQuizStatus}
+              filterFeedbackGiven={filterFeedbackGiven}
+              setFilterFeedbackGiven={setFilterFeedbackGiven}
+            >
+              <EmployeeSearch value={employeeId} onChange={setEmployeeId} onEmployeeFound={setEmployeeDetail} company={company} />
+            </Filters>
+          </Box>
 
           {error && (
-            <Box padding={4} background="danger100" hasRadius marginBottom={4}>
+            <Box padding={4} background="danger100" hasRadius marginBottom={4} marginTop={4}>
               <Typography textColor="danger700">{error}</Typography>
             </Box>
           )}
 
-          {!loading && data && viewMode === 'table' && (
-            <LearningTableView
-              data={data}
-              allRows={allEmployeeRows}
-              search={search}
-              filterCourse={filterCourse}
-              company={company}
-              sortOrder={sortOrder}
-              setSortOrder={setSortOrder}
-              setPage={setPage}
-              setPageSize={setPageSize}
-            />
-          )}
+          <Box position="relative" marginTop={4} style={{ minHeight: loading || data ? '240px' : undefined }}>
+            {loading && <LearningAnalyticsLoadingOverlay />}
 
-          {!loading && data && viewMode !== 'table' && (
-            <>
-              {isPersonal && employeeDetail && (
-                <EmployeeDetailCard employee={employeeDetail} />
-              )}
-              {viewMode === 'global' && (
-                <LearningGlobalView
-                  data={data}
-                  courseContentViewType={courseContentViewType}
-                  setCourseContentViewType={setCourseContentViewType}
-                  kpis={kpis}
-                  live={data?.live}
-                  quiz={quiz}
-                  filterCourse={filterCourse}
-                  filterModule={filterModule}
-                  courseModules={courseModules}
-                  moduleDetailPage={moduleDetailPage}
-                  moduleDetailPageSize={moduleDetailPageSize}
-                  setModuleDetailPage={setModuleDetailPage}
-                  setModuleDetailPageSize={setModuleDetailPageSize}
-                />
-              )}
-              {viewMode === 'personal' && (
-                <LearningPersonalView
-                  data={data}
-                  employeeDetail={employeeDetail}
-                  filterCourse={filterCourse}
-                  filterModule={filterModule}
-                  courseModules={courseModules}
-                  kpis={kpis}
-                  live={data?.live}
-                  quiz={quiz}
-                  courseProgressPage={courseProgressPage}
-                  courseProgressPageSize={courseProgressPageSize}
-                  setCourseProgressPage={setCourseProgressPage}
-                  setCourseProgressPageSize={setCourseProgressPageSize}
-                  onExport={handleExportAllPersonalData}
-                />
-              )}
-            </>
-          )}
+            {data && viewMode === 'table' && (
+              <LearningTableView
+                data={data}
+                allRows={allEmployeeRows}
+                search={search}
+                filterCourse={filterCourse}
+                company={company}
+                sortOrder={sortOrder}
+                setSortOrder={setSortOrder}
+                setPage={setPage}
+                setPageSize={setPageSize}
+              />
+            )}
 
-          {!loading && !data && viewMode === 'table' && (
-            <Box padding={6} background="neutral100" hasRadius>
-              <Typography textColor="neutral600">
-                No employees found. Try adjusting filters or search.
-              </Typography>
-            </Box>
-          )}
+            {data && viewMode !== 'table' && (
+              <>
+                {isPersonal && employeeDetail && (
+                  <EmployeeDetailCard employee={employeeDetail} />
+                )}
+                {viewMode === 'global' && (
+                  <LearningGlobalView
+                    data={data}
+                    courseContentViewType={courseContentViewType}
+                    setCourseContentViewType={setCourseContentViewType}
+                    kpis={kpis}
+                    live={data?.live}
+                    quiz={quiz}
+                    filterCourse={filterCourse}
+                    filterModule={filterModule}
+                    courseModules={courseModules}
+                    moduleDetailPage={moduleDetailPage}
+                    moduleDetailPageSize={moduleDetailPageSize}
+                    setModuleDetailPage={setModuleDetailPage}
+                    setModuleDetailPageSize={setModuleDetailPageSize}
+                    company={company}
+                  />
+                )}
+                {viewMode === 'personal' && (
+                  <LearningPersonalView
+                    data={data}
+                    employeeDetail={employeeDetail}
+                    filterCourse={filterCourse}
+                    filterModule={filterModule}
+                    courseModules={courseModules}
+                    kpis={kpis}
+                    live={data?.live}
+                    quiz={quiz}
+                    courseProgressPage={courseProgressPage}
+                    courseProgressPageSize={courseProgressPageSize}
+                    setCourseProgressPage={setCourseProgressPage}
+                    setCourseProgressPageSize={setCourseProgressPageSize}
+                    onExport={handleExportAllPersonalData}
+                  />
+                )}
+              </>
+            )}
 
-          {!loading && !data && viewMode === 'personal' && !employeeId && (
-            <Box padding={6} background="neutral100" hasRadius>
-              <Typography textColor="neutral600">
-                Search for an employee by ID or email to view personal learning analytics.
-              </Typography>
-            </Box>
-          )}
+            {!loading && !data && viewMode === 'table' && (
+              <Box padding={6} background="neutral100" hasRadius>
+                <Typography textColor="neutral600">
+                  No employees found. Try adjusting filters or search.
+                </Typography>
+              </Box>
+            )}
+
+            {!loading && !data && viewMode === 'personal' && !employeeId && (
+              <Box padding={6} background="neutral100" hasRadius>
+                <Typography textColor="neutral600">
+                  Search for an employee by ID or email to view personal learning analytics.
+                </Typography>
+              </Box>
+            )}
+          </Box>
         </Box>
       </Layouts.Content>
     </Page.Main>

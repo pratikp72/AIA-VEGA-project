@@ -11,6 +11,14 @@ module.exports = ({ env }) => ({
   webhooks: {
     populateRelations: env.bool('WEBHOOKS_POPULATE_RELATIONS', false),
   },
+
+  http: {
+    serverOptions: {
+      requestTimeout: 30 * 60 * 1000, // 30 minutes in milliseconds
+      // keepAliveTimeout: 30 * 60 * 1000, // 30 minutes in milliseconds
+    },
+  },
+
   watchIgnoreFiles: [
     '**/data/**',
   ],

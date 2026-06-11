@@ -25,6 +25,7 @@ function getQueryParams(ctx) {
     pageSize: ctx.query.pageSize || ctx.query.page_size,
     courseId: ctx.query.courseId || ctx.query.course_id,
     status: ctx.query.status,
+    dropOffOnly: ctx.query.dropOffOnly || ctx.query.drop_off_only,
     filterTimeValue: ctx.query.filterTimeValue || ctx.query.filter_time_value,
     filterTimeMin: ctx.query.filterTimeMin || ctx.query.filter_time_min,
     filterTimeMax: ctx.query.filterTimeMax || ctx.query.filter_time_max,

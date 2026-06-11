@@ -67,6 +67,7 @@ module.exports = ({ strapi }) => {
         completionFunnel: [],
         quiz: { passRate: 0, avgScore: 0, totalAttempts: 0, passed: 0, failed: 0 },
         moduleDetailTable: [],
+        dropOffEnrollments: [],
       });
       try {
         const params = getQueryParams(ctx);
