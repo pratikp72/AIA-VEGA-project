@@ -443,6 +443,100 @@ module.exports = ({ strapi }) => {
     return [...set];
   }
 
+  async function resolveAnalyticsUserId(params) {
+    if (params.userId == null || params.userId === '') return null;
+    if (typeof params.userId === 'number' && !Number.isNaN(params.userId)) {
+      return params.userId;
+    }
+    const str = String(params.userId).trim();
+    const parsed = parseInt(str, 10);
+    if (!Number.isNaN(parsed) && String(parsed) === str) {
+      return parsed;
+    }
+    const u = await strapi.db.query('plugin::users-permissions.user').findOne({
+      where: { documentId: str },
+      select: ['id'],
+    });
+    return u?.id ?? null;
+  }
+
+  function applyUserCreatedAtFilter(userWhere, params) {
+    if (!params.dateFrom && !params.dateTo) return;
+    const from = normalizeDateBound(params.dateFrom, false);
+    const to = normalizeDateBound(params.dateTo, true);
+    if (!from && !to) return;
+    userWhere.createdAt = {};
+    if (from) userWhere.createdAt.$gte = from;
+    if (to) userWhere.createdAt.$lte = to;
+  }
+
+  /**
+   * User pool for analytics filters: company, department, unit location, employee, optional account created date.
+   */
+  self._buildUserScopeWhere = async function (params = {}, options = {}) {
+    const { applyCreatedAtFilter = false } = options;
+    const numericId = await resolveAnalyticsUserId(params);
+    if (params.userId != null && params.userId !== '') {
+      if (numericId == null) return null;
+      const userWhere = { id: numericId, blocked: { $ne: true } };
+      if (applyCreatedAtFilter) applyUserCreatedAtFilter(userWhere, params);
+      return userWhere;
+    }
+
+    const companyVal = params.company && String(params.company).trim() && !/^all\s*companies?$/i.test(String(params.company));
+    const userWhere = { blocked: { $ne: true } };
+    if (companyVal) {
+      const c = String(params.company).trim().toLowerCase();
+      userWhere.company = c === 'vega' ? 'Vega' : c === 'aia' ? 'AIA' : String(params.company).trim();
+    }
+
+    if (params.department) {
+      try {
+        const deptId = params.department;
+        const isNumeric = typeof deptId === 'number' || /^\d+$/.test(String(deptId));
+        const deptRow = isNumeric
+          ? await strapi.db.query('api::department.department').findOne({
+              where: { id: Number(deptId) },
+              select: ['name'],
+            })
+          : await strapi.db.query('api::department.department').findOne({
+              where: { documentId: String(deptId) },
+              select: ['name'],
+            });
+        if (deptRow?.name) userWhere.department = { $eqi: deptRow.name };
+      } catch (e) {
+        strapi.log.warn('_buildUserScopeWhere: resolve department failed', e?.message);
+      }
+    }
+
+    if (params.unitLocation) {
+      try {
+        const locId = params.unitLocation;
+        const isNumeric = typeof locId === 'number' || /^\d+$/.test(String(locId));
+        const locRow = isNumeric
+          ? await strapi.db.query('api::work-location.work-location').findOne({
+              where: { id: Number(locId) },
+              select: ['name'],
+            })
+          : await strapi.db.query('api::work-location.work-location').findOne({
+              where: { documentId: String(locId) },
+              select: ['name'],
+            });
+        if (locRow?.name) {
+          userWhere.$or = [
+            { working_location: { $containsi: locRow.name } },
+            { branch: { $containsi: locRow.name } },
+          ];
+        }
+      } catch (e) {
+        strapi.log.warn('_buildUserScopeWhere: resolve work location failed', e?.message);
+      }
+    }
+
+    if (applyCreatedAtFilter) applyUserCreatedAtFilter(userWhere, params);
+    return userWhere;
+  };
+
   /** Build shared where for activity log queries (date, company, department, unitLocation, activityType, userId). Uses relation "user" and activity_log.company so filters work with Strapi 5. Excludes Course, Quiz, Feedback from all activity data. Excludes page_view_started (zero-duration) from KPI/chart/log queries so visit counts are not doubled. */
   self._buildActivityWhere = async function (params = {}) {
     const where = {};
@@ -493,23 +587,8 @@ module.exports = ({ strapi }) => {
     /* When newsId is selected: do NOT filter by activity_description - frontend often sends generic "News".
        Show all News activity; likes column will show Yes/No for the selected news. */
 
+    const numericId = await resolveAnalyticsUserId(params);
     if (params.userId != null && params.userId !== '') {
-      let numericId = null;
-      if (typeof params.userId === 'number' && !Number.isNaN(params.userId)) {
-        numericId = params.userId;
-      } else {
-        const str = String(params.userId).trim();
-        const parsed = parseInt(str, 10);
-        if (!Number.isNaN(parsed) && String(parsed) === str) {
-          numericId = parsed;
-        } else {
-          const u = await strapi.db.query('plugin::users-permissions.user').findOne({
-            where: { documentId: str },
-            select: ['id'],
-          });
-          numericId = u?.id ?? null;
-        }
-      }
       if (numericId == null) return null;
       where.user = { id: numericId };
       return where;
@@ -517,56 +596,8 @@ module.exports = ({ strapi }) => {
 
     const companyVal = params.company && String(params.company).trim() && !/^all\s*companies?$/i.test(String(params.company));
     if (params.unitLocation || params.department || companyVal) {
-      const userWhere = { blocked: { $ne: true } };
-      if (companyVal) {
-        const c = String(params.company).trim().toLowerCase();
-        userWhere.company = c === 'vega' ? 'Vega' : c === 'aia' ? 'AIA' : String(params.company).trim();
-      }
-
-      if (params.department) {
-        try {
-          const deptId = params.department;
-          const isNumeric = typeof deptId === 'number' || /^\d+$/.test(String(deptId));
-          const deptRow = isNumeric
-            ? await strapi.db.query('api::department.department').findOne({
-                where: { id: Number(deptId) },
-                select: ['name'],
-              })
-            : await strapi.db.query('api::department.department').findOne({
-                where: { documentId: String(deptId) },
-                select: ['name'],
-              });
-          if (deptRow?.name) userWhere.department = { $eqi: deptRow.name };
-        } catch (e) {
-          strapi.log.warn('_buildActivityWhere: resolve department failed', e?.message);
-        }
-      }
-
-      if (params.unitLocation) {
-        try {
-          const locId = params.unitLocation;
-          const isNumeric = typeof locId === 'number' || /^\d+$/.test(String(locId));
-          const locRow = isNumeric
-            ? await strapi.db.query('api::work-location.work-location').findOne({
-                where: { id: Number(locId) },
-                select: ['name'],
-              })
-            : await strapi.db.query('api::work-location.work-location').findOne({
-                where: { documentId: String(locId) },
-                select: ['name'],
-              });
-          if (locRow?.name) {
-            // AIA users are mapped by `branch`, Vega users by `working_location`.
-            userWhere.$or = [
-              { working_location: { $containsi: locRow.name } },
-              { branch: { $containsi: locRow.name } },
-            ];
-          }
-        } catch (e) {
-          strapi.log.warn('_buildActivityWhere: resolve work location failed', e?.message);
-        }
-      }
-
+      const userWhere = await self._buildUserScopeWhere(params);
+      if (userWhere === null) return null;
       const usersMatch = await strapi.db.query('plugin::users-permissions.user').findMany({
         where: userWhere,
         select: ['id'],

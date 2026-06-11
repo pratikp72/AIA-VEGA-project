@@ -2,6 +2,8 @@
 
 'use strict';
 
+const { recordUserLastLogin } = require('../../utils/record-user-last-login');
+
 /**
  * users-permissions plugin extension.
  *
@@ -41,6 +43,23 @@ module.exports = (plugin) => {
     plugin.controllers.user.create = async function create(ctx) {
       coerceEmail(ctx);
       return originalCreateUser(ctx);
+    };
+  }
+
+  const originalAuthCallback = plugin.controllers?.auth?.callback?.bind(plugin.controllers.auth);
+  if (originalAuthCallback) {
+    plugin.controllers.auth.callback = async function authCallback(ctx) {
+      await originalAuthCallback(ctx);
+      const userId = ctx.body?.user?.id;
+      if (!userId) return;
+      const status = ctx.status || ctx.response?.status;
+      if (status && status >= 400) return;
+      try {
+        const lastLogin = await recordUserLastLogin(strapi, userId);
+        if (ctx.body?.user && lastLogin) ctx.body.user.last_login = lastLogin;
+      } catch (e) {
+        strapi.log.warn('[last_login] users-permissions callback update failed:', e?.message);
+      }
     };
   }
 

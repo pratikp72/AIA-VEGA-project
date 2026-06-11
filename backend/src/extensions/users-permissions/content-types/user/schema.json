@@ -312,6 +312,9 @@
       "required": true,
       "default": true
     },
+    "last_login": {
+      "type": "datetime"
+    },
     "age": {
       "type": "string",
       "conditions": {

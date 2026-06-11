@@ -15,7 +15,13 @@ export function StatCard({ label, value, subtext = null, colorIndex = 0, action 
       borderColor="neutral200"
       borderWidth="1px"
       borderStyle="solid"
-      style={{ borderLeftWidth: '4px', borderLeftColor: accentColor }}
+      style={{
+        borderLeftWidth: '4px',
+        borderLeftColor: accentColor,
+        width: '100%',
+        height: '100%',
+        boxSizing: 'border-box',
+      }}
     >
       <Flex alignItems="flex-start" justifyContent="space-between" gap={2}>
         <Typography variant="sigma" textColor="neutral600" fontWeight="regular">
@@ -27,15 +33,37 @@ export function StatCard({ label, value, subtext = null, colorIndex = 0, action 
           </Button>
         )}
       </Flex>
-      <Flex alignItems="baseline" gap={1} wrap="wrap" style={{ marginTop: 4 }}>
-        <Typography variant="alpha" fontWeight="bold" as="p" style={{ fontSize: '1.75rem', color: accentColor }}>
+      <Flex
+        alignItems="baseline"
+        gap={2}
+        wrap="nowrap"
+        style={{ marginTop: 4, minHeight: '2.25rem' }}
+      >
+        <Typography
+          variant="alpha"
+          fontWeight="bold"
+          as="span"
+          style={{ fontSize: '1.75rem', color: accentColor, flexShrink: 0, lineHeight: 1.1 }}
+        >
           {value ?? '—'}
         </Typography>
-        {subtext && (
-          <Typography variant="pi" textColor="neutral500" style={{ fontSize: '12px' }}>
+        {subtext && String(subtext).trim() ? (
+          <Typography
+            variant="pi"
+            textColor="neutral500"
+            as="span"
+            style={{
+              fontSize: '11px',
+              lineHeight: 1.2,
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              minWidth: 0,
+            }}
+          >
             {subtext}
           </Typography>
-        )}
+        ) : null}
       </Flex>
     </Box>
   );
