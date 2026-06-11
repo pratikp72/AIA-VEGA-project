@@ -1,0 +1,41 @@
+# Reference nginx config for Strapi large media uploads (give this file to DevOps).
+# Without these settings, uploads often fail or hang around 60s–300s even when Node is fixed.
+#
+# Paste inside the server { } block that proxies to Strapi (e.g. upstream on port 1337).
+
+client_max_body_size 2560M;
+client_body_timeout 3600s;
+client_header_timeout 3600s;
+send_timeout 3600s;
+
+location / {
+    proxy_pass http://127.0.0.1:1337;
+    proxy_http_version 1.1;
+
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+
+    # Stream the body to Strapi instead of buffering the whole file in nginx first.
+    proxy_request_buffering off;
+
+    proxy_connect_timeout 3600s;
+    proxy_send_timeout 3600s;
+    proxy_read_timeout 3600s;
+}
+
+# Admin media library uses POST /upload (not under /api).
+location /upload {
+    proxy_pass http://127.0.0.1:1337;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_request_buffering off;
+    client_max_body_size 2560M;
+    proxy_connect_timeout 3600s;
+    proxy_send_timeout 3600s;
+    proxy_read_timeout 3600s;
+}
