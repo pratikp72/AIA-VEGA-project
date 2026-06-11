@@ -141,23 +141,23 @@ export function LearningGlobalView({
         </Button>
       </Flex>
 
-      <Flex gap={4} marginBottom={6} wrap="wrap">
-        <Box style={{ flex: '1 1 200px', minWidth: 160 }}>
+      <Flex gap={4} marginBottom={6} wrap="wrap" alignItems="stretch">
+        <Box style={{ flex: '1 1 200px', minWidth: 160, display: 'flex' }}>
           <StatCard label="Total Course" value={kpis.totalCourses ?? 0} colorIndex={0} />
         </Box>
-        <Box style={{ flex: '1 1 200px', minWidth: 160 }}>
+        <Box style={{ flex: '1 1 200px', minWidth: 160, display: 'flex' }}>
           <StatCard label="Total Enrollment" value={kpis.totalEnrollments ?? kpis.totalAssignments ?? 0} colorIndex={1} />
         </Box>
-        <Box style={{ flex: '1 1 200px', minWidth: 160 }}>
+        <Box style={{ flex: '1 1 200px', minWidth: 160, display: 'flex' }}>
           <StatCard label="Completion Rate" value={`${kpis.completionRate ?? 0}%`} colorIndex={2} />
         </Box>
-        <Box style={{ flex: '1 1 200px', minWidth: 160 }}>
+        <Box style={{ flex: '1 1 200px', minWidth: 160, display: 'flex' }}>
           <StatCard label="Avg Learning Time" value={`${kpis.avgTimeSpentMinutes ?? 0} min`} subtext="per enrollment" colorIndex={2} />
         </Box>
-        <Box style={{ flex: '1 1 200px', minWidth: 160 }}>
+        <Box style={{ flex: '1 1 200px', minWidth: 160, display: 'flex' }}>
           <StatCard label="Avg Quiz Score" value={kpis.avgQuizScore ?? quiz?.avgScore ?? 0} colorIndex={3} />
         </Box>
-        <Box style={{ flex: '1 1 200px', minWidth: 160 }}>
+        <Box style={{ flex: '1 1 200px', minWidth: 160, display: 'flex' }}>
           <StatCard
             label="Drop Off Rate"
             value={`${kpis.dropOffRate ?? 0}%`}
@@ -170,7 +170,7 @@ export function LearningGlobalView({
             }}
           />
         </Box>
-        <Box style={{ flex: '1 1 200px', minWidth: 160 }}>
+        <Box style={{ flex: '1 1 200px', minWidth: 160, display: 'flex' }}>
           <StatCard label="Completed Course" value={kpis.completedCourse ?? 0} colorIndex={5} />
         </Box>
       </Flex>

@@ -12,18 +12,18 @@ export function OverallContentView({ data }) {
   const kpis = data?.kpis || {};
   return (
     <>
-      <Flex gap={4} marginBottom={6} wrap="wrap">
-        <Box style={{ flex: '1 1 200px', minWidth: 180 }}>
-          <StatCard label="Total Users" value={kpis.totalUsers} subtext="" colorIndex={0} />
+      <Flex gap={4} marginBottom={6} wrap="wrap" alignItems="stretch">
+        <Box style={{ flex: '1 1 200px', minWidth: 180, display: 'flex' }}>
+          <StatCard label="Total Users" value={kpis.totalUsers} colorIndex={0} />
         </Box>
-        <Box style={{ flex: '1 1 200px', minWidth: 180 }}>
-          <StatCard label="Holidays" value={kpis.totalHolidays} subtext="" colorIndex={1} />
+        <Box style={{ flex: '1 1 200px', minWidth: 180, display: 'flex' }}>
+          <StatCard label="Holidays" value={kpis.totalHolidays} colorIndex={1} />
         </Box>
-        <Box style={{ flex: '1 1 200px', minWidth: 180 }}>
-          <StatCard label="News Items" value={kpis.totalNews} subtext="" colorIndex={2} />
+        <Box style={{ flex: '1 1 200px', minWidth: 180, display: 'flex' }}>
+          <StatCard label="News Items" value={kpis.totalNews} colorIndex={2} />
         </Box>
-        <Box style={{ flex: '1 1 200px', minWidth: 180 }}>
-          <StatCard label="Townhalls" value={kpis.totalTownhalls} subtext="" colorIndex={3} />
+        <Box style={{ flex: '1 1 200px', minWidth: 180, display: 'flex' }}>
+          <StatCard label="Townhalls" value={kpis.totalTownhalls} colorIndex={3} />
         </Box>
       </Flex>
 

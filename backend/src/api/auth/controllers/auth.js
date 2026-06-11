@@ -4,6 +4,7 @@
 const jwt = require('jsonwebtoken');
 const crypto = require('node:crypto');
 const nodemailer = require('nodemailer');
+const { recordUserLastLogin } = require('../../../utils/record-user-last-login');
 
 function createSmtpTransporter() {
   const host = String(process.env.SMTP_HOST || '').trim();
@@ -307,6 +308,8 @@ module.exports = {
         return ctx.unauthorized('Invalid credentials');
       }
 
+      const lastLogin = await recordUserLastLogin(strapi, user.id);
+
       // 3) Issue JWT using users-permissions jwt service
       const jwtService = strapi.plugin('users-permissions').service('jwt');
 
@@ -322,7 +325,7 @@ module.exports = {
 
       return ctx.send({
         jwt: token,
-        user: safeUser,
+        user: { ...safeUser, last_login: lastLogin },
       });
     } catch (err) {
       strapi.log.error('Custom /auth/login error:', err);

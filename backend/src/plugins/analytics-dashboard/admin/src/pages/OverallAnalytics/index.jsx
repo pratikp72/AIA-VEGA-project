@@ -31,7 +31,12 @@ export default function OverallAnalyticsPage() {
   const [unitLocations, setUnitLocations] = useState([]);
   const [activityLogData, setActivityLogData] = useState({ rows: [], total: 0, page: 1, pageSize: 10 });
   const [activityLogFullRows, setActivityLogFullRows] = useState([]);
-  const [activityKpis, setActivityKpis] = useState({ totalUser: 0, uniqueUser: 0, timeSpentMin: 0, avgTimeSpentMin: 0 });
+  const [activityKpis, setActivityKpis] = useState({
+    totalUser: 0,
+    uniqueUser: 0,
+    timeSpentMin: 0,
+    avgTimeSpentMin: 0,
+  });
   const [activityPagesStats, setActivityPagesStats] = useState({ topPagesByVisit: [], leastUsedPages: [] });
   const [activityLogPage, setActivityLogPage] = useState(1);
   const [activityLogPageSize, setActivityLogPageSize] = useState(10);
@@ -101,7 +106,12 @@ export default function OverallAnalyticsPage() {
       .then(([logData, kpis, pagesStats]) => {
         const data = logData || { rows: [], total: 0, page: 1, pageSize: 10 };
         setActivityLogData(data);
-        setActivityKpis(kpis || { totalUser: 0, uniqueUser: 0, timeSpentMin: 0, avgTimeSpentMin: 0 });
+        setActivityKpis(kpis || {
+          totalUser: 0,
+          uniqueUser: 0,
+          timeSpentMin: 0,
+          avgTimeSpentMin: 0,
+        });
         setActivityPagesStats(pagesStats || { topPagesByVisit: [], leastUsedPages: [] });
         const total = data.total || 0;
         const pageSize = data.pageSize || 10;

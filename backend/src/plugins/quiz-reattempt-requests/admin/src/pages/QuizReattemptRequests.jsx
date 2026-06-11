@@ -2,6 +2,9 @@
  * Quiz Reattempt Requests – search, filter, pagination; Approve/Reject per row.
  */
 
+// @ts-nocheck
+
+
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Layouts } from '@strapi/strapi/admin';
 import {
