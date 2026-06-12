@@ -21,6 +21,9 @@ function createSmtpTransporter() {
     host,
     port,
     secure,
+    connectionTimeout: 15000,
+    greetingTimeout: 15000,
+    socketTimeout: 30000,
   };
 
   if (username && password) {
@@ -121,9 +124,11 @@ async function findAdminUserByEmail(email) {
 
 module.exports = {
   
-   async forgotPassword(ctx) {
+  async forgotPassword(ctx) {
   try {
-    const identifier = String(ctx.request?.body?.identifier || '').trim();
+    const identifier = String(
+      ctx.request?.body?.identifier || ctx.request?.body?.email || ''
+    ).trim();
     if (!identifier) {
       return ctx.badRequest('identifier is required', {
         errorCode: 'IDENTIFIER_REQUIRED',
@@ -194,9 +199,31 @@ module.exports = {
     });
   } catch (err) {
     strapi.log.error('forgotPassword error:', err);
-    return ctx.internalServerError('Unable to process forgot password request');
+    const msg = String(err?.message || err);
+    if (/SMTP_HOST is not configured/i.test(msg)) {
+      return ctx.internalServerError({
+        errorCode: 'SMTP_NOT_CONFIGURED',
+        message: 'Email service is not configured on the server.',
+        emailSent: false,
+      });
+    }
+    if (/ECONNREFUSED|ETIMEDOUT|EAUTH|ESOCKET|ENOTFOUND|certificate/i.test(msg)) {
+      ctx.status = 503;
+      return ctx.send({
+        errorCode: 'EMAIL_DELIVERY_FAILED',
+        message:
+          'Unable to send the reset email right now. Please try again later or contact IT support.',
+        emailSent: false,
+      });
+    }
+    return ctx.internalServerError({
+      errorCode: 'FORGOT_PASSWORD_FAILED',
+      message: 'Unable to process forgot password request',
+      emailSent: false,
+    });
   }
-}, 
+},
+
 
   async resetForgotPassword(ctx) {
     try {
