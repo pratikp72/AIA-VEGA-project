@@ -602,19 +602,43 @@ async function autoUnpublishOldAssignmentsForCourse(strapi, numericCourseId, new
   // Collect removed users across all old assignments
   const removedUserMap = new Map(); // userId → { id, email }
 
+  // Collect all user IDs from old assignments that are NOT in the new assignment
+  const removedUserIds = [];
   for (const oldAssignment of uniqueOldAssignments) {
-    // Collect users from Individual type old assignments
     if (oldAssignment.assignment_target_type === 'Individual') {
       const users = Array.isArray(oldAssignment.individual_user) ? oldAssignment.individual_user : [];
       for (const u of users) {
         const uid = Number(u?.id);
         if (!uid) continue;
-        if (!newUserIdSet.has(uid)) {
+        if (!newUserIdSet.has(uid) && !removedUserMap.has(uid)) {
+          // Store with whatever email we have — we'll fetch full details below
           removedUserMap.set(uid, { id: uid, email: u.email || null });
+          removedUserIds.push(uid);
         }
       }
     }
+  }
 
+  // Fetch full user details (email) for removed users — relation populate
+  // may not return email due to users-permissions field restrictions
+  if (removedUserIds.length > 0) {
+    try {
+      const fullUsers = await strapi.db.query('plugin::users-permissions.user').findMany({
+        where: { id: { $in: removedUserIds } },
+        select: ['id', 'email', 'username'],
+      });
+      for (const u of (fullUsers || [])) {
+        if (u?.id) {
+          removedUserMap.set(Number(u.id), { id: Number(u.id), email: u.email || null });
+        }
+      }
+    } catch (e) {
+      strapi.log.warn(`${LOG} failed fetching removed user details: ${e?.message || e}`);
+    }
+  }
+
+  // Now mark all old assignments as unpublished (separate loop from user collection)
+  for (const oldAssignment of uniqueOldAssignments) {
     // Mark this old assignment as unpublished.
     // Use direct DB updateMany on ALL rows of this document (both draft and published).
     // We intentionally avoid strapi.documents().update() here because it can
