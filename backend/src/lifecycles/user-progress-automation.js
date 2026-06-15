@@ -615,21 +615,23 @@ async function autoUnpublishOldAssignmentsForCourse(strapi, numericCourseId, new
       }
     }
 
-    // Mark this old assignment as unpublished
+    // Mark this old assignment as unpublished.
+    // Use direct DB updateMany on ALL rows of this document (both draft and published).
+    // We intentionally avoid strapi.documents().update() here because it can
+    // trigger Strapi's publish lifecycle and unintentionally change the document status.
     try {
       if (oldAssignment.documentId) {
-        await strapi.documents(COURSE_ASSIGNMENT_UID).update({
-          documentId: oldAssignment.documentId,
+        await strapi.db.query(COURSE_ASSIGNMENT_UID).updateMany({
+          where: { documentId: oldAssignment.documentId },
           data: { active: 'unpublished' },
-          status: 'published',
         });
       } else {
-        await strapi.db.query(COURSE_ASSIGNMENT_UID).update({
+        await strapi.db.query(COURSE_ASSIGNMENT_UID).updateMany({
           where: { id: oldAssignment.id },
           data: { active: 'unpublished' },
         });
       }
-      strapi.log.info(`${LOG} marked assignment id=${oldAssignment.id} as unpublished (courseId=${numericCourseId})`);
+      strapi.log.info(`${LOG} marked assignment documentId=${oldAssignment.documentId ?? oldAssignment.id} as unpublished (courseId=${numericCourseId})`);
     } catch (e) {
       strapi.log.warn(`${LOG} failed unpublishing assignment id=${oldAssignment.id}: ${e?.message || e}`);
     }
