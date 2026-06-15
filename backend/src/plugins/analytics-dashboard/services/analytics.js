@@ -833,10 +833,12 @@ module.exports = ({ strapi }) => {
     }
 
     // ── Active-assignment filter ─────────────────────────────────────────────
-    // When a specific course is selected, exclude progress records for users
-    // whose assignment for that course was replaced (marked active='unpublished').
-    if (params.courseId && String(params.courseId).trim()) {
-      try {
+    // Only include progress records for (user, course) pairs that have an
+    // active (published) Individual course-assignment.
+    // This applies whether or not a specific course filter is selected.
+    try {
+      if (params.courseId && String(params.courseId).trim()) {
+        // Course-specific filter: only users actively assigned to this course
         const activeIds = await getActivelyAssignedUserIdsForCourse(strapi, String(params.courseId).trim());
         if (activeIds.size > 0) {
           progresses = progresses.filter((p) => {
@@ -844,8 +846,39 @@ module.exports = ({ strapi }) => {
             return uid != null && activeIds.has(Number(uid));
           });
         }
-      } catch (_) {}
-    }
+      } else {
+        // Global filter (All Courses): build the full set of active (userId, courseId) pairs
+        const activeAssignments = await strapi.db.query('api::course-assignment.course-assignment').findMany({
+          where: { active: 'published', assignment_target_type: 'Individual' },
+          populate: {
+            courses: { select: ['id'] },
+            individual_user: { select: ['id'] },
+          },
+          limit: 50000,
+        });
+        // Build a Set of "userId::courseId" keys that are actively assigned
+        const activePairs = new Set();
+        for (const a of (activeAssignments || [])) {
+          const users = Array.isArray(a.individual_user) ? a.individual_user : [];
+          const courses = Array.isArray(a.courses) ? a.courses : [];
+          for (const u of users) {
+            for (const c of courses) {
+              if (u?.id != null && c?.id != null) {
+                activePairs.add(`${Number(u.id)}::${Number(c.id)}`);
+              }
+            }
+          }
+        }
+        if (activePairs.size > 0) {
+          progresses = progresses.filter((p) => {
+            const uid = Number(p.user?.id ?? p.user_id ?? p.userId);
+            const cid = Number(p.course?.id ?? p.course_id ?? p.courseId);
+            if (!uid || !cid) return false;
+            return activePairs.has(`${uid}::${cid}`);
+          });
+        }
+      }
+    } catch (_) {}
     // ─────────────────────────────────────────────────────────────────────────
 
     // Apply filters in memory (date, company, department, course, course category, location, quiz status, feedback given)
@@ -2774,6 +2807,39 @@ module.exports = ({ strapi }) => {
         ];
       }
     }
+
+    // ── Global active-assignment filter ─────────────────────────────────────
+    // When no specific course is selected, restrict the user pool to only users
+    // who have at least one active (published) Individual course-assignment.
+    // This prevents removed users (with unpublished assignments) from appearing.
+    if (!params.courseId) {
+      try {
+        const activeAssignments = await strapi.db.query('api::course-assignment.course-assignment').findMany({
+          where: { active: 'published', assignment_target_type: 'Individual' },
+          populate: { individual_user: { select: ['id'] } },
+          limit: 50000,
+        });
+        const activeUserIds = new Set();
+        for (const a of (activeAssignments || [])) {
+          const users = Array.isArray(a.individual_user) ? a.individual_user : [];
+          for (const u of users) {
+            if (u?.id != null) activeUserIds.add(Number(u.id));
+          }
+        }
+        if (activeUserIds.size > 0) {
+          if (typeof userWhere.id === 'number') {
+            if (!activeUserIds.has(userWhere.id)) {
+              return { rows: [], total: 0, page: 1, pageSize: Math.min(100, Math.max(5, parseInt(params.pageSize, 10) || 10)) };
+            }
+          } else if (userWhere.id && Array.isArray(userWhere.id.$in)) {
+            userWhere.id.$in = userWhere.id.$in.filter((id) => activeUserIds.has(Number(id)));
+          } else {
+            userWhere.id = { $in: [...activeUserIds] };
+          }
+        }
+      } catch (_) {}
+    }
+    // ─────────────────────────────────────────────────────────────────────────
 
     // When course filter is selected, constrain the user pool to only users enrolled in that course
     // BEFORE pagination. This ensures course filter works even without search text.
