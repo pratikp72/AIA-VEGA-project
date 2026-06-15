@@ -117,6 +117,50 @@ async function loadVideoProgressByUser(strapi, userIds, courseIdStr) {
   return byUser;
 }
 
+/**
+ * Returns the Set of numeric user IDs that have an ACTIVE (active='published')
+ * course-assignment for the given course (by numeric ID or documentId string).
+ *
+ * This is used by analytics to exclude users whose assignment was replaced
+ * by a newer assignment (old assignment marked active='unpublished').
+ *
+ * Only Individual-type assignments are checked because all assignment types
+ * (Dept, Location, Workflow) automatically create per-user Individual entries.
+ */
+async function getActivelyAssignedUserIdsForCourse(strapi, courseIdStr) {
+  const activeUserIds = new Set();
+  if (!courseIdStr) return activeUserIds;
+
+  const trimmed = String(courseIdStr).trim();
+  const isNumeric = /^\d+$/.test(trimmed);
+
+  const courseWhere = isNumeric
+    ? { id: Number(trimmed) }
+    : { documentId: trimmed };
+
+  let assignments = [];
+  try {
+    assignments = await strapi.db.query('api::course-assignment.course-assignment').findMany({
+      where: {
+        active: 'published',
+        assignment_target_type: 'Individual',
+        courses: courseWhere,
+      },
+      populate: { individual_user: { select: ['id'] } },
+      limit: 50000,
+    });
+  } catch (_) {}
+
+  (assignments || []).forEach((a) => {
+    const users = Array.isArray(a.individual_user) ? a.individual_user : [];
+    users.forEach((u) => {
+      if (u?.id != null) activeUserIds.add(Number(u.id));
+    });
+  });
+
+  return activeUserIds;
+}
+
 async function loadLearningActivityTimeByUser(strapi, userIds, params = {}) {
   const result = new Map();
   if (!Array.isArray(userIds) || userIds.length === 0) return result;
@@ -787,6 +831,23 @@ module.exports = ({ strapi }) => {
     } catch (e) {
       strapi.log.warn('Learning global: db.query failed:', e?.message);
     }
+
+    // ── Active-assignment filter ─────────────────────────────────────────────
+    // When a specific course is selected, exclude progress records for users
+    // whose assignment for that course was replaced (marked active='unpublished').
+    if (params.courseId && String(params.courseId).trim()) {
+      try {
+        const activeIds = await getActivelyAssignedUserIdsForCourse(strapi, String(params.courseId).trim());
+        if (activeIds.size > 0) {
+          progresses = progresses.filter((p) => {
+            const uid = p.user?.id ?? p.user_id ?? p.userId;
+            return uid != null && activeIds.has(Number(uid));
+          });
+        }
+      } catch (_) {}
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
     // Apply filters in memory (date, company, department, course, course category, location, quiz status, feedback given)
     const wantCompany = params.company && String(params.company).trim() && !/^all\s*companies?$/i.test(String(params.company));
     const wantDept = params.department && String(params.department).trim() && String(params.department).toLowerCase() !== 'all';
@@ -2750,6 +2811,17 @@ module.exports = ({ strapi }) => {
           });
         } catch (_) {}
       }
+
+      // ── Active-assignment filter ─────────────────────────────────────────
+      // Only show users who have an active (published) assignment for this course.
+      // Users whose assignment was replaced (marked unpublished) are excluded.
+      const activeAssignedIds = await getActivelyAssignedUserIdsForCourse(strapi, courseIdStr);
+      if (activeAssignedIds.size > 0) {
+        for (const uid of [...enrolledUserIds]) {
+          if (!activeAssignedIds.has(uid)) enrolledUserIds.delete(uid);
+        }
+      }
+      // ─────────────────────────────────────────────────────────────────────
 
       const enrolled = [...enrolledUserIds].filter((n) => Number.isFinite(n));
       if (enrolled.length === 0) {

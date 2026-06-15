@@ -164,6 +164,19 @@ module.exports = (strapi) => {
         <p style="font-size:13px;color:${GRAY_TEXT};margin:10px 0;">You may submit a new reattempt request after <strong>24 hours</strong> from the time of this notification.</p>
         <p style="font-size:12px;color:${GRAY_TEXT};margin:0;">We appreciate your commitment to learning and encourage you to continue your progress.</p>
       `;
+    } else if (type === 'course_unassigned') {
+      bodyContent = `
+        ${greeting}
+        <p style="font-size:15px;color:${BODY_TEXT};margin:0 0 10px;">
+          Your enrollment for the following course on the <strong style="color:${PRIMARY};">AIA-VEGA Learning Portal</strong> has been updated.
+        </p>
+        ${courseChip(ERROR, ERROR_LIGHT)}
+        <p style="font-size:14px;color:${GRAY_TEXT};margin:10px 0;">
+          You are no longer eligible for this course. This may be due to a change in your assignment or training plan.
+          If you believe this is an error or need further clarification, please reach out to your Learning &amp; Development team or your line manager.
+        </p>
+        <p style="font-size:12px;color:${GRAY_TEXT};margin:0;">We appreciate your commitment to learning and development.</p>
+      `;
     } else {
       bodyContent = `${greeting}<p style="font-size:15px;color:${BODY_TEXT};margin:0;">${message}</p>`;
     }

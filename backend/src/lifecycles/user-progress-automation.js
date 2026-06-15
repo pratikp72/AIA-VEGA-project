@@ -520,6 +520,157 @@ async function createUserProgressEntries(strapi, courseId, userIds) {
   if (created > 0) strapi.log.info('user-progress-automation: created %d user-progress entries', created);
 }
 
+/**
+ * When a new course-assignment is created for a course:
+ *  1. Find all OTHER published assignments for that same course (excluding the new one).
+ *  2. Mark them active='unpublished'.
+ *  3. Collect users covered by those OLD assignments who are NOT in the new assignment's user list.
+ *  4. Send those removed users a professional notification.
+ */
+async function autoUnpublishOldAssignmentsForCourse(strapi, numericCourseId, newAssignmentId, newAssignmentDocumentId, newUserIds, notifUtil) {
+  const LOG = '[course-assignment-unpublish]';
+
+  // Build the exclusion condition.
+  // In Strapi v5 draftAndPublish, one "document" has TWO db rows (draft + published)
+  // with different numeric ids but the same documentId.
+  // We must exclude ALL rows belonging to the new document, not just the one row
+  // returned in result.id — otherwise the draft row gets matched and unpublished too.
+  //
+  // Strategy: use documentId exclusion if available, plus exclude by id as fallback.
+  // Also exclude any row with id >= newAssignmentId to avoid race conditions where
+  // the new row is still being processed.
+  let excludeWhere;
+  if (newAssignmentDocumentId) {
+    // Get ALL row ids that belong to this new document (draft + published)
+    let allRowsOfNewDoc = [];
+    try {
+      allRowsOfNewDoc = await strapi.db.query(COURSE_ASSIGNMENT_UID).findMany({
+        where: { documentId: newAssignmentDocumentId },
+        select: ['id'],
+      });
+    } catch (_) {}
+    const idsToExclude = [...new Set([
+      newAssignmentId,
+      ...allRowsOfNewDoc.map((r) => r.id).filter(Boolean),
+    ])];
+    excludeWhere = { id: { $notIn: idsToExclude } };
+  } else {
+    excludeWhere = { id: { $ne: newAssignmentId } };
+  }
+
+  // Find all OTHER published Individual assignments for this course
+  let oldAssignments = [];
+  try {
+    // Build where clause with all exclusions combined
+    const oldWhere = Object.assign(
+      {},
+      excludeWhere,
+      { active: 'published', courses: { id: numericCourseId } },
+      newAssignmentDocumentId ? { documentId: { $ne: newAssignmentDocumentId } } : {}
+    );
+    oldAssignments = await strapi.db.query(COURSE_ASSIGNMENT_UID).findMany({
+      where: oldWhere,
+      populate: {
+        individual_user: { select: ['id', 'email'] },
+        departments:     { select: ['name'] },
+        work_locations:  { select: ['name'] },
+        company:         { select: ['name'] },
+      },
+      limit: 1000,
+    });
+  } catch (e) {
+    strapi.log.warn(`${LOG} failed fetching old assignments courseId=${numericCourseId}: ${e?.message || e}`);
+    return;
+  }
+
+  if (oldAssignments.length === 0) return;
+
+  // Deduplicate by documentId — db.query returns both draft and published rows
+  // for the same Strapi v5 document. We only need to process each document once.
+  const seenDocIds = new Set();
+  const uniqueOldAssignments = [];
+  for (const a of oldAssignments) {
+    const key = a.documentId ? `doc:${a.documentId}` : `id:${a.id}`;
+    if (seenDocIds.has(key)) continue;
+    seenDocIds.add(key);
+    uniqueOldAssignments.push(a);
+  }
+
+  // Build set of user IDs in the NEW assignment for fast lookup
+  const newUserIdSet = new Set(newUserIds.map((id) => Number(id)));
+
+  // Collect removed users across all old assignments
+  const removedUserMap = new Map(); // userId → { id, email }
+
+  for (const oldAssignment of uniqueOldAssignments) {
+    // Collect users from Individual type old assignments
+    if (oldAssignment.assignment_target_type === 'Individual') {
+      const users = Array.isArray(oldAssignment.individual_user) ? oldAssignment.individual_user : [];
+      for (const u of users) {
+        const uid = Number(u?.id);
+        if (!uid) continue;
+        if (!newUserIdSet.has(uid)) {
+          removedUserMap.set(uid, { id: uid, email: u.email || null });
+        }
+      }
+    }
+
+    // Mark this old assignment as unpublished
+    try {
+      if (oldAssignment.documentId) {
+        await strapi.documents(COURSE_ASSIGNMENT_UID).update({
+          documentId: oldAssignment.documentId,
+          data: { active: 'unpublished' },
+          status: 'published',
+        });
+      } else {
+        await strapi.db.query(COURSE_ASSIGNMENT_UID).update({
+          where: { id: oldAssignment.id },
+          data: { active: 'unpublished' },
+        });
+      }
+      strapi.log.info(`${LOG} marked assignment id=${oldAssignment.id} as unpublished (courseId=${numericCourseId})`);
+    } catch (e) {
+      strapi.log.warn(`${LOG} failed unpublishing assignment id=${oldAssignment.id}: ${e?.message || e}`);
+    }
+  }
+
+  if (removedUserMap.size === 0) {
+    strapi.log.info(`${LOG} no removed users to notify (courseId=${numericCourseId})`);
+    return;
+  }
+
+  // Fetch course title for the notification
+  let courseTitle = 'a course';
+  try {
+    const course = await strapi.db.query(COURSE_UID).findOne({
+      where: { id: numericCourseId },
+      select: ['title'],
+    });
+    if (course?.title) courseTitle = course.title;
+  } catch (_) {}
+
+  // Send notification to removed users
+  if (notifUtil) {
+    try {
+      const removedUsersForNotif = [...removedUserMap.values()];
+      await notifUtil.sendNotification(
+        'course_unassigned',
+        'Course Enrollment Update',
+        `You are no longer eligible for "${courseTitle}". Your enrollment has been updated. Please contact your administrator if you have any questions.`,
+        removedUsersForNotif,
+        { courseId: numericCourseId },
+        []
+      );
+      strapi.log.info(
+        `${LOG} sent unenrollment notification to ${removedUsersForNotif.length} user(s) for courseId=${numericCourseId}`
+      );
+    } catch (notifErr) {
+      strapi.log.warn(`${LOG} notification failed: ${notifErr?.message || notifErr}`);
+    }
+  }
+}
+
 function registerUserProgressLifecycles(strapi) {
   strapi.db.lifecycles.subscribe({
     models: [COURSE_ASSIGNMENT_UID],
@@ -591,6 +742,31 @@ function registerUserProgressLifecycles(strapi) {
           await createUserProgressEntries(strapi, numericCourseId, userIds);
           if (targetType !== 'Individual') {
             await createCourseAssignmentEntries(strapi, numericCourseId, userIds, due_date, active, payload?.company);
+          }
+
+          // ── Auto-unpublish older assignments for the same course ───────────
+          // When a new assignment is created for a course, mark all OTHER published
+          // assignments for that same course as active='unpublished'.
+          // Then notify any users who were in the old assignments but are NOT in
+          // the new one that they are no longer enrolled.
+          try {
+            // Small delay to ensure the new document is fully committed before
+            // we query for "other" assignments — prevents the new entry from
+            // being included in the old-assignments query.
+            await new Promise((r) => setTimeout(r, 300));
+            await autoUnpublishOldAssignmentsForCourse(
+              strapi,
+              numericCourseId,
+              result.id,          // the new assignment db row id
+              result.documentId,  // the new assignment documentId — used to exclude ALL rows of this document
+              userIds,            // users in the NEW assignment
+              notifUtil
+            );
+          } catch (unpubErr) {
+            strapi.log.error(
+              'user-progress-automation: autoUnpublishOldAssignments failed courseId=%s: %s',
+              numericCourseId, unpubErr?.message || unpubErr
+            );
           }
         }
       } catch (e) {
