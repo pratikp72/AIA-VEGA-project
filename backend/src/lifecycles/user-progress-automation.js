@@ -583,7 +583,12 @@ async function autoUnpublishOldAssignmentsForCourse(strapi, numericCourseId, new
     return;
   }
 
-  if (oldAssignments.length === 0) return;
+  if (oldAssignments.length === 0) {
+    strapi.log.info(`${LOG} no old published assignments found for courseId=${numericCourseId} (newAssignmentId=${newAssignmentId})`);
+    return;
+  }
+
+  strapi.log.info(`${LOG} found ${oldAssignments.length} old assignment rows for courseId=${numericCourseId}`);
 
   // Deduplicate by documentId — db.query returns both draft and published rows
   // for the same Strapi v5 document. We only need to process each document once.
@@ -596,22 +601,23 @@ async function autoUnpublishOldAssignmentsForCourse(strapi, numericCourseId, new
     uniqueOldAssignments.push(a);
   }
 
+  strapi.log.info(`${LOG} unique old assignments: ${uniqueOldAssignments.length}`);
+
   // Build set of user IDs in the NEW assignment for fast lookup
   const newUserIdSet = new Set(newUserIds.map((id) => Number(id)));
+  strapi.log.info(`${LOG} new assignment has ${newUserIdSet.size} users: [${[...newUserIdSet].join(',')}]`);
 
-  // Collect removed users across all old assignments
+  // STEP 1: Collect removed users BEFORE marking assignments unpublished
   const removedUserMap = new Map(); // userId → { id, email }
-
-  // Collect all user IDs from old assignments that are NOT in the new assignment
   const removedUserIds = [];
   for (const oldAssignment of uniqueOldAssignments) {
+    strapi.log.info(`${LOG} checking old assignment id=${oldAssignment.id} type=${oldAssignment.assignment_target_type} users=${JSON.stringify((oldAssignment.individual_user || []).map(u => u?.id))}`);
     if (oldAssignment.assignment_target_type === 'Individual') {
       const users = Array.isArray(oldAssignment.individual_user) ? oldAssignment.individual_user : [];
       for (const u of users) {
         const uid = Number(u?.id);
         if (!uid) continue;
         if (!newUserIdSet.has(uid) && !removedUserMap.has(uid)) {
-          // Store with whatever email we have — we'll fetch full details below
           removedUserMap.set(uid, { id: uid, email: u.email || null });
           removedUserIds.push(uid);
         }
@@ -619,14 +625,16 @@ async function autoUnpublishOldAssignmentsForCourse(strapi, numericCourseId, new
     }
   }
 
-  // Fetch full user details (email) for removed users — relation populate
-  // may not return email due to users-permissions field restrictions
+  strapi.log.info(`${LOG} removed users before DB fetch: ${removedUserIds.length} ids=[${removedUserIds.join(',')}]`);
+
+  // Fetch full user details (id + email) directly — relation populate may not return email
   if (removedUserIds.length > 0) {
     try {
       const fullUsers = await strapi.db.query('plugin::users-permissions.user').findMany({
         where: { id: { $in: removedUserIds } },
         select: ['id', 'email', 'username'],
       });
+      strapi.log.info(`${LOG} fetched ${fullUsers.length} full user records for removed users`);
       for (const u of (fullUsers || [])) {
         if (u?.id) {
           removedUserMap.set(Number(u.id), { id: Number(u.id), email: u.email || null });
@@ -637,12 +645,42 @@ async function autoUnpublishOldAssignmentsForCourse(strapi, numericCourseId, new
     }
   }
 
-  // Now mark all old assignments as unpublished (separate loop from user collection)
+  // STEP 2: Send notification to removed users BEFORE marking assignments unpublished
+  if (removedUserMap.size > 0) {
+    let courseTitle = 'a course';
+    try {
+      const course = await strapi.db.query(COURSE_UID).findOne({
+        where: { id: numericCourseId },
+        select: ['title'],
+      });
+      if (course?.title) courseTitle = course.title;
+    } catch (_) {}
+
+    if (notifUtil) {
+      try {
+        const removedUsersForNotif = [...removedUserMap.values()];
+        strapi.log.info(`${LOG} sending unenrollment notification to ${removedUsersForNotif.length} user(s): ${JSON.stringify(removedUsersForNotif.map(u => u.id))}`);
+        await notifUtil.sendNotification(
+          'course_unassigned',
+          'Course Enrollment Update',
+          `You are no longer eligible for "${courseTitle}". Your enrollment has been updated. Please contact your administrator if you have any questions.`,
+          removedUsersForNotif,
+          { courseId: numericCourseId },
+          []
+        );
+        strapi.log.info(`${LOG} unenrollment notification sent to ${removedUsersForNotif.length} user(s) for courseId=${numericCourseId}`);
+      } catch (notifErr) {
+        strapi.log.warn(`${LOG} notification failed: ${notifErr?.message || notifErr}`);
+      }
+    } else {
+      strapi.log.warn(`${LOG} notifUtil not available — skipping notification`);
+    }
+  } else {
+    strapi.log.info(`${LOG} no removed users to notify for courseId=${numericCourseId}`);
+  }
+
+  // STEP 3: Mark all old assignments as unpublished AFTER notification is sent
   for (const oldAssignment of uniqueOldAssignments) {
-    // Mark this old assignment as unpublished.
-    // Use direct DB updateMany on ALL rows of this document (both draft and published).
-    // We intentionally avoid strapi.documents().update() here because it can
-    // trigger Strapi's publish lifecycle and unintentionally change the document status.
     try {
       if (oldAssignment.documentId) {
         await strapi.db.query(COURSE_ASSIGNMENT_UID).updateMany({
@@ -655,44 +693,9 @@ async function autoUnpublishOldAssignmentsForCourse(strapi, numericCourseId, new
           data: { active: 'unpublished' },
         });
       }
-      strapi.log.info(`${LOG} marked assignment documentId=${oldAssignment.documentId ?? oldAssignment.id} as unpublished (courseId=${numericCourseId})`);
+      strapi.log.info(`${LOG} marked assignment documentId=${oldAssignment.documentId ?? oldAssignment.id} as unpublished`);
     } catch (e) {
       strapi.log.warn(`${LOG} failed unpublishing assignment id=${oldAssignment.id}: ${e?.message || e}`);
-    }
-  }
-
-  if (removedUserMap.size === 0) {
-    strapi.log.info(`${LOG} no removed users to notify (courseId=${numericCourseId})`);
-    return;
-  }
-
-  // Fetch course title for the notification
-  let courseTitle = 'a course';
-  try {
-    const course = await strapi.db.query(COURSE_UID).findOne({
-      where: { id: numericCourseId },
-      select: ['title'],
-    });
-    if (course?.title) courseTitle = course.title;
-  } catch (_) {}
-
-  // Send notification to removed users
-  if (notifUtil) {
-    try {
-      const removedUsersForNotif = [...removedUserMap.values()];
-      await notifUtil.sendNotification(
-        'course_unassigned',
-        'Course Enrollment Update',
-        `You are no longer eligible for "${courseTitle}". Your enrollment has been updated. Please contact your administrator if you have any questions.`,
-        removedUsersForNotif,
-        { courseId: numericCourseId },
-        []
-      );
-      strapi.log.info(
-        `${LOG} sent unenrollment notification to ${removedUsersForNotif.length} user(s) for courseId=${numericCourseId}`
-      );
-    } catch (notifErr) {
-      strapi.log.warn(`${LOG} notification failed: ${notifErr?.message || notifErr}`);
     }
   }
 }
