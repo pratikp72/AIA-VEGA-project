@@ -325,15 +325,43 @@ module.exports = createCoreController('api::course-assignment.course-assignment'
       } catch { /* keep default */ }
     }
 
-    // Admin → User: only the assigned user gets notification (bell) + email
+    // Admin → User: only incomplete users get notification (bell) + email
     const meta = { courseId, assignedBy, level };
+    let eligibleUsers = users;
+    if (courseId && users.length > 0) {
+      const numericCourseId = Number(courseId);
+      const resolvedId = !Number.isNaN(numericCourseId) && numericCourseId > 0
+        ? numericCourseId
+        : (await strapi.db.query('api::course.course').findOne({
+          where: { documentId: String(courseId) },
+          select: ['id'],
+        }))?.id;
+      if (resolvedId) {
+        const completedRows = await strapi.db.query('api::user-progress.user-progress').findMany({
+          where: {
+            course: resolvedId,
+            user: { $in: users.map((u) => u.id).filter(Boolean) },
+            progress_status: 'Completed',
+          },
+          select: ['id'],
+          populate: { user: { select: ['id'] } },
+        });
+        const completedIds = new Set(
+          (completedRows || []).map((row) => row.user?.id ?? row.user).filter(Boolean).map(Number)
+        );
+        eligibleUsers = users.filter((u) => u?.id && !completedIds.has(Number(u.id)));
+      }
+    }
+
+    const emailEnabled = typeof util.isEmailEnabled === 'function' ? util.isEmailEnabled() : false;
     await util.sendNotification(
       'course_assigned',
       'Course Assigned',
       `"${courseTitle}" has been assigned to you.`,
-      users,
+      eligibleUsers,
       meta,
-      [] // no admin roles: notification goes only to user's bell + email
+      [],
+      { sendEmail: emailEnabled, sendSocket: true }
     );
     return ctx.send({ message: 'Course assigned and notifications sent.' });
   },

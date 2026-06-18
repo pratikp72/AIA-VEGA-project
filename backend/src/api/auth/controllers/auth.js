@@ -5,6 +5,11 @@ const jwt = require('jsonwebtoken');
 const crypto = require('node:crypto');
 const nodemailer = require('nodemailer');
 const { recordUserLastLogin } = require('../../../utils/record-user-last-login');
+const {
+  isEmailEnabled,
+  buildForgotPasswordEmailHtml,
+  buildForgotPasswordPlainText,
+} = require('../../../utils/email-template');
 
 function createSmtpTransporter() {
   const host = String(process.env.SMTP_HOST || '').trim();
@@ -46,6 +51,10 @@ function buildResetPasswordUrl(resetCode) {
 }
 
 async function sendForgotPasswordEmail({ to, username, resetCode }) {
+  if (!isEmailEnabled()) {
+    throw new Error('EMAIL_ENABLED is false');
+  }
+
   const transporter = createSmtpTransporter();
   const fromAddress =
     String(process.env.EMAIL_FROM || '').trim() ||
@@ -54,23 +63,17 @@ async function sendForgotPasswordEmail({ to, username, resetCode }) {
   const replyToAddress = String(process.env.EMAIL_REPLY_TO || '').trim() || fromAddress;
   const resetUrl = buildResetPasswordUrl(resetCode);
   const safeName = String(username || '').trim() || 'User';
+  const subject = 'Reset your password';
+  const text = buildForgotPasswordPlainText({ username: safeName, resetUrl });
+  const html = buildForgotPasswordEmailHtml({ username: safeName, resetUrl });
 
   await transporter.sendMail({
     from: fromAddress,
     to,
     replyTo: replyToAddress,
-    subject: 'Reset your password',
-    text:
-      `Hello ${safeName},\n\n` +
-      `We received a request to reset your password.\n` +
-      `Click the link below to set a new password:\n\n` +
-      `${resetUrl}\n\n` +
-      `If you did not request this, please ignore this email.\n`,
-    html:
-      `<p>Hello ${safeName},</p>` +
-      `<p>We received a request to reset your password.</p>` +
-      `<p><a href="${resetUrl}">Click here to set a new password</a></p>` +
-      `<p>If you did not request this, please ignore this email.</p>`,
+    subject,
+    text,
+    html,
   });
 }
 
@@ -185,6 +188,14 @@ module.exports = {
       data: { resetPasswordToken: resetCode },
     });
 
+    if (!isEmailEnabled()) {
+      return ctx.internalServerError({
+        errorCode: 'EMAIL_DISABLED',
+        message: 'Email service is disabled. Set EMAIL_ENABLED=true in server configuration.',
+        emailSent: false,
+      });
+    }
+
     await sendForgotPasswordEmail({
       to: email,
       username: user.username,
@@ -204,6 +215,13 @@ module.exports = {
       return ctx.internalServerError({
         errorCode: 'SMTP_NOT_CONFIGURED',
         message: 'Email service is not configured on the server.',
+        emailSent: false,
+      });
+    }
+    if (/EMAIL_ENABLED is false/i.test(msg)) {
+      return ctx.internalServerError({
+        errorCode: 'EMAIL_DISABLED',
+        message: 'Email service is disabled. Set EMAIL_ENABLED=true in server configuration.',
         emailSent: false,
       });
     }

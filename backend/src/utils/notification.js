@@ -1,6 +1,13 @@
 // @ts-nocheck
 'use strict';
 
+const {
+  isEmailEnabled: isEmailEnabledFromTemplate,
+  buildUserNotificationEmailHtml,
+  buildAdminNotificationEmailHtml,
+  buildAdminEmailPlainText,
+} = require('./email-template');
+
 /**
  * Event-based notification utility for Strapi v5.
  * Centralizes notification logic: DB + email + socket.io.
@@ -12,8 +19,7 @@ module.exports = (strapi) => {
   const USER_UID = 'plugin::users-permissions.user';
 
   function isEmailEnabled() {
-    const raw = String(process.env.EMAIL_ENABLED || 'false').trim().toLowerCase();
-    return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'on';
+    return isEmailEnabledFromTemplate();
   }
 
   /**
@@ -94,154 +100,6 @@ module.exports = (strapi) => {
     }
 
     return out;
-  }
-
-  /**
-   * Build a rich HTML email for portal user notifications.
-   * Colors match the AIA-VEGA portal theme: primary #9C2EDB, dark #080808.
-   */
-  function buildUserEmailHtml(type, title, message, meta = {}) {
-    const courseTitle = meta.courseTitle || (meta.courseId ? `Course #${meta.courseId}` : null);
-    const userName = meta.userName || null;
-
-    // Theme tokens (mirrors globals.css)
-    const PRIMARY       = '#9C2EDB';
-    const PRIMARY_LIGHT = '#F4E2FF';
-    const PRIMARY_DARK  = '#7a1fa8';
-    const DARK          = '#080808';
-    const SUCCESS       = '#22C55E';
-    const SUCCESS_LIGHT = '#F0FDF4';
-    const ERROR         = '#EF4444';
-    const ERROR_LIGHT   = '#FEE2E2';
-    const GRAY_BG       = '#F3F4F6';
-    const GRAY_TEXT     = '#585858';
-    const BODY_TEXT     = '#1f1f1f';
-
-    const greeting = `<p style="font-size:15px;color:${BODY_TEXT};margin:0 0 14px;">Hello${userName ? `, <strong>${userName}</strong>` : ''},</p>`;
-
-    const courseChip = (accentColor, bgColor) => courseTitle
-      ? `<div style="background:${bgColor};border-left:4px solid ${accentColor};border-radius:8px;padding:14px 18px;margin:20px 0;">
-           <p style="margin:0;font-size:14px;color:${BODY_TEXT};"><span style="color:${GRAY_TEXT};font-size:12px;text-transform:uppercase;letter-spacing:.5px;font-weight:600;">Course</span></p>
-           <p style="margin:4px 0 0;font-size:16px;font-weight:700;color:${DARK};">${courseTitle}</p>
-         </div>`
-      : '';
-
-    let bodyContent = '';
-
-    if (type === 'course_assigned') {
-      bodyContent = `
-        ${greeting}
-        <p style="font-size:15px;color:${BODY_TEXT};margin:0 0 10px;">
-          A new course has been assigned to you on the <strong style="color:${PRIMARY};">AIA-VEGA Learning Portal</strong>.
-        </p>
-        <p style="font-size:14px;color:${GRAY_TEXT};margin:10px 0;">Please log in to the portal and begin your learning journey. Complete the course before the due date to stay on track with your development goals.</p>
-        <div style="margin:24px 0;">
-          <a href="#" style="display:inline-block;background:${PRIMARY};color:#ffffff;font-size:14px;font-weight:600;padding:12px 28px;border-radius:8px;text-decoration:none;letter-spacing:0.3px;">Start Course →</a>
-        </div>
-        <p style="font-size:12px;color:${GRAY_TEXT};margin:0;">If you have any questions, please reach out to your Learning &amp; Development team.</p>
-      `;
-    } else if (type === 'quiz_reattempt_approved') {
-      bodyContent = `
-        ${greeting}
-        <p style="font-size:15px;color:${BODY_TEXT};margin:0 0 10px;">
-          Great news! Your quiz reattempt request has been <strong style="color:${SUCCESS};">approved</strong>.
-        </p>
-        ${courseChip(SUCCESS, SUCCESS_LIGHT)}
-        <p style="font-size:14px;color:${GRAY_TEXT};margin:10px 0;">You can now log back in to the portal and reattempt the quiz. We recommend reviewing the course material thoroughly before your next attempt to improve your score.</p>
-        <div style="margin:24px 0;">
-          <a href="#" style="display:inline-block;background:${PRIMARY};color:#ffffff;font-size:14px;font-weight:600;padding:12px 28px;border-radius:8px;text-decoration:none;letter-spacing:0.3px;">Reattempt Quiz →</a>
-        </div>
-        <p style="font-size:12px;color:${GRAY_TEXT};margin:0;">Best of luck! If you need any support, please contact the Learning &amp; Development team.</p>
-      `;
-    } else if (type === 'quiz_reattempt_rejected') {
-      bodyContent = `
-        ${greeting}
-        <p style="font-size:15px;color:${BODY_TEXT};margin:0 0 10px;">
-          We regret to inform you that your quiz reattempt request has been <strong style="color:${ERROR};">rejected</strong>.
-        </p>
-        ${courseChip(ERROR, ERROR_LIGHT)}
-        <p style="font-size:14px;color:${GRAY_TEXT};margin:10px 0;">If you believe this decision was made in error or would like further clarification, please reach out to your Learning &amp; Development team or your line manager.</p>
-        <p style="font-size:13px;color:${GRAY_TEXT};margin:10px 0;">You may submit a new reattempt request after <strong>24 hours</strong> from the time of this notification.</p>
-        <p style="font-size:12px;color:${GRAY_TEXT};margin:0;">We appreciate your commitment to learning and encourage you to continue your progress.</p>
-      `;
-    } else if (type === 'course_unassigned') {
-      bodyContent = `
-        ${greeting}
-        <p style="font-size:15px;color:${BODY_TEXT};margin:0 0 10px;">
-          Your enrollment for the following course on the <strong style="color:${PRIMARY};">AIA-VEGA Learning Portal</strong> has been updated.
-        </p>
-        ${courseChip(ERROR, ERROR_LIGHT)}
-        <p style="font-size:14px;color:${GRAY_TEXT};margin:10px 0;">
-          You are no longer eligible for this course. This may be due to a change in your assignment or training plan.
-          If you believe this is an error or need further clarification, please reach out to your Learning &amp; Development team or your line manager.
-        </p>
-        <p style="font-size:12px;color:${GRAY_TEXT};margin:0;">We appreciate your commitment to learning and development.</p>
-      `;
-    } else {
-      bodyContent = `${greeting}<p style="font-size:15px;color:${BODY_TEXT};margin:0;">${message}</p>`;
-    }
-
-    return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>${title}</title>
-</head>
-<body style="margin:0;padding:0;background:${GRAY_BG};font-family:Arial,Helvetica,sans-serif;-webkit-font-smoothing:antialiased;">
-  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:${GRAY_BG};padding:40px 16px;">
-    <tr><td align="center">
-      <table width="600" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;width:100%;">
-
-        <!-- Top logo bar -->
-        <tr>
-          <td style="background:${DARK};padding:20px 32px;border-radius:12px 12px 0 0;">
-            <table width="100%" cellpadding="0" cellspacing="0" border="0">
-              <tr>
-                <td>
-                  <p style="margin:0;font-size:18px;font-weight:700;color:#ffffff;letter-spacing:1px;">AIA <span style="color:${PRIMARY};font-weight:300;">|</span> VEGA</p>
-                  <p style="margin:2px 0 0;font-size:11px;color:#aaaaaa;letter-spacing:1.5px;text-transform:uppercase;">Learning Portal</p>
-                </td>
-              </tr>
-            </table>
-          </td>
-        </tr>
-
-        <!-- Purple accent stripe -->
-        <tr>
-          <td style="background:${PRIMARY};padding:0;height:4px;"></td>
-        </tr>
-
-        <!-- Title bar -->
-        <tr>
-          <td style="background:#ffffff;padding:22px 32px 0;border-top:none;">
-            <p style="margin:0;font-size:20px;font-weight:700;color:${DARK};">${title}</p>
-            <div style="width:40px;height:3px;background:${PRIMARY};border-radius:2px;margin:8px 0 0;"></div>
-          </td>
-        </tr>
-
-        <!-- Body -->
-        <tr>
-          <td style="background:#ffffff;padding:24px 32px 32px;">
-            ${bodyContent}
-          </td>
-        </tr>
-
-        <!-- Footer -->
-        <tr>
-          <td style="background:#f9fafb;padding:18px 32px;border-top:1px solid #e5e7eb;border-radius:0 0 12px 12px;">
-            <p style="margin:0;font-size:11px;color:#9ca3af;text-align:center;line-height:1.6;">
-              This is an automated message from the <strong>AIA-VEGA Learning Portal</strong>.<br>
-              Please do not reply to this email. For assistance, contact your HR or L&amp;D team.
-            </p>
-          </td>
-        </tr>
-
-      </table>
-    </td></tr>
-  </table>
-</body>
-</html>`;
   }
 
   /**
@@ -498,20 +356,10 @@ module.exports = (strapi) => {
   }
 
   /**
-   * Build a readable email body for admin notifications (includes user/course/news context from meta).
+   * Build a readable plain-text body for admin notifications.
    */
   function buildAdminEmailBody(title, message, meta = {}) {
-    const lines = [title, '', message];
-    if (meta.userName != null || meta.userId != null) {
-      lines.push('', `User: ${meta.userName || `ID ${meta.userId}`}`);
-    }
-    if (meta.courseTitle != null || meta.courseId != null) {
-      lines.push(`Course: ${meta.courseTitle || `ID ${meta.courseId}`}`);
-    }
-    if (meta.newsTitle != null || meta.newsId != null) {
-      lines.push(`News: ${meta.newsTitle || meta.newsId}`);
-    }
-    return lines.join('\n');
+    return buildAdminEmailPlainText(title, message, meta);
   }
 
   /**
@@ -561,7 +409,7 @@ module.exports = (strapi) => {
           },
         });
         if (shouldSendEmail && user?.email) {
-          const htmlBody = buildUserEmailHtml(type, title, message, enrichedMeta);
+          const htmlBody = buildUserNotificationEmailHtml(type, title, message, enrichedMeta);
           await sendEmail(user.email, title, message, htmlBody);
         }
         if (doSocket && strapi.$io) {
@@ -591,7 +439,8 @@ module.exports = (strapi) => {
           });
           if (shouldSendEmail && admin?.email) {
             const emailBody = buildAdminEmailBody(title, message, enrichedMeta);
-            await sendEmail(admin.email, title, emailBody);
+            const htmlBody = buildAdminNotificationEmailHtml(title, message, enrichedMeta);
+            await sendEmail(admin.email, title, emailBody, htmlBody);
           }
           if (doSocket && strapi.$io) {
             triggerAdminSocket([String(adminId)], { ...payload, id: notification?.id });
