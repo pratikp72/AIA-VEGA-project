@@ -1,10 +1,15 @@
 "use strict";
 
+const {
+  isEmailEnabled,
+  buildUserNotificationEmailHtml,
+  buildAdminNotificationEmailHtml,
+} = require('../../../utils/email-template');
+
 module.exports = ({ strapi }) => ({
 
   isEmailEnabled() {
-    const raw = String(process.env.EMAIL_ENABLED || 'false').trim().toLowerCase();
-    return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'on';
+    return isEmailEnabled();
   },
 
   async send({ type, title, message, toUser, fromUser, meta = {}, email = true, socket = true }) {
@@ -46,6 +51,7 @@ module.exports = ({ strapi }) => ({
             to: user.email,
             subject: title,
             text: message,
+            html: buildUserNotificationEmailHtml(type, title, message, meta),
           });
           console.log(`[EMAIL] ✅ Sent to: ${user.email}`);
         } catch (err) {
@@ -89,6 +95,7 @@ module.exports = ({ strapi }) => ({
             to: user.email,
             subject: title,
             text: message,
+            html: buildUserNotificationEmailHtml(type, title, message, meta),
           });
           console.log(`[EMAIL] ✅ Sent to: ${user.email}`);
         } catch (err) {
@@ -126,6 +133,7 @@ module.exports = ({ strapi }) => ({
               to: admin.email,
               subject: title,
               text: message,
+              html: buildAdminNotificationEmailHtml(title, message, meta),
             });
             console.log(`[EMAIL] ✅ Sent to admin: ${admin.email}`);
           } catch (err) {

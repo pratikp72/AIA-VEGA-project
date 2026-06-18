@@ -3,6 +3,7 @@
 'use strict';
 
 const { recordUserLastLogin } = require('../../utils/record-user-last-login');
+const customAuthController = require('../../api/auth/controllers/auth');
 
 /**
  * users-permissions plugin extension.
@@ -44,6 +45,12 @@ module.exports = (plugin) => {
       coerceEmail(ctx);
       return originalCreateUser(ctx);
     };
+  }
+
+  // users-permissions also registers POST /api/auth/forgot-password (expects { email }).
+  // Our flow uses employee ID ({ identifier }) and direct SMTP — override the built-in handler.
+  if (typeof customAuthController.forgotPassword === 'function') {
+    plugin.controllers.auth.forgotPassword = customAuthController.forgotPassword;
   }
 
   const originalAuthCallback = plugin.controllers?.auth?.callback?.bind(plugin.controllers.auth);

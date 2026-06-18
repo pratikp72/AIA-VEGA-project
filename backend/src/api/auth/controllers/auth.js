@@ -5,6 +5,11 @@ const jwt = require('jsonwebtoken');
 const crypto = require('node:crypto');
 const nodemailer = require('nodemailer');
 const { recordUserLastLogin } = require('../../../utils/record-user-last-login');
+const {
+  isEmailEnabled,
+  buildForgotPasswordEmailHtml,
+  buildForgotPasswordPlainText,
+} = require('../../../utils/email-template');
 
 function createSmtpTransporter() {
   const host = String(process.env.SMTP_HOST || '').trim();
@@ -21,6 +26,9 @@ function createSmtpTransporter() {
     host,
     port,
     secure,
+    connectionTimeout: 15000,
+    greetingTimeout: 15000,
+    socketTimeout: 30000,
   };
 
   if (username && password) {
@@ -43,6 +51,10 @@ function buildResetPasswordUrl(resetCode) {
 }
 
 async function sendForgotPasswordEmail({ to, username, resetCode }) {
+  if (!isEmailEnabled()) {
+    throw new Error('EMAIL_ENABLED is false');
+  }
+
   const transporter = createSmtpTransporter();
   const fromAddress =
     String(process.env.EMAIL_FROM || '').trim() ||
@@ -51,23 +63,17 @@ async function sendForgotPasswordEmail({ to, username, resetCode }) {
   const replyToAddress = String(process.env.EMAIL_REPLY_TO || '').trim() || fromAddress;
   const resetUrl = buildResetPasswordUrl(resetCode);
   const safeName = String(username || '').trim() || 'User';
+  const subject = 'Reset your password';
+  const text = buildForgotPasswordPlainText({ username: safeName, resetUrl });
+  const html = buildForgotPasswordEmailHtml({ username: safeName, resetUrl });
 
   await transporter.sendMail({
     from: fromAddress,
     to,
     replyTo: replyToAddress,
-    subject: 'Reset your password',
-    text:
-      `Hello ${safeName},\n\n` +
-      `We received a request to reset your password.\n` +
-      `Click the link below to set a new password:\n\n` +
-      `${resetUrl}\n\n` +
-      `If you did not request this, please ignore this email.\n`,
-    html:
-      `<p>Hello ${safeName},</p>` +
-      `<p>We received a request to reset your password.</p>` +
-      `<p><a href="${resetUrl}">Click here to set a new password</a></p>` +
-      `<p>If you did not request this, please ignore this email.</p>`,
+    subject,
+    text,
+    html,
   });
 }
 
@@ -121,9 +127,11 @@ async function findAdminUserByEmail(email) {
 
 module.exports = {
   
-   async forgotPassword(ctx) {
+  async forgotPassword(ctx) {
   try {
-    const identifier = String(ctx.request?.body?.identifier || '').trim();
+    const identifier = String(
+      ctx.request?.body?.identifier || ctx.request?.body?.email || ''
+    ).trim();
     if (!identifier) {
       return ctx.badRequest('identifier is required', {
         errorCode: 'IDENTIFIER_REQUIRED',
@@ -180,6 +188,14 @@ module.exports = {
       data: { resetPasswordToken: resetCode },
     });
 
+    if (!isEmailEnabled()) {
+      return ctx.internalServerError({
+        errorCode: 'EMAIL_DISABLED',
+        message: 'Email service is disabled. Set EMAIL_ENABLED=true in server configuration.',
+        emailSent: false,
+      });
+    }
+
     await sendForgotPasswordEmail({
       to: email,
       username: user.username,
@@ -194,9 +210,38 @@ module.exports = {
     });
   } catch (err) {
     strapi.log.error('forgotPassword error:', err);
-    return ctx.internalServerError('Unable to process forgot password request');
+    const msg = String(err?.message || err);
+    if (/SMTP_HOST is not configured/i.test(msg)) {
+      return ctx.internalServerError({
+        errorCode: 'SMTP_NOT_CONFIGURED',
+        message: 'Email service is not configured on the server.',
+        emailSent: false,
+      });
+    }
+    if (/EMAIL_ENABLED is false/i.test(msg)) {
+      return ctx.internalServerError({
+        errorCode: 'EMAIL_DISABLED',
+        message: 'Email service is disabled. Set EMAIL_ENABLED=true in server configuration.',
+        emailSent: false,
+      });
+    }
+    if (/ECONNREFUSED|ETIMEDOUT|EAUTH|ESOCKET|ENOTFOUND|certificate/i.test(msg)) {
+      ctx.status = 503;
+      return ctx.send({
+        errorCode: 'EMAIL_DELIVERY_FAILED',
+        message:
+          'Unable to send the reset email right now. Please try again later or contact IT support.',
+        emailSent: false,
+      });
+    }
+    return ctx.internalServerError({
+      errorCode: 'FORGOT_PASSWORD_FAILED',
+      message: 'Unable to process forgot password request',
+      emailSent: false,
+    });
   }
-}, 
+},
+
 
   async resetForgotPassword(ctx) {
     try {
