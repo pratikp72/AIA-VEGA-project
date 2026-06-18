@@ -6,7 +6,43 @@ const QUIZ_SUBMISSION_UID = 'api::quiz-submission.quiz-submission';
 
 let _creatingSubEntries = false;
 const _prevDueDateByAssignmentKey = new Map();
+const _pendingDueDateChangeDocumentIds = new Set();
+const _dueDateNotificationSentDocumentIds = new Set();
 
+function hasDueDateChangePending(documentId) {
+  return _pendingDueDateChangeDocumentIds.has(String(documentId || ''));
+}
+
+function consumeDueDateChangeForDocument(documentId) {
+  const key = String(documentId || '');
+  if (!_pendingDueDateChangeDocumentIds.has(key)) return false;
+  _pendingDueDateChangeDocumentIds.delete(key);
+  return true;
+}
+
+async function captureCourseAssignmentDueDateChange(strapi, data, where) {
+  if (_creatingSubEntries || !data || data.due_date === undefined) return;
+
+  const existing = await loadAssignmentFromWhere(strapi, where);
+  if (!existing) return;
+
+  const key = getAssignmentLifecycleKey(existing);
+  if (!key) return;
+
+  const previousDueDate = formatDueDateValue(existing.due_date);
+  const nextDueDate = formatDueDateValue(data.due_date);
+  _prevDueDateByAssignmentKey.set(key, previousDueDate);
+
+  if (nextDueDate !== previousDueDate && existing.documentId) {
+    _pendingDueDateChangeDocumentIds.add(String(existing.documentId));
+    strapi.log.info(
+      'user-progress-automation: due_date change captured for documentId=%s (%s -> %s)',
+      existing.documentId,
+      previousDueDate || 'n/a',
+      nextDueDate || 'n/a'
+    );
+  }
+}
 function formatDueDateValue(value) {
   if (value == null || value === '') return '';
   const d = value instanceof Date ? value : new Date(value);
@@ -51,10 +87,13 @@ async function getPreviousPublishedDueDate(strapi, result) {
   }
 }
 
-async function hasExistingAssignmentDocument(strapi, result) {
+
+async function isRepublicationAfterEdit(strapi, result) {
   const documentId = result?.documentId;
   const rowId = result?.id;
   if (!documentId || rowId == null) return false;
+
+  if (hasDueDateChangePending(documentId)) return true;
 
   try {
     const siblings = await strapi.db.query(COURSE_ASSIGNMENT_UID).findMany({
@@ -62,17 +101,57 @@ async function hasExistingAssignmentDocument(strapi, result) {
         documentId: String(documentId),
         id: { $ne: Number(rowId) },
       },
-      select: ['id'],
-      limit: 1,
+      select: ['id', 'publishedAt'],
     });
-    return Array.isArray(siblings) && siblings.length > 0;
+    if (!Array.isArray(siblings) || siblings.length === 0) return false;
+
+    // First publish: published row + single draft sibling only.
+    if (siblings.length === 1 && !siblings[0].publishedAt) return false;
+
+    if (siblings.some((row) => row.publishedAt)) return true;
+    return siblings.length > 1;
   } catch {
     return false;
   }
 }
 
-async function isRepublicationAfterEdit(strapi, result) {
-  return hasExistingAssignmentDocument(strapi, result);
+async function resolveAssignmentNotificationPayload(strapi, result, params = {}) {
+  const assignmentId = result?.id ?? result?.documentId;
+  let payload = null;
+  if (params?.data) {
+    payload = await getAssignedUserIdsFromParams(strapi, params, result);
+  }
+  if (!payload || !payload.userIds || payload.userIds.length === 0) {
+    if (assignmentId != null) {
+      await new Promise((r) => setTimeout(r, 200));
+      payload = await getAssignedUserIds(strapi, assignmentId);
+    }
+  }
+  return payload;
+}
+
+async function sendDueDateChangedForAssignment(strapi, result, params = {}) {
+  const documentId = String(result?.documentId || '');
+  if (documentId && _dueDateNotificationSentDocumentIds.has(documentId)) {
+    strapi.log.info(
+      'user-progress-automation: skip duplicate due_date_changed for documentId=%s',
+      documentId
+    );
+    return false;
+  }
+
+  const payload = await resolveAssignmentNotificationPayload(strapi, result, params);
+  if (!payload?.courseId || !payload?.userIds?.length) return false;
+
+  payload.userIds = [...new Set(payload.userIds)];
+  payload.due_date = params?.data?.due_date ?? result?.due_date;
+  await sendDueDateChangedNotifications(strapi, result, payload);
+
+  if (documentId) {
+    _dueDateNotificationSentDocumentIds.add(documentId);
+    setTimeout(() => _dueDateNotificationSentDocumentIds.delete(documentId), 10000);
+  }
+  return true;
 }
 
 async function filterUsersNotCompleted(strapi, userIds, numericCourseId) {
@@ -906,11 +985,7 @@ function registerUserProgressLifecycles(strapi) {
     async beforeUpdate(event) {
       if (_creatingSubEntries) return;
       try {
-        const existing = await loadAssignmentFromWhere(strapi, event.params?.where);
-        if (!existing) return;
-        const key = getAssignmentLifecycleKey(existing);
-        if (!key) return;
-        _prevDueDateByAssignmentKey.set(key, formatDueDateValue(existing.due_date));
+        await captureCourseAssignmentDueDateChange(strapi, event.params?.data, event.params?.where);
       } catch (e) {
         strapi.log.warn('user-progress-automation (course-assignment beforeUpdate):', e?.message || e);
       }
@@ -924,37 +999,26 @@ function registerUserProgressLifecycles(strapi) {
 
         if (result?.assignment_target_type === 'Individual' && _creatingSubEntries) return;
 
-        if (await isRepublicationAfterEdit(strapi, result)) {
+        const isDueDateEdit = await isRepublicationAfterEdit(strapi, result);
+        if (isDueDateEdit) {
+          const hadPendingDueDateChange = hasDueDateChangePending(result?.documentId);
+          consumeDueDateChangeForDocument(result?.documentId);
+
           const newDueDate = formatDueDateValue(params.data?.due_date ?? result?.due_date);
           const previousDueDate = formatDueDateValue(await getPreviousPublishedDueDate(strapi, result));
-          if (previousDueDate && previousDueDate === newDueDate) {
+          if (previousDueDate && previousDueDate === newDueDate && !hadPendingDueDateChange) {
             strapi.log.info(
-              'user-progress-automation: republication with unchanged due_date — skip notification (documentId=%s)',
+              'user-progress-automation: existing assignment republish with unchanged due_date — skip notification (documentId=%s)',
               result?.documentId ?? 'n/a'
             );
             return;
           }
 
           strapi.log.info(
-            'user-progress-automation: republication detected — sending due_date_changed only (documentId=%s)',
+            'user-progress-automation: existing assignment update detected — sending due_date_changed only (documentId=%s)',
             result?.documentId ?? 'n/a'
           );
-          const assignmentId = result.id ?? result.documentId;
-          let republishPayload = null;
-          if (params.data) {
-            republishPayload = await getAssignedUserIdsFromParams(strapi, params, result);
-          }
-          if (!republishPayload || !republishPayload.userIds || republishPayload.userIds.length === 0) {
-            if (assignmentId != null) {
-              await new Promise((r) => setTimeout(r, 200));
-              republishPayload = await getAssignedUserIds(strapi, assignmentId);
-            }
-          }
-          if (republishPayload?.courseId && republishPayload?.userIds?.length) {
-            republishPayload.userIds = [...new Set(republishPayload.userIds)];
-            republishPayload.due_date = params.data?.due_date ?? result?.due_date;
-            await sendDueDateChangedNotifications(strapi, result, republishPayload);
-          }
+          await sendDueDateChangedForAssignment(strapi, result, params);
           return;
         }
 
@@ -1028,34 +1092,28 @@ function registerUserProgressLifecycles(strapi) {
       try {
         const { result, params = {} } = event;
         if (!result?.publishedAt && !result?.published_at) return;
-        if (params?.data?.due_date === undefined) return;
 
         const key = getAssignmentLifecycleKey(result);
         const previousDueDate = key ? _prevDueDateByAssignmentKey.get(key) : undefined;
         if (key) _prevDueDateByAssignmentKey.delete(key);
 
-        const newDueDate = formatDueDateValue(params.data.due_date ?? result?.due_date);
-        if (previousDueDate !== undefined && previousDueDate === newDueDate) return;
+        const pendingDueDateEdit = hasDueDateChangePending(result?.documentId);
+        const newDueDate = formatDueDateValue(params.data?.due_date ?? result?.due_date);
+        const dueDateChanged = pendingDueDateEdit
+          || (previousDueDate !== undefined && previousDueDate !== newDueDate);
 
-        const assignmentId = result.id ?? result.documentId;
-        let payload = null;
-        if (params.data) {
-          payload = await getAssignedUserIdsFromParams(strapi, params, result);
-        }
-        if (!payload || !payload.userIds || payload.userIds.length === 0) {
-          if (assignmentId != null) {
-            await new Promise((r) => setTimeout(r, 200));
-            payload = await getAssignedUserIds(strapi, assignmentId);
-          }
-        }
+        if (!dueDateChanged) return;
 
-        const { courseId, userIds } = payload || {};
-        if (!courseId || !userIds?.length) return;
+        consumeDueDateChangeForDocument(result?.documentId);
 
-        payload.userIds = [...new Set(userIds)];
-        payload.due_date = params.data.due_date ?? result?.due_date;
+        strapi.log.info(
+          'user-progress-automation: due_date changed on published entry (documentId=%s, %s -> %s)',
+          result?.documentId ?? 'n/a',
+          previousDueDate || 'n/a',
+          newDueDate || 'n/a'
+        );
 
-        await sendDueDateChangedNotifications(strapi, result, payload);
+        await sendDueDateChangedForAssignment(strapi, result, params);
       } catch (e) {
         strapi.log.error('user-progress-automation (course-assignment afterUpdate):', e?.message || e);
       }
@@ -1171,4 +1229,4 @@ async function processCourseAssignmentCreate(strapi, params, result) {
   }
 }
 
-module.exports = { registerUserProgressLifecycles, processCourseAssignmentCreate };
+module.exports = { registerUserProgressLifecycles, processCourseAssignmentCreate, captureCourseAssignmentDueDateChange };
