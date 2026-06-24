@@ -51,10 +51,6 @@ function buildResetPasswordUrl(resetCode) {
 }
 
 async function sendForgotPasswordEmail({ to, username, resetCode }) {
-  if (!isEmailEnabled()) {
-    throw new Error('EMAIL_ENABLED is false');
-  }
-
   const transporter = createSmtpTransporter();
   const fromAddress =
     String(process.env.EMAIL_FROM || '').trim() ||
@@ -187,14 +183,6 @@ module.exports = {
     await strapi.entityService.update('plugin::users-permissions.user', user.id, {
       data: { resetPasswordToken: resetCode },
     });
-
-    if (!isEmailEnabled()) {
-      return ctx.internalServerError({
-        errorCode: 'EMAIL_DISABLED',
-        message: 'Email service is disabled. Set EMAIL_ENABLED=true in server configuration.',
-        emailSent: false,
-      });
-    }
 
     await sendForgotPasswordEmail({
       to: email,
