@@ -183,31 +183,6 @@ module.exports = ({ strapi }) => {
     }
 
 
-    // if (params.search && String(params.search).trim()) {
-    //   const search = String(params.search).trim();
-    //   const numericId = parseInt(search, 10);
-    //   const isNumericSearch = !Number.isNaN(numericId) && String(numericId) === search;
-    //   const searchOr = isNumericSearch
-    //     ? [
-    //         { id: numericId },
-    //         { emp_code: { $containsi: search } },  // containsi handles leading zeros: "8918" matches "00008918"
-    //         { emp_id: { $containsi: search } },
-    //       ]
-    //     : [
-    //         { email: { $containsi: search } },
-    //         { username: { $containsi: search } },
-    //         { emp_code: { $containsi: search } },
-    //         { emp_id: { $containsi: search } },
-    //       ];
-    //   if (locCondition) {
-    //     where.$and = (where.$and || []).concat([locCondition, { $or: searchOr }]);
-    //   } else {
-    //     where.$or = searchOr;
-    //   }
-    // } else if (locCondition) {
-    //   Object.assign(where, locCondition);
-    // }
-
 
     const dateFromRaw = params.dateFrom && String(params.dateFrom).trim();
     const dateToRaw = params.dateTo && String(params.dateTo).trim();
@@ -271,6 +246,7 @@ module.exports = ({ strapi }) => {
         emp_code: u.emp_code ?? '—',
         emp_id: u.emp_id ?? '—',
         department: typeof u.department === 'object' && u.department?.name != null ? u.department.name : (u.department ?? '—'),
+        business_vertical: u.business_vertical ?? '—',
         designation: typeof u.designation === 'string' ? u.designation : (u.designation?.title ?? '—'),
         company: u.company ?? '—',
         working_location: u.working_location ?? '—',
