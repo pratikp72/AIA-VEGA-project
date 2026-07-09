@@ -496,36 +496,104 @@ module.exports = createCoreController(
         const score = Number.isFinite(Number(scoreRaw)) ? Number(scoreRaw) : 0;
         const passed = score >= minPassingScore;
 
-        // ------------------------------------------------------
-        // 4+5. Check for admin-approved reattempt FIRST, then enforce max_attempt.
-        // The approved check MUST come before the max_attempt block, otherwise the
-        // early return would prevent the approved request from ever being used,
-        // keeping lastSubmission.attempt_number frozen and causing
-        // requested_for_attempt to repeat the same value on every new request.
-        // ------------------------------------------------------
-        const approvedRequest = await strapi.db
+        // Check for approved reattempt (deterministic selection by attempt number)
+        strapi.log.info({ courseId, userId: userIdNum, nextAttempt }, '[quiz-submit][reattempt-select] Phase 1 — exact match lookup');
+
+        let approvedRequest = await strapi.db
           .query("api::quiz-reattempt-request.quiz-reattempt-request")
           .findOne({
             where: {
               course: courseId,
               users_permissions_user: userIdNum,
-              request_status: "Approved"
-            }
+              request_status: "Approved",
+              requested_for_attempt: nextAttempt,
+            },
           });
 
+        strapi.log.info({
+          found: !!approvedRequest,
+          requestId: approvedRequest?.id ?? null,
+          requested_for_attempt: approvedRequest?.requested_for_attempt ?? null,
+          adminCreated: approvedRequest?.adminCreated ?? null,
+        }, '[quiz-submit][reattempt-select] Phase 1 result');
+
+        if (!approvedRequest) {
+          strapi.log.info({ courseId, userId: userIdNum }, '[quiz-submit][reattempt-select] Phase 2 — fallback to oldest Approved');
+
+          const fallbackList = await strapi.db
+            .query("api::quiz-reattempt-request.quiz-reattempt-request")
+            .findMany({
+              where: {
+                course: courseId,
+                users_permissions_user: userIdNum,
+                request_status: "Approved",
+              },
+              orderBy: { requested_for_attempt: "asc" },
+              limit: 1,
+            });
+
+          approvedRequest = Array.isArray(fallbackList) && fallbackList.length > 0
+            ? fallbackList[0]
+            : null;
+
+          strapi.log.info({
+            found: !!approvedRequest,
+            requestId: approvedRequest?.id ?? null,
+            requested_for_attempt: approvedRequest?.requested_for_attempt ?? null,
+            adminCreated: approvedRequest?.adminCreated ?? null,
+          }, '[quiz-submit][reattempt-select] Phase 2 result');
+        }
+
         if (approvedRequest) {
-          // Mark approved request as used so the slot is consumed
+          strapi.log.info({
+            requestId: approvedRequest.id,
+            requested_for_attempt: approvedRequest.requested_for_attempt,
+            nextAttempt,
+          }, '[quiz-submit][reattempt-consume] Marking request as Used');
+
+          // Mark the selected approved request as Used
           await strapi.db
             .query("api::quiz-reattempt-request.quiz-reattempt-request")
             .update({
               where: { id: approvedRequest.id },
-              data: { request_status: "Used" }
+              data: { request_status: "Used" },
             });
-        } else if (!passed && nextAttempt > maxAttempt) {
-          // No approved reattempt exists — block the submission
+
+          // Also consume any other Approved rows for the same attempt number.
+          // This prevents duplicate admin-created rows for the same slot from
+          // remaining in Approved state after the first one is consumed.
+          const duplicateApproved = await strapi.db
+            .query("api::quiz-reattempt-request.quiz-reattempt-request")
+            .findMany({
+              where: {
+                course: courseId,
+                users_permissions_user: userIdNum,
+                request_status: "Approved",
+                requested_for_attempt: approvedRequest.requested_for_attempt,
+              },
+            });
+
+          if (Array.isArray(duplicateApproved) && duplicateApproved.length > 0) {
+            strapi.log.info({
+              count: duplicateApproved.length,
+              attempt: approvedRequest.requested_for_attempt,
+            }, '[quiz-submit][reattempt-consume] consuming duplicate Approved rows for same attempt');
+
+            await Promise.all(
+              duplicateApproved.map((dup) =>
+                strapi.db
+                  .query("api::quiz-reattempt-request.quiz-reattempt-request")
+                  .update({ where: { id: dup.id }, data: { request_status: "Used" } })
+              )
+            );
+          }
+
+          strapi.log.info({ requestId: approvedRequest.id }, '[quiz-submit][reattempt-consume] Request(s) marked Used successfully');
+        } else if (nextAttempt > maxAttempt) {
+          strapi.log.info({ nextAttempt, maxAttempt, userId: userIdNum, courseId }, '[quiz-submit][reattempt-block] No approved request & max attempts exceeded');
           return ctx.send({
             message: `Max attempts reached (${maxAttempt}). Request reattempt.`,
-            reattempt_required: true
+            reattempt_required: true,
           });
         }
 

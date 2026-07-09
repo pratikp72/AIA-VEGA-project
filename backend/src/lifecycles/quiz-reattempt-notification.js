@@ -15,9 +15,31 @@ function getRelationId(rel) {
   return null;
 }
 
+const {
+  isAdminPanelCreate,
+  persistAdminCreated,
+} = require('../utils/quiz-reattempt-admin-created');
+
 function registerQuizReattemptNotificationLifecycles(strapi) {
   strapi.db.lifecycles.subscribe({
     models: [QUIZ_REATTEMPT_UID],
+
+    async afterCreate(event) {
+      try {
+        const result = event?.result;
+        if (!result?.id) return;
+
+        // Strapi v5 may omit boolean false from INSERT/update via query engine.
+        // Persist via knex so frontend rows are false, admin rows are true.
+        const isAdmin = isAdminPanelCreate(strapi);
+        await persistAdminCreated(strapi, result.id, isAdmin);
+
+        strapi.log.info({ id: result.id, adminCreated: isAdmin }, '[quiz-reattempt] afterCreate — adminCreated written');
+      } catch (error) {
+        strapi.log.warn({ err: error?.message }, '[quiz-reattempt] afterCreate failed');
+      }
+    },
+
     async afterUpdate(event) {
       try {
         const { result } = event;

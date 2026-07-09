@@ -2,12 +2,6 @@
 
 const { Readable } = require('stream');
 
-/**
- * Captures raw request body for certain API routes before the body parser.
- * Fixes empty ctx.request.body when requests come from the frontend (browser).
- * Stores parsed body in ctx.state and replaces the consumed stream so the body
- * parser can still read it (avoids "stream is not readable" error).
- */
 module.exports = (config, { strapi }) => {
   return async (ctx, next) => {
     const path = (ctx.path || ctx.request?.path || '').toLowerCase();
@@ -28,12 +22,22 @@ module.exports = (config, { strapi }) => {
         });
         const buffer = Buffer.concat(chunks);
         const raw = buffer.toString('utf8');
+
+        // Strapi uses Pino — second arg must be an object (metadata), not printf args.
+        strapi.log.info({ path: ctx.path, method: ctx.method, rawLength: raw.length }, '[capture-body] captured');
+
         if (raw && raw.trim()) {
           const parsed = JSON.parse(raw);
           if (isFeedbackSubmit) ctx.state.feedbackBody = parsed;
-          if (isQuizReattempt) ctx.state.quizReattemptBody = parsed;
+          if (isQuizReattempt) {
+            ctx.state.quizReattemptBody = parsed;
+            strapi.log.info({ path: ctx.path, keys: Object.keys(parsed) }, '[capture-body] quizReattemptBody set');
+          }
+        } else {
+          strapi.log.warn({ path: ctx.path }, '[capture-body] empty raw body');
         }
-        // Replace consumed stream with a new readable so body parser can read it
+
+        // Replace consumed stream so body parser can still read it
         const newStream = Readable.from([buffer]);
         const orig = ctx.req;
         newStream.headers = orig.headers;
@@ -41,7 +45,7 @@ module.exports = (config, { strapi }) => {
         newStream.url = orig.url;
         ctx.req = newStream;
       } catch (err) {
-        strapi.log.warn('capture-feedback-body: parse failed', err);
+        strapi.log.warn({ path: ctx.path, err: err?.message }, '[capture-body] parse failed');
       }
     }
 
