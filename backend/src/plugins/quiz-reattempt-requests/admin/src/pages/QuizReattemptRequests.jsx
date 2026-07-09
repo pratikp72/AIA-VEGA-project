@@ -77,10 +77,10 @@ export default function QuizReattemptRequestsPage() {
     setUpdatingId(id);
     setError(null);
     try {
-      await put(`/quiz-reattempt-requests/requests/${encodeURIComponent(id)}`, {
-        data: { request_status: newStatus }
+      await put(`/content-manager/collection-types/api::quiz-reattempt-request.quiz-reattempt-request/${encodeURIComponent(id)}`, {
+        request_status: newStatus
       });
-      
+
       if (isMounted.current) {
         setList((prev) =>
           prev.map((e) => {
@@ -112,9 +112,14 @@ export default function QuizReattemptRequestsPage() {
     const courseAttrs = course.attributes ?? course;
     const userName = userAttrs.username ?? userAttrs.email ?? '—';
     const courseTitle = courseAttrs.title ?? '—';
+    const approvedBy = attrs.approved_by?.data ?? attrs.approved_by ?? {};
+    const approvedByAttrs = approvedBy.attributes ?? approvedBy;
+    const approvedByName = approvedByAttrs.firstname || approvedByAttrs.username || approvedByAttrs.email || approvedByAttrs.lastname
+      ? `${approvedByAttrs.firstname || ''} ${approvedByAttrs.lastname || ''}`.trim() || approvedByAttrs.username || approvedByAttrs.email || 'Not reviewed'
+      : 'Not reviewed';
     const statusRaw = attrs.request_status ?? entry.request_status ?? 'Pending';
     const statusVal = typeof statusRaw === 'string' ? statusRaw : 'Pending';
-    return { userName, courseTitle, statusVal, attrs };
+    return { userName, courseTitle, statusVal, attrs, approvedByName };
   };
 
   const filteredList = useMemo(() => {
@@ -309,6 +314,11 @@ export default function QuizReattemptRequestsPage() {
                         >
                           {statusVal}
                         </Badge>;
+                      }
+                    },
+                    { key: 'approvedByName', label: 'Approved by', render: (val, row) => {
+                        const { approvedByName } = getDisplayValues(row);
+                        return <Typography variant="omega" style={TABLE_FONT_STYLE}>{approvedByName}</Typography>;
                       }
                     },
                     { key: 'actions', label: 'Actions', render: (val, row) => {

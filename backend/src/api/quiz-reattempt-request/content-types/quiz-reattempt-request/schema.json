@@ -28,12 +28,22 @@
       "enum": [
         "Pending",
         "Approved",
-        "Rejected"
+        "Rejected",
+        "Used"
       ]
     },
     "requested_for_attempt": {
       "type": "integer",
       "required": true
+    },
+    "approved_by": {
+      "type": "relation",
+      "relation": "oneToOne",
+      "target": "admin::user"
+    },
+    "adminCreated": {
+      "type": "boolean",
+      "default": false
     }
   }
 }

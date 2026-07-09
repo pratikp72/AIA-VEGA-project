@@ -19,6 +19,29 @@ async function ensureDir(dirPath) {
   await fs.mkdir(dirPath, { recursive: true });
 }
 
+async function logDirectoryStatus(dirPath, dirName, strapi) {
+  try {
+    const entries = await fs.readdir(dirPath);
+
+    const imageCount = entries.filter(file =>
+      SUPPORTED_EXTS.has(path.extname(file).toLowerCase())
+    ).length;
+
+    if (imageCount === 0) {
+      strapi.log.warn(
+        `[aia-photo-sync] WARNING: ${dirName} directory is EMPTY (${dirPath})`
+      );
+    } else {
+      strapi.log.info(
+        `[aia-photo-sync] ${dirName} directory contains ${imageCount} image files`
+      );
+    }
+  } catch (err) {
+    strapi.log.error(
+      `[aia-photo-sync] Failed to check ${dirName} directory: ${err.message}`
+    );
+  }
+}
 /**
  * Copies new/changed files from sourceDir to cacheDir.
  * A file is copied when:
@@ -164,6 +187,12 @@ async function syncAiaEmployeePhotos(strapi) {
   console.log(`\n[aia-photo-sync] ▶ Starting photo sync...`);
   console.log(`[aia-photo-sync]   source : ${sourceDir}`);
   console.log(`[aia-photo-sync]   cache  : ${cacheDir || '(disabled — serving direct from source)'}`);
+
+  await logDirectoryStatus(sourceDir, 'SOURCE', strapi);
+
+  if (useCache) {
+    await logDirectoryStatus(cacheDir, 'CACHE', strapi);
+  }
 
   let updatedCount = 0;
   let skippedUnchanged = 0;

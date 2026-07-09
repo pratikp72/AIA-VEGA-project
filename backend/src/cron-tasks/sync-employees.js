@@ -221,6 +221,7 @@ function buildUserData(record, roleId, usernameOverride, emailOverride) {
     region: '-',
     experience_with_vega: '-',
     contract_validity: '-',
+    business_vertical: '-',
     description: '',
   };
 }

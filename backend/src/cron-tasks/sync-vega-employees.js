@@ -13,7 +13,7 @@ const USER_UID = 'plugin::users-permissions.user';
 const ROLE_UID = 'plugin::users-permissions.role';
 
 // Column indices in the Excel sheet (0-based)
-// SR.NO | STATUS | USER ID | NAME | EMPLOYMENT TYPE | EMAIL ID | DOB | AGE | CONTACT NO. | DOJ | EXP WITH VEGA | CONTRACT VALIDITY | JOB AREA | DESIGNATION | HOD | Payroll Office | Work Location | Region | Image
+// SR.NO | STATUS | USER ID | NAME | EMPLOYMENT TYPE | EMAIL ID | DOB | AGE | CONTACT NO. | DOJ | EXP WITH VEGA | CONTRACT VALIDITY | BUSINESS VERTICAL | JOB AREA | DESIGNATION | HOD | Payroll Office | Work Location | Region | Image
 const COL = {
   SR_NO: 0,
   STATUS: 1,
@@ -27,13 +27,14 @@ const COL = {
   DOJ: 9,
   EXP_WITH_VEGA: 10,
   CONTRACT_VALIDITY: 11,
-  JOB_AREA: 12,
-  DESIGNATION: 13,
-  HOD: 14,
-  PAYROLL_OFFICE: 15,
-  WORK_LOCATION: 16,
-  REGION: 17,
-  IMAGE: 18,
+  BUSINESS_VERTICAL: 12,
+  JOB_AREA: 13,
+  DESIGNATION: 14,
+  HOD: 15,
+  PAYROLL_OFFICE: 16,
+  WORK_LOCATION: 17,
+  REGION: 18,
+  IMAGE: 19,
 };
 
 let isRunning = false;
@@ -204,7 +205,7 @@ async function fetchExcelRows(strapi) {
   const valuesData = await valuesRes.json();
   const rows = valuesData?.values || [];
 
-  // Fetch formulas to extract HYPERLINK() URLs from the Image column (S)
+  // Fetch formulas to extract HYPERLINK() URLs from the Image column (T)
   // Cells with hyperlinks have formula: =HYPERLINK("url","display text")
   const formulaRes = await fetch(`${baseUrl}/usedRange?$select=formulas`, { headers });
   let formulaRows = [];
@@ -213,7 +214,7 @@ async function fetchExcelRows(strapi) {
     formulaRows = formulaData?.formulas || [];
   }
 
-  // Merge: for each row, if the Image column (18) has a HYPERLINK formula, extract the URL
+  // Merge: for each row, if the Image column (19) has a HYPERLINK formula, extract the URL
   const hyperlinkRegex = /^=HYPERLINK\("([^"]+)"/i;
   const merged = rows.map((row, i) => {
     const formulaRow = formulaRows[i] || [];
@@ -349,6 +350,7 @@ async function syncVegaEmployees(strapi) {
           joining_date: excelSerialToIso(row[COL.DOJ]),
           experience_with_vega: safeString(row[COL.EXP_WITH_VEGA]),
           contract_validity: safeString(row[COL.CONTRACT_VALIDITY]),
+          business_vertical: safeString(row[COL.BUSINESS_VERTICAL]),
           department: safeString(row[COL.JOB_AREA]),
           designation: safeString(row[COL.DESIGNATION]),
           HOD: safeString(row[COL.HOD]),

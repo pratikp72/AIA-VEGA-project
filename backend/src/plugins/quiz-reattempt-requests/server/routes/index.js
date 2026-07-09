@@ -18,14 +18,6 @@ module.exports = {
           policies: [],
         },
       },
-      {
-        method: 'PUT',
-        path: '/requests/:id',
-        handler: 'quizReattemptController.updateStatus',
-        config: {
-          policies: [],
-        },
-      },
     ],
   },
 };

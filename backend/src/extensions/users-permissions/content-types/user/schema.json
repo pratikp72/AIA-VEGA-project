@@ -328,6 +328,20 @@
         }
       },
       "required": true
+    },
+    "business_vertical": {
+      "type": "string",
+      "conditions": {
+        "visible": {
+          "==": [
+            {
+              "var": "company"
+            },
+            "Vega"
+          ]
+        }
+      },
+      "required": true
     }
   }
 }
