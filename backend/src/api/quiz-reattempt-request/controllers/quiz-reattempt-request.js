@@ -1,7 +1,11 @@
 "use strict";
 
 const { createCoreController } = require("@strapi/strapi").factories;
-const { persistAdminCreated } = require("../../../utils/quiz-reattempt-admin-created");
+const {
+  isAdminPanelCreate,
+  persistAdminCreated,
+  createQuizReattemptRequest,
+} = require("../../../utils/quiz-reattempt-admin-created");
 
 const REJECTION_COOLDOWN_MS = 24 * 60 * 60 * 1000; // 24 hours
 
@@ -29,6 +33,27 @@ async function getLatestRejectedForUserCourse(strapi, userId, courseId, allowRer
 module.exports = createCoreController(
   "api::quiz-reattempt-request.quiz-reattempt-request",
   ({ strapi }) => ({
+
+    async create(ctx) {
+      const fromAdmin = isAdminPanelCreate(strapi);
+      if (!fromAdmin) {
+        ctx.state.quizReattemptFromFrontend = true;
+      }
+
+      await super.create(ctx);
+
+      const created = ctx.body?.data ?? ctx.body;
+      const recordId = created?.id ?? created?.documentId;
+      if (recordId != null) {
+        const ok = await persistAdminCreated(strapi, recordId, fromAdmin);
+        if (!ok) {
+          strapi.log.error(
+            { recordId, fromAdmin },
+            "[quiz-reattempt create] failed to persist adminCreated after REST create"
+          );
+        }
+      }
+    },
 
     async send(ctx) {
       ctx.state.quizReattemptFromFrontend = true;
@@ -111,21 +136,16 @@ module.exports = createCoreController(
 
       let request;
       try {
-        request = await strapi.db
-          .query("api::quiz-reattempt-request.quiz-reattempt-request")
-          .create({
-            data: {
-              users_permissions_user: Number(userId),
-              course: Number(courseId),
-              request_status: "Pending",
-              requested_for_attempt: nextAttempt,
-            },
-          });
-
-        await persistAdminCreated(strapi, request?.id, false);
-        request = await strapi.db
-          .query("api::quiz-reattempt-request.quiz-reattempt-request")
-          .findOne({ where: { id: request.id } });
+        request = await createQuizReattemptRequest(
+          strapi,
+          {
+            users_permissions_user: Number(userId),
+            course: Number(courseId),
+            request_status: "Pending",
+            requested_for_attempt: nextAttempt,
+          },
+          false
+        );
       } catch (createErr) {
         strapi.log.error({ err: createErr?.message }, '[quiz-reattempt send] create failed');
         return ctx.internalServerError(createErr?.message || "Failed to create reattempt request");

@@ -1,30 +1,43 @@
 'use strict';
 
 /**
- * Migration: set admin_created column default to false and backfill existing nulls.
- *
- * - All historical null rows are treated as frontend-created (false).
- * - Sets the PostgreSQL column DEFAULT so future INSERTs that omit the field
- *   automatically get false instead of null.
+ * Migration: ensure admin_created column exists, backfill nulls to false,
+ * and set PostgreSQL DEFAULT so INSERTs that omit the field get false.
  */
-
 module.exports = {
   async up(knex) {
-    // 1. Backfill existing null rows to false
-    await knex('quiz_reattempt_requests')
-      .whereNull('admin_created')
-      .update({ admin_created: false });
+    const table = 'quiz_reattempt_requests';
+    const column = 'admin_created';
 
-    // 2. Set column default to false at DB level
-    await knex.schema.alterTable('quiz_reattempt_requests', (table) => {
-      table.boolean('admin_created').defaultTo(false).alter();
+    const hasTable = await knex.schema.hasTable(table);
+    if (!hasTable) return;
+
+    const hasColumn = await knex.schema.hasColumn(table, column);
+    if (!hasColumn) {
+      await knex.schema.alterTable(table, (t) => {
+        t.boolean(column).defaultTo(false);
+      });
+    }
+
+    await knex(table).whereNull(column).update({ [column]: false });
+
+    await knex.schema.alterTable(table, (t) => {
+      t.boolean(column).defaultTo(false).alter();
     });
   },
 
   async down(knex) {
-    // Revert column default back to null (no backfill reversal — data loss not recoverable)
-    await knex.schema.alterTable('quiz_reattempt_requests', (table) => {
-      table.boolean('admin_created').defaultTo(null).alter();
+    const table = 'quiz_reattempt_requests';
+    const column = 'admin_created';
+
+    const hasTable = await knex.schema.hasTable(table);
+    if (!hasTable) return;
+
+    const hasColumn = await knex.schema.hasColumn(table, column);
+    if (!hasColumn) return;
+
+    await knex.schema.alterTable(table, (t) => {
+      t.boolean(column).defaultTo(null).alter();
     });
   },
 };

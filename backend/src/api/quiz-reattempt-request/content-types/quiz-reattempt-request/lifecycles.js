@@ -1,6 +1,6 @@
 'use strict';
 
-const { isAdminPanelCreate } = require('../../../../utils/quiz-reattempt-admin-created');
+const { isAdminPanelCreate, persistAdminCreated } = require('../../../../utils/quiz-reattempt-admin-created');
 
 module.exports = {
   async beforeCreate(event) {
@@ -33,6 +33,19 @@ module.exports = {
       }
     } catch (error) {
       strapi.log.warn({ err: error?.message }, '[quiz-reattempt lifecycle] beforeCreate failed');
+    }
+  },
+
+  async afterCreate(event) {
+    try {
+      const result = event?.result;
+      if (!result?.id && !result?.documentId) return;
+
+      const isAdmin = isAdminPanelCreate(strapi);
+      const recordId = result.id ?? result.documentId;
+      await persistAdminCreated(strapi, recordId, isAdmin);
+    } catch (error) {
+      strapi.log.warn({ err: error?.message }, '[quiz-reattempt lifecycle] afterCreate failed');
     }
   },
 
