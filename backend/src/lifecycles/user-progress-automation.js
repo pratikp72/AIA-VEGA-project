@@ -456,7 +456,7 @@ async function getAssignedUserIdsFromParams(strapi, params, result) {
 
     if (companyNames.length > 0 && numericIds.length > 0) {
       const users = await strapi.db.query('plugin::users-permissions.user').findMany({
-        where: scopeUserWhere({ id: { $in: [...new Set(numericIds)] }, blocked: { $ne: true } }, companyNames),
+        where: scopeUserWhere({ id: { $in: [...new Set(numericIds)] } }, companyNames),
         select: ['id'],
       });
       userIds = (users || []).map((u) => u.id).filter(Boolean);
@@ -473,7 +473,7 @@ async function getAssignedUserIdsFromParams(strapi, params, result) {
       const deptNames = (depts || []).map((d) => d.name).filter(Boolean);
       if (deptNames.length > 0) {
         const users = await strapi.db.query('plugin::users-permissions.user').findMany({
-          where: scopeUserWhere({ department: { $in: deptNames }, blocked: { $ne: true } }, companyNames),
+          where: scopeUserWhere({ department: { $in: deptNames } }, companyNames),
           select: ['id'],
         });
         userIds = (users || []).map((u) => u.id).filter(Boolean);
@@ -493,13 +493,13 @@ async function getAssignedUserIdsFromParams(strapi, params, result) {
         const userLists = await Promise.all([
           includeVega
             ? strapi.db.query('plugin::users-permissions.user').findMany({
-              where: { company: 'Vega', working_location: { $in: locationNames }, blocked: { $ne: true } },
+              where: { company: 'Vega', working_location: { $in: locationNames } },
               select: ['id'],
             })
             : Promise.resolve([]),
           includeAia
             ? strapi.db.query('plugin::users-permissions.user').findMany({
-              where: { company: 'AIA', branch: { $in: locationNames }, blocked: { $ne: true } },
+              where: { company: 'AIA', branch: { $in: locationNames } },
               select: ['id'],
             })
             : Promise.resolve([]),
@@ -514,7 +514,7 @@ async function getAssignedUserIdsFromParams(strapi, params, result) {
     if (companyNames.length > 0) {
       for (const name of companyNames) {
         const users = await strapi.db.query('plugin::users-permissions.user').findMany({
-          where: { company: name, blocked: { $ne: true } },
+          where: { company: name },
           select: ['id'],
         });
         (users || []).forEach((u) => { if (u.id && !userIds.includes(u.id)) userIds.push(u.id); });
@@ -587,7 +587,7 @@ async function getAssignedUserIds(strapi, assignmentId) {
     userIds = assignment.individual_user.map(getUserId).filter(Boolean);
     if (companyNames.length > 0 && userIds.length > 0) {
       const users = await strapi.db.query('plugin::users-permissions.user').findMany({
-        where: scopeUserWhere({ id: { $in: userIds }, blocked: { $ne: true } }, companyNames),
+        where: scopeUserWhere({ id: { $in: userIds } }, companyNames),
         select: ['id'],
       });
       userIds = (users || []).map((u) => u.id).filter(Boolean);
@@ -596,7 +596,7 @@ async function getAssignedUserIds(strapi, assignmentId) {
     const deptNames = assignment.departments.map((d) => d?.name).filter(Boolean);
     if (deptNames.length > 0) {
       const users = await strapi.db.query('plugin::users-permissions.user').findMany({
-        where: scopeUserWhere({ department: { $in: deptNames }, blocked: { $ne: true } }, companyNames),
+        where: scopeUserWhere({ department: { $in: deptNames } }, companyNames),
         select: ['id'],
       });
       userIds = (users || []).map((u) => u.id).filter(Boolean);
@@ -609,13 +609,13 @@ async function getAssignedUserIds(strapi, assignmentId) {
       const userLists = await Promise.all([
         includeVega
           ? strapi.db.query('plugin::users-permissions.user').findMany({
-            where: { company: 'Vega', working_location: { $in: locationNames }, blocked: { $ne: true } },
+            where: { company: 'Vega', working_location: { $in: locationNames } },
             select: ['id'],
           })
           : Promise.resolve([]),
         includeAia
           ? strapi.db.query('plugin::users-permissions.user').findMany({
-            where: { company: 'AIA', branch: { $in: locationNames }, blocked: { $ne: true } },
+            where: { company: 'AIA', branch: { $in: locationNames } },
             select: ['id'],
           })
           : Promise.resolve([]),
@@ -632,7 +632,7 @@ async function getAssignedUserIds(strapi, assignmentId) {
   if (userIds.length === 0 && targetType === 'Company' && companyNames.length > 0) {
     for (const name of companyNames) {
       const users = await strapi.db.query('plugin::users-permissions.user').findMany({
-        where: { company: name, blocked: { $ne: true } },
+        where: { company: name },
         select: ['id'],
       });
       (users || []).forEach((u) => { if (u.id && !userIds.includes(u.id)) userIds.push(u.id); });

@@ -303,6 +303,7 @@ module.exports = {
             'blocked',
             'active',
             'password',
+            'exit_date',
           ],
         })) ||
         (await userQuery.findOne({
@@ -318,6 +319,7 @@ module.exports = {
             'blocked',
             'active',
             'password',
+            'exit_date',
           ],
         }));
 
@@ -325,14 +327,18 @@ module.exports = {
         return ctx.unauthorized('Invalid credentials');
       }
 
-      if (user.active === false) {
-        return ctx.unauthorized('User is inactive');
-      }
-
       if (user.blocked === true) {
         return ctx.unauthorized('User is blocked');
       }
 
+      if (user.active === false) {
+        return ctx.unauthorized('User is inactive');
+      }
+
+      if(user.company === 'AIA' && user.exit_date) {
+        return ctx.unauthorized('User has exited the company');
+      }
+      
       // 2) Validate password using users-permissions user service
       const userService = strapi.plugin('users-permissions').service('user');
 

@@ -22,7 +22,7 @@ export function EmployeeSearch({ value, onChange, onEmployeeFound, company }) {
     setNotFound(false);
     setFoundEmployee(null);
     try {
-      const res = await fetchEmployees({ search: q, ...(company ? { company } : {}) });
+      const res = await fetchEmployees({ search: q, includeInactiveBlocked: true, ...(company ? { company } : {}) });
       const employees = Array.isArray(res?.items) ? res.items : (Array.isArray(res) ? res : []);
       let found = null;
       if (employees.length > 0) {

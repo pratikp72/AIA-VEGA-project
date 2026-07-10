@@ -1,8 +1,14 @@
 import React from 'react';
-import { Box, Flex, Typography } from '@strapi/design-system';
+import { Box, Flex, Typography, Badge } from '@strapi/design-system';
 import { CHART_COLORS } from './chartColors';
 
 const accentColor = CHART_COLORS[0];
+
+function getAccountStatusBadgeVariant(tag) {
+  if (tag === 'Blocked') return 'danger';
+  if (tag === 'Inactive') return 'warning';
+  return 'success';
+}
 
 function Item({ label, value }) {
   return (
@@ -24,6 +30,9 @@ export function EmployeeDetailCard({ employee }) {
   const email = employee.email || '—';
   const department = employee.department || '—';
   const company = employee.company || '—';
+  const statusTags = Array.isArray(employee.accountStatusTags) && employee.accountStatusTags.length > 0
+    ? employee.accountStatusTags
+    : [employee.accountStatus || 'Active'];
 
   return (
     <Box
@@ -41,6 +50,18 @@ export function EmployeeDetailCard({ employee }) {
         <Item label="Email" value={email} />
         <Item label="Department" value={department} />
         <Item label="Company" value={company} />
+        <Box style={{ minWidth: 0, flex: 1 }}>
+          <Typography variant="sigma" textColor="neutral600" fontWeight="regular">
+            Account Status
+          </Typography>
+          <Flex gap={1} wrap="wrap" style={{ marginTop: 4 }}>
+            {statusTags.map((tag) => (
+              <Badge key={tag} variant={getAccountStatusBadgeVariant(tag)}>
+                {tag}
+              </Badge>
+            ))}
+          </Flex>
+        </Box>
       </Flex>
     </Box>
   );

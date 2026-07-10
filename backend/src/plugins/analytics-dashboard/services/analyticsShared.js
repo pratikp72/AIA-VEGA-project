@@ -6,6 +6,31 @@
  * Analytics Shared Service
  * Used by both Learning and Overall dashboards: employees, departments, unit-locations, activity.
  */
+/**
+ * Account status for learning analytics rows.
+ * Exported for use outside the Strapi service factory.
+ */
+function buildEmployeeAccountStatus(user) {
+  if (!user) return { accountStatus: 'Active', accountStatusTags: ['Active'] };
+  if (user.blocked === true) {
+    return { accountStatus: 'Blocked', accountStatusTags: ['Blocked'] };
+  }
+  const tags = [];
+  const companyLower = String(user.company || '').trim().toLowerCase();
+  if (companyLower === 'vega') {
+    if (user.active === false) tags.push('Inactive');
+  } else {
+    if (user.active === false) tags.push('Inactive');
+    if (user.exit_date != null && String(user.exit_date).trim() !== '' && !tags.includes('Inactive')) {
+      tags.push('Inactive');
+    }
+  }
+  if (tags.length === 0) {
+    return { accountStatus: 'Active', accountStatusTags: ['Active'] };
+  }
+  return { accountStatus: tags.join(', '), accountStatusTags: tags };
+}
+
 module.exports = ({ strapi }) => {
   const self = {};
 
@@ -53,6 +78,9 @@ module.exports = ({ strapi }) => {
   };
 
   self.getEmployeesList = async function (params = {}) {
+    const includeInactiveBlocked = params.includeInactiveBlocked === true
+      || String(params.includeInactiveBlocked || '').toLowerCase() === 'true';
+
     const mapPhotograph = (media) => {
       if (!media) return null;
       return {
@@ -74,9 +102,7 @@ module.exports = ({ strapi }) => {
       };
     };
 
-    const where = {
-      blocked: { $eq: false },
-    };
+    const where = includeInactiveBlocked ? {} : { blocked: { $eq: false } };
 
     const companyVal = params.company && String(params.company).trim() && !/^all\s*companies?$/i.test(String(params.company));
     if (companyVal) {
@@ -88,11 +114,13 @@ module.exports = ({ strapi }) => {
     // Vega: show employees with active=true (exit_date doesn't matter)
     // AIA + no-filter: show employees with exit_date IS NULL (currently working)
     const resolvedCompany = where.company;
-    if (resolvedCompany === 'Vega') {
-      where.active = true;
-    } else {
-      where.active = { $ne: false };
-      where.exit_date = { $null: true };
+    if (!includeInactiveBlocked) {
+      if (resolvedCompany === 'Vega') {
+        where.active = true;
+      } else {
+        where.active = { $ne: false };
+        where.exit_date = { $null: true };
+      }
     }
 
     const deptVal = params.department && String(params.department).trim() && String(params.department).toLowerCase() !== 'all';
@@ -237,7 +265,9 @@ module.exports = ({ strapi }) => {
         },
       });
       const list = Array.isArray(users) ? users : [];
-      const items = list.map((u) => ({
+      const items = list.map((u) => {
+        const { accountStatus, accountStatusTags } = self.buildEmployeeAccountStatus(u);
+        return {
         id: u.id,
         documentId: u.documentId ?? u.document_id ?? null,
         employee_name: u.username || u.email || '—',
@@ -253,14 +283,17 @@ module.exports = ({ strapi }) => {
         joining_date: u.joining_date ?? null,
         exit_date: u.exit_date ?? null,
         date_of_birth: u.date_of_birth ?? null,
-        exit_date: u.exit_date ?? null,
         description: u.description ?? null,
         branch: u.branch ?? '—',
         contact_no: u.contact_no ?? '—',
         active: u.active !== false,
+        blocked: u.blocked === true,
+        accountStatus,
+        accountStatusTags,
         photograph: mapPhotograph(u.photograph),
         emp_photo_file: u.emp_photo_file ?? null,
-      }));
+      };
+      });
       return {
         items,
         total,
@@ -912,5 +945,9 @@ module.exports = ({ strapi }) => {
     return entry;
   };
 
+  self.buildEmployeeAccountStatus = buildEmployeeAccountStatus;
+
   return self;
 };
+
+module.exports.buildEmployeeAccountStatus = buildEmployeeAccountStatus;

@@ -38,6 +38,7 @@ function getQueryParams(ctx) {
     entityType: ctx.query.entityType || ctx.query.entity_type,
     entityId: ctx.query.entityId || ctx.query.entity_id,
     eventName: ctx.query.eventName || ctx.query.event_name,
+    includeInactiveBlocked: ctx.query.includeInactiveBlocked || ctx.query.include_inactive_blocked,
   };
 }
 

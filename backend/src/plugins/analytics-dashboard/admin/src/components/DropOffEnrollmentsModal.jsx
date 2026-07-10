@@ -1,8 +1,29 @@
 // @ts-nocheck
 
 import React, { useMemo, useState } from 'react';
-import { Modal, Box, Typography, Button } from '@strapi/design-system';
+import { Modal, Box, Typography, Button, Badge, Flex } from '@strapi/design-system';
 import { DataTable } from './DataTable';
+
+function getAccountStatusBadgeVariant(tag) {
+  if (tag === 'Blocked') return 'danger';
+  if (tag === 'Inactive') return 'warning';
+  return 'success';
+}
+
+function renderAccountStatusTags(row) {
+  const tags = Array.isArray(row?.accountStatusTags) && row.accountStatusTags.length > 0
+    ? row.accountStatusTags
+    : [row?.accountStatus || 'Active'];
+  return (
+    <Flex gap={1} wrap="wrap">
+      {tags.map((tag) => (
+        <Badge key={tag} variant={getAccountStatusBadgeVariant(tag)}>
+          {tag}
+        </Badge>
+      ))}
+    </Flex>
+  );
+}
 
 function getRowCompany(row, fallbackCompany) {
   return String(row?.company || fallbackCompany || '').toLowerCase().trim();
@@ -27,6 +48,12 @@ export function DropOffEnrollmentsModal({ open, onClose, rows = [], company = ''
 
   const columns = useMemo(() => [
     { key: 'employeeName', label: 'Employee Name' },
+    {
+      key: 'accountStatus',
+      label: 'Account Status',
+      render: (_, row) => renderAccountStatusTags(row),
+      exportValue: (_, row) => row.accountStatus || 'Active',
+    },
     {
       key: 'employeeIdValue',
       label: 'Employee ID',
