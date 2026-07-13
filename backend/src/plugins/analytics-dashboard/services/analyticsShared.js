@@ -177,7 +177,7 @@ module.exports = ({ strapi }) => {
       } else {
         // Normalize: strip honorifics, collapse spaces, lowercase
         const cleaned = search
-          .replace(/mr\.?|mrs\.?|ms\.?/gi, '')
+          .replace(/^\s*(mr|mrs|ms)\.?\s+/i, '')
           .replace(/\s+/g, ' ')
           .trim();
 
