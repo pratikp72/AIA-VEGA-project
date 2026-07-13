@@ -1,7 +1,7 @@
 // @ts-nocheck
 
 import React from 'react';
-import { Box } from '@strapi/design-system';
+import { Box, Badge, Flex } from '@strapi/design-system';
 import { DataTable } from '../../../components/DataTable';
 
 /**
@@ -61,6 +61,27 @@ function getLocationValue(row, fallbackCompany) {
   return rowCompany === 'aia' ? row?.branch : row?.working_location;
 }
 
+function getAccountStatusBadgeVariant(tag) {
+  if (tag === 'Blocked') return 'danger';
+  if (tag === 'Inactive') return 'warning';
+  return 'success';
+}
+
+function renderAccountStatusTags(row) {
+  const tags = Array.isArray(row?.accountStatusTags) && row.accountStatusTags.length > 0
+    ? row.accountStatusTags
+    : [row?.accountStatus || 'Active'];
+  return (
+    <Flex gap={1} wrap="wrap">
+      {tags.map((tag) => (
+        <Badge key={tag} variant={getAccountStatusBadgeVariant(tag)}>
+          {tag}
+        </Badge>
+      ))}
+    </Flex>
+  );
+}
+
 export function LearningTableView({
   data,
   allRows = [],
@@ -109,6 +130,12 @@ export function LearningTableView({
         }}
         columns={[
           { key: 'employeeName', label: 'Employee Name' },
+          {
+            key: 'accountStatus',
+            label: 'Account Status',
+            render: (_, row) => renderAccountStatusTags(row),
+            exportValue: (_, row) => row.accountStatus || 'Active',
+          },
           {
             key: 'employeeIdValue',
             label: 'Employee ID',

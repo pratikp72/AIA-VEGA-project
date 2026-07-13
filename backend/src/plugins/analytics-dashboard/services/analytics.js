@@ -7,6 +7,7 @@
  * Composes shared, common, learning (quiz) and overall view modules.
  */
 const getShared = (strapi) => require('./analyticsShared')({ strapi });
+const { buildEmployeeAccountStatus } = require('./analyticsShared');
 const getCommon = (strapi) => require('./analyticsCommon')({ strapi });
 const getLearningQuiz = (strapi) => require('./learning/learningQuiz')({ strapi });
 const getOverall = (strapi) => require('./overall/overall')({ strapi });
@@ -253,12 +254,16 @@ function isDropOffProgress(progress, dropOffCutoffStr = getDropOffCutoffDateStr(
   return isStarted && notCompleted && percentage < 100 && inactiveLongEnough;
 }
 
-function buildDropOffEnrollments(progresses, dropOffCutoffStr = getDropOffCutoffDateStr()) {
+function buildDropOffEnrollments(progresses, dropOffCutoffStr = getDropOffCutoffDateStr(), userById = {}) {
   const today = new Date();
   return (Array.isArray(progresses) ? progresses : [])
     .filter((p) => isDropOffProgress(p, dropOffCutoffStr))
     .map((p) => {
-      const user = p.user || {};
+      const uid = p.user?.id ?? p.user_id ?? p.userId;
+      const user = {
+        ...(p.user || {}),
+        ...(uid != null && userById[uid] ? userById[uid] : {}),
+      };
       const lastAccess = p.last_accessed_at ?? p.lastAccessedAt;
       let inactiveDays = null;
       if (lastAccess) {
@@ -274,6 +279,7 @@ function buildDropOffEnrollments(progresses, dropOffCutoffStr = getDropOffCutoff
         emp_id: user.emp_id ?? '—',
         branch: user.branch ?? '—',
         working_location: user.working_location ?? '—',
+        ...buildEmployeeAccountStatus(user),
         courseId: p.course?.id ?? p.course?.documentId ?? p.course_id ?? p.courseId,
         courseTitle: p.course?.title ?? 'Unknown',
         status: p.progress_status ?? '—',
@@ -743,7 +749,7 @@ module.exports = ({ strapi }) => {
     if (wantCompanyNormEarly) {
       try {
         const companyUsers = await strapi.db.query('plugin::users-permissions.user').findMany({
-          where: { company: wantCompanyNormEarly, blocked: { $ne: true } },
+          where: { company: wantCompanyNormEarly },
           select: ['id'],
         });
         companyUserIds = (companyUsers || []).map((u) => u.id).filter((id) => id != null);
@@ -1098,15 +1104,18 @@ module.exports = ({ strapi }) => {
     // Build userId -> department name map (use numeric id only to avoid 500 if documentId column missing)
     const numericUserIds = [...new Set(progresses.map((p) => p.user?.id ?? p.user_id ?? p.userId).filter((x) => x != null && (typeof x === 'number' || /^\d+$/.test(String(x)))))].map(Number);
     const departmentByUserId = {};
+    const userById = {};
     if (numericUserIds.length > 0) {
       try {
         const users = (await strapi.db.query('plugin::users-permissions.user').findMany({
           where: { id: { $in: numericUserIds } },
+          select: ['id', 'blocked', 'active', 'exit_date', 'company'],
           populate: ['department'],
         })) || [];
         users.forEach((u) => {
           const deptName = u.department?.name;
           if (deptName && u.id != null) departmentByUserId[u.id] = deptName;
+          userById[u.id] = u;
         });
       } catch (e) {
         strapi.log.warn('Learning global: user/department lookup failed:', e?.message);
@@ -1431,7 +1440,7 @@ module.exports = ({ strapi }) => {
       learningActivityByWeek: learningActivityByWeekArr,
       completionFunnel,
       courseProgress: courseProgressTable,
-      dropOffEnrollments: buildDropOffEnrollments(progresses, dropOffCutoffStr),
+      dropOffEnrollments: buildDropOffEnrollments(progresses, dropOffCutoffStr, userById),
     };
 
     if (wantCourseId) {
@@ -2791,8 +2800,10 @@ module.exports = ({ strapi }) => {
   async getLearningEmployeeTable(params = {}) {
     const dateFromNorm = normalizeDateBound(params.dateFrom, false);
     const dateToNorm = normalizeDateBound(params.dateTo, true);
+    const shared = getShared(strapi);
 
-    const userWhere = { blocked: { $eq: false } };
+    // Include blocked/inactive users — account status is surfaced in the table UI.
+    const userWhere = {};
     if (params.company) userWhere.company = params.company;
     if (params.search && String(params.search).trim()) {
       const search = String(params.search).trim();
@@ -3271,6 +3282,7 @@ module.exports = ({ strapi }) => {
       const quizPassed = subs.filter((s) => s.passed).length;
       const quizPassRate = subs.length > 0 ? Math.round((quizPassed / subs.length) * 100) : 0;
       const rowMetrics = buildEmployeeTableRowMetrics(progs, subs, timeContext);
+      const { accountStatus, accountStatusTags } = shared.buildEmployeeAccountStatus(u);
 
       return {
         employeeId: u.id,
@@ -3281,6 +3293,8 @@ module.exports = ({ strapi }) => {
         emp_id: u.emp_id ?? '—',
         branch: u.branch ?? '—',
         working_location: u.working_location ?? '—',
+        accountStatus,
+        accountStatusTags,
         coursesEnrolled,
         courseStatus,
         feedbackStatus,
@@ -3368,6 +3382,7 @@ module.exports = ({ strapi }) => {
     // Prepare data for Excel
     const exportData = (result.rows || []).map((r) => ({
       'Employee Name': r.employeeName || '—',
+      'Account Status': r.accountStatus || 'Active',
       'Email': r.email || '—',
       'Company': r.company || '—',
       'Courses Enrolled': r.coursesEnrolled || 0,
@@ -3385,7 +3400,7 @@ module.exports = ({ strapi }) => {
 
     // Auto-size columns
     const maxWidth = 50;
-    const headers = ['Employee Name', 'Email', 'Company', 'Courses Enrolled', 'Course Status', 'Total Modules Done', 'Progress %', 'Quiz Score', 'Quiz Attempts', 'Course Completion Time (min)'];
+    const headers = ['Employee Name', 'Account Status', 'Email', 'Company', 'Courses Enrolled', 'Course Status', 'Total Modules Done', 'Progress %', 'Quiz Score', 'Quiz Attempts', 'Course Completion Time (min)'];
     const wscols = headers.map((header) => {
       const maxLen = Math.max(
         header.length,
@@ -3408,8 +3423,9 @@ module.exports = ({ strapi }) => {
   async getLearningEmployeeTableForExport(params = {}) {
     const dateFromNorm = normalizeDateBound(params.dateFrom, false);
     const dateToNorm = normalizeDateBound(params.dateTo, true);
+    const shared = getShared(strapi);
 
-    const userWhere = { blocked: { $eq: false } };
+    const userWhere = {};
     if (params.company) userWhere.company = params.company;
     if (params.search && String(params.search).trim()) {
       const search = String(params.search).trim();
@@ -3731,6 +3747,7 @@ module.exports = ({ strapi }) => {
           ? Math.round(progs.reduce((s, p) => s + (p.progress_percentage || 0), 0) / coursesEnrolled)
           : 0;
       const rowMetrics = buildEmployeeTableRowMetrics(progs, subs, timeContext);
+      const { accountStatus, accountStatusTags } = shared.buildEmployeeAccountStatus(u);
 
       return {
         employeeName: u.username || u.email || `User ${u.id}`,
@@ -3740,6 +3757,8 @@ module.exports = ({ strapi }) => {
         emp_id: u.emp_id ?? '—',
         branch: u.branch ?? '—',
         working_location: u.working_location ?? '—',
+        accountStatus,
+        accountStatusTags,
         coursesEnrolled,
         courseStatus,
         feedbackStatus,
@@ -3808,10 +3827,7 @@ module.exports = ({ strapi }) => {
       // Employee-view behavior: when a specific user/search is provided, return only courses
       // where matched user(s) are enrolled. Without search/userId, existing global dropdown behavior remains.
       if (search || requestedUserId) {
-        const userWhere = {
-          blocked: { $ne: true },
-          active: { $ne: false },
-        };
+        const userWhere = {};
 
         if (companyId != null) {
           const companyRows = await strapi.db.query('api::company.company').findMany({
@@ -3970,10 +3986,7 @@ module.exports = ({ strapi }) => {
         }
 
         try {
-          const userWhere = {
-            blocked: { $ne: true },
-            active: { $ne: false },
-          };
+          const userWhere = {};
 
           if (companyId != null) {
             const companyRows = await strapi.db.query('api::company.company').findMany({

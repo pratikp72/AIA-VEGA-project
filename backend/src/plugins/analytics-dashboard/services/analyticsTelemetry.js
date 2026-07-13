@@ -272,7 +272,7 @@ module.exports = ({ strapi }) => {
     const hasLocationFilter = (params.location && String(params.location).trim()) || (params.unitLocation && String(params.unitLocation).trim());
 
     if (hasCompanyFilter || hasDeptFilter || hasLocationFilter) {
-      const userWhere = { blocked: { $ne: true } };
+      const userWhere = {};
       if (hasCompanyFilter) {
         const c = String(params.company).trim().toLowerCase();
         userWhere.company = c === 'vega' ? 'Vega' : (c === 'aia' ? 'AIA' : String(params.company).trim());
