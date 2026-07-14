@@ -20,6 +20,13 @@ module.exports = ({ env }) => ({
   // Custom admin panel configuration
   url: env('ADMIN_URL', '/admin'),
 
+  // Prevent strapi develop from restarting when runtime token cache is rewritten
+  // during Vega Graph auth refresh (would drop DB pool mid-sync).
+  watchIgnoreFiles: [
+    '**/data/**',
+    '**/vega-auth-token.json',
+  ],
+
   // Preview: disabled so Content Manager does not 404 when requesting preview URL
   // (e.g. on publish for api::course-assignment.course-assignment). When disabled,
   // the preview endpoint returns 204 with no URL instead of 404.
