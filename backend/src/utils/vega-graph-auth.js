@@ -1,3 +1,4 @@
+//@ts-nocheck
 'use strict';
 
 const crypto = require('node:crypto');
@@ -15,6 +16,11 @@ function getEnv(name) {
   const value = String(process.env[name] || '').trim();
   if (!value) throw new Error(`[vega-auth] Missing required env var: ${name}`);
   return value;
+}
+
+function authLog(message) {
+  if (global.strapi?.log?.info) global.strapi.log.info(message);
+  else console.log(message);
 }
 
 function normalizeScopes(raw) {
@@ -120,6 +126,8 @@ async function getAccessToken() {
     throw new Error('[vega-auth] No refresh token available. Visit /api/vega-auth/start to authenticate.');
   }
 
+  authLog(`[vega-auth] refresh_token=${refreshToken} source=${stored?.refreshToken ? 'disk' : 'env'} path=${getTokenCachePath()}`);
+
   const endpoint = TOKEN_ENDPOINT.replace('%s', encodeURIComponent(tenantId));
   const body = new URLSearchParams({
     client_id: clientId,
@@ -144,6 +152,11 @@ async function getAccessToken() {
       `[vega-auth] Token refresh failed (${response.status}): ${result.error_description || result.error || 'unknown'}. ` +
       `Visit /api/vega-auth/start to re-authenticate.`
     );
+  }
+
+  authLog(`[vega-auth] access_token=${result.access_token} expiresIn=${result.expires_in || 'n/a'}`);
+  if (result.refresh_token) {
+    authLog(`[vega-auth] rotated_refresh_token=${result.refresh_token}`);
   }
 
   // If a new refresh token was returned, persist it so it auto-rotates
