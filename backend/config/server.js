@@ -23,7 +23,5 @@ module.exports = ({ env }) => ({
       keepAliveTimeout: 5 * 60 * 1000,
     },
   },
-  watchIgnoreFiles: [
-    '**/data/**',
-  ],
+  // NOTE: watchIgnoreFiles belongs in config/admin.js (Strapi 4/5), not here.
 });
