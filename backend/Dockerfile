@@ -9,7 +9,7 @@ RUN apt-get update \
 
 # Cache-friendly: install deps before copying full source
 COPY package.json package-lock.json ./
-RUN npm ci
+RUN npm install
 
 COPY . .
 
