@@ -44,6 +44,4 @@ EXPOSE 1337
 HEALTHCHECK --interval=30s --timeout=5s --start-period=45s --retries=3 \
     CMD node -e "const net=require('net');const port=process.env.PORT||1337;const s=net.connect({host:'127.0.0.1',port:Number(port)},()=>{s.end();process.exit(0)});s.on('error',()=>process.exit(1));setTimeout(()=>{s.destroy();process.exit(1)},4000);"
 
-USER node
-
 CMD ["npm", "run", "start"]
