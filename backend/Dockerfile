@@ -25,12 +25,11 @@ ENV NODE_ENV=production
 ENV HOST=0.0.0.0
 ENV PORT=1337
 
-# Reuse pruned node_modules from builder (no second npm ci, no build tools here)
+# Reuse pruned node_modules from builder (no second npm install, no build tools here)
 COPY --from=builder /app/package.json /app/package-lock.json ./
 COPY --from=builder /app/node_modules ./node_modules
 
-# Runtime / build artifacts (keep only paths that exist after `npm run build`)
-COPY --from=builder /app/dist ./dist
+# Strapi 5 outputs: build/ + .strapi/ (no dist/)
 COPY --from=builder /app/build ./build
 COPY --from=builder /app/.strapi ./.strapi
 COPY --from=builder /app/config ./config
