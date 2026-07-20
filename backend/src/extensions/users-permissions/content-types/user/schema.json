@@ -345,7 +345,7 @@
     },
     "welcome_note": {
       "type": "text",
-      "maxLength": 1030
+      "maxLength": 4000
     }
   }
 }
