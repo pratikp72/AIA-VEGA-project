@@ -342,6 +342,10 @@
         }
       },
       "required": true
+    },
+    "welcome_note": {
+      "type": "text",
+      "maxLength": 1030
     }
   }
 }

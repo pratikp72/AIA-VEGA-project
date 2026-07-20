@@ -284,6 +284,7 @@ module.exports = ({ strapi }) => {
         exit_date: u.exit_date ?? null,
         date_of_birth: u.date_of_birth ?? null,
         description: u.description ?? null,
+        welcome_note: u.welcome_note ?? null,
         branch: u.branch ?? '—',
         contact_no: u.contact_no ?? '—',
         active: u.active !== false,
