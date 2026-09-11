@@ -787,8 +787,13 @@ module.exports = {
 
     // User-progress automation: course-assignment → Not_started; start-course → In_progress; quiz-submission → Completed/Failed
     try {
-      const { registerUserProgressLifecycles } = require('./lifecycles/user-progress-automation');
+      const { registerUserProgressLifecycles, backfillUserProgressDueDates } = require('./lifecycles/user-progress-automation');
       registerUserProgressLifecycles(strapi);
+      // Backfill due_date on any user_progress records created before the field existed.
+      // Runs asynchronously so it never blocks server startup.
+      setImmediate(() => backfillUserProgressDueDates(strapi).catch((e) =>
+        strapi.log.error('due-date backfill failed:', e?.message || e)
+      ));
     } catch (e) {
       strapi.log.error('User-progress automation bootstrap failed:', e?.message || e);
     }

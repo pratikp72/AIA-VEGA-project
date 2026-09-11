@@ -1069,6 +1069,10 @@ export interface ApiHolidayHoliday extends Struct.CollectionTypeSchema {
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
     date: Schema.Attribute.Date & Schema.Attribute.Required;
+    holiday_for: Schema.Attribute.Enumeration<
+      ['All location', 'Individual location']
+    > &
+      Schema.Attribute.Required;
     locale: Schema.Attribute.String & Schema.Attribute.Private;
     localizations: Schema.Attribute.Relation<
       'oneToMany',
@@ -1305,6 +1309,8 @@ export interface ApiNotificationNotification
     type: Schema.Attribute.Enumeration<
       [
         'course_assigned',
+        'course_unassigned',
+        'due_date_changed',
         'quiz_reattempt_requested',
         'quiz_reattempt_approved',
         'quiz_reattempt_rejected',
@@ -1380,8 +1386,10 @@ export interface ApiProfileEditRequestProfileEditRequest
       'api::profile-edit-request.profile-edit-request'
     > &
       Schema.Attribute.Private;
+    pending_admin_comments: Schema.Attribute.JSON;
     previous_values: Schema.Attribute.JSON;
     publishedAt: Schema.Attribute.DateTime;
+    reason_for_rejection: Schema.Attribute.Text;
     request_status: Schema.Attribute.Enumeration<
       ['Pending', 'Approved', 'Rejected']
     > &
@@ -1394,6 +1402,7 @@ export interface ApiProfileEditRequestProfileEditRequest
     updatedAt: Schema.Attribute.DateTime;
     updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
+    user_location: Schema.Attribute.String;
     users_permissions_user: Schema.Attribute.Relation<
       'manyToOne',
       'plugin::users-permissions.user'
@@ -1413,6 +1422,8 @@ export interface ApiQuizReattemptRequestQuizReattemptRequest
     draftAndPublish: false;
   };
   attributes: {
+    adminCreated: Schema.Attribute.Boolean & Schema.Attribute.DefaultTo<false>;
+    approved_by: Schema.Attribute.Relation<'oneToOne', 'admin::user'>;
     course: Schema.Attribute.Relation<'manyToOne', 'api::course.course'>;
     createdAt: Schema.Attribute.DateTime;
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
@@ -1425,7 +1436,7 @@ export interface ApiQuizReattemptRequestQuizReattemptRequest
       Schema.Attribute.Private;
     publishedAt: Schema.Attribute.DateTime;
     request_status: Schema.Attribute.Enumeration<
-      ['Pending', 'Approved', 'Rejected']
+      ['Pending', 'Approved', 'Rejected', 'Used']
     > &
       Schema.Attribute.Required &
       Schema.Attribute.DefaultTo<'Pending'>;
@@ -1548,6 +1559,7 @@ export interface ApiUserProgressUserProgress
     createdAt: Schema.Attribute.DateTime;
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
+    due_date: Schema.Attribute.Date;
     feedback_submission: Schema.Attribute.Relation<
       'oneToOne',
       'api::feedback-submission.feedback-submission'
@@ -2121,9 +2133,10 @@ export interface PluginUsersPermissionsUser
     active: Schema.Attribute.Boolean &
       Schema.Attribute.Required &
       Schema.Attribute.DefaultTo<true>;
-    age: Schema.Attribute.Integer & Schema.Attribute.Required;
+    age: Schema.Attribute.String & Schema.Attribute.Required;
     blocked: Schema.Attribute.Boolean & Schema.Attribute.DefaultTo<false>;
     branch: Schema.Attribute.String & Schema.Attribute.Required;
+    business_vertical: Schema.Attribute.String & Schema.Attribute.Required;
     company: Schema.Attribute.Enumeration<['AIA', 'Vega']> &
       Schema.Attribute.Required;
     confirmationToken: Schema.Attribute.String & Schema.Attribute.Private;
@@ -2137,20 +2150,17 @@ export interface PluginUsersPermissionsUser
     createdAt: Schema.Attribute.DateTime;
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
-    date_of_birth: Schema.Attribute.Date & Schema.Attribute.Required;
+    date_of_birth: Schema.Attribute.Date;
     department: Schema.Attribute.String & Schema.Attribute.Required;
     description: Schema.Attribute.Text &
       Schema.Attribute.SetMinMaxLength<{
         maxLength: 255;
       }>;
     designation: Schema.Attribute.String & Schema.Attribute.Required;
-    email: Schema.Attribute.Email &
-      Schema.Attribute.Required &
-      Schema.Attribute.SetMinMaxLength<{
-        minLength: 6;
-      }>;
+    email: Schema.Attribute.String;
     emp_code: Schema.Attribute.String & Schema.Attribute.Required;
     emp_id: Schema.Attribute.String & Schema.Attribute.Required;
+    emp_photo_file: Schema.Attribute.String;
     employment_type: Schema.Attribute.String & Schema.Attribute.Required;
     exit_date: Schema.Attribute.Date;
     experience_with_vega: Schema.Attribute.String & Schema.Attribute.Required;
@@ -2159,7 +2169,8 @@ export interface PluginUsersPermissionsUser
     is_first_login: Schema.Attribute.Boolean &
       Schema.Attribute.Required &
       Schema.Attribute.DefaultTo<true>;
-    joining_date: Schema.Attribute.Date & Schema.Attribute.Required;
+    joining_date: Schema.Attribute.Date;
+    last_login: Schema.Attribute.DateTime;
     locale: Schema.Attribute.String & Schema.Attribute.Private;
     localizations: Schema.Attribute.Relation<
       'oneToMany',
@@ -2169,7 +2180,7 @@ export interface PluginUsersPermissionsUser
     password: Schema.Attribute.Password &
       Schema.Attribute.Private &
       Schema.Attribute.SetMinMaxLength<{
-        minLength: 6;
+        minLength: 8;
       }>;
     payroll_office: Schema.Attribute.String & Schema.Attribute.Required;
     photograph: Schema.Attribute.Media<'images'> & Schema.Attribute.Required;
@@ -2186,9 +2197,12 @@ export interface PluginUsersPermissionsUser
       Schema.Attribute.Private;
     username: Schema.Attribute.String &
       Schema.Attribute.Required &
-      Schema.Attribute.Unique &
       Schema.Attribute.SetMinMaxLength<{
         minLength: 3;
+      }>;
+    welcome_note: Schema.Attribute.Text &
+      Schema.Attribute.SetMinMaxLength<{
+        maxLength: 4000;
       }>;
     working_location: Schema.Attribute.String & Schema.Attribute.Required;
   };

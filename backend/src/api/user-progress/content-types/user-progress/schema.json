@@ -66,6 +66,9 @@
     "selected_language": {
       "type": "string"
     },
+    "due_date": {
+      "type": "date"
+    },
     "quiz_submission": {
       "type": "relation",
       "relation": "oneToOne",
