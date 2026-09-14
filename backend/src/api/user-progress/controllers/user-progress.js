@@ -1,3 +1,4 @@
+// @ts-nocheck
 "use strict";
 
 const { createCoreController } = require("@strapi/strapi").factories;
@@ -60,8 +61,63 @@ async function resolveCourseId(strapi, courseId) {
   return course?.id ?? null;
 }
 
+async function attachDueDatesToProgressResult(strapi, result) {
+  if (!result || typeof result !== 'object') return result;
+
+  const data = result.data;
+  const rows = Array.isArray(data) ? data : data && typeof data === 'object' ? [data] : [];
+  if (rows.length === 0) return result;
+
+  const ids = rows.map((row) => Number(row?.id)).filter((id) => Number.isFinite(id) && id > 0);
+  if (ids.length === 0) return result;
+
+  let dueById = {};
+  try {
+    const dbRows = await strapi.db.query('api::user-progress.user-progress').findMany({
+      where: { id: { $in: ids } },
+      select: ['id', 'due_date'],
+      limit: ids.length,
+    });
+    dueById = Object.fromEntries(
+      (Array.isArray(dbRows) ? dbRows : []).map((row) => [Number(row.id), row.due_date ?? null])
+    );
+  } catch (e) {
+    strapi.log.warn('[user-progress] attach due_date failed: %s', e?.message || e);
+    return result;
+  }
+
+  const mergeRow = (row) => {
+    if (!row || typeof row !== 'object') return row;
+    const id = Number(row.id);
+    if (!Number.isFinite(id) || !(id in dueById)) {
+      return Object.prototype.hasOwnProperty.call(row, 'due_date') ? row : { ...row, due_date: null };
+    }
+    return { ...row, due_date: dueById[id] };
+  };
+
+  return {
+    ...result,
+    data: Array.isArray(data) ? data.map(mergeRow) : mergeRow(data),
+  };
+}
+
 
 module.exports = createCoreController("api::user-progress.user-progress", ({ strapi }) => ({
+
+  /**
+   * Ensure `due_date` is always present in REST responses.
+   * It can be stripped by outdated Users & Permissions field allowlists
+   * (field added after role permissions were saved).
+   */
+  async find(ctx) {
+    const result = await super.find(ctx);
+    return attachDueDatesToProgressResult(strapi, result);
+  },
+
+  async findOne(ctx) {
+    const result = await super.findOne(ctx);
+    return attachDueDatesToProgressResult(strapi, result);
+  },
 
   /**
    * User must choose language before starting the course.
@@ -473,18 +529,39 @@ module.exports = createCoreController("api::user-progress.user-progress", ({ str
       strapi.log.warn('getAllProgress: feedback batch query failed:', e?.message);
     }
 
+    // Documents API can omit due_date; load it from DB like find/findOne.
+    const progressIds = (Array.isArray(records) ? records : [])
+      .map((r) => Number(r?.id))
+      .filter((id) => Number.isFinite(id) && id > 0);
+    let dueById = {};
+    if (progressIds.length > 0) {
+      try {
+        const dbRows = await strapi.db.query(uid).findMany({
+          where: { id: { $in: progressIds } },
+          select: ['id', 'due_date'],
+          limit: progressIds.length,
+        });
+        dueById = Object.fromEntries(
+          (Array.isArray(dbRows) ? dbRows : []).map((row) => [Number(row.id), row.due_date ?? null])
+        );
+      } catch (e) {
+        strapi.log.warn('getAllProgress: due_date lookup failed: %s', e?.message || e);
+      }
+    }
+
     const byCourse = {};
     (Array.isArray(records) ? records : []).forEach((r) => {
       const courseId = r.course?.id ?? r.course;
       if (courseId != null) {
         const numCourseId = Number(courseId);
+        const pid = Number(r.id);
         byCourse[numCourseId] = {
           progress_status: r.progress_status,
           completed: r.progress_status === 'Completed',
           completed_at: r.completed_at,
           certificate_issued: r.certificate_issued,
           feedback_submitted: feedbackCourseIds.has(numCourseId),
-          due_date: r.due_date ?? null,
+          due_date: (Number.isFinite(pid) && pid in dueById ? dueById[pid] : r.due_date) ?? null,
         };
       }
     });
@@ -509,26 +586,47 @@ module.exports = createCoreController("api::user-progress.user-progress", ({ str
     }
     const uid = 'api::user-progress.user-progress';
     let progress = null;
+    const pickBestProgress = (rows) => {
+      const list = Array.isArray(rows) ? rows.filter(Boolean) : [];
+      if (list.length === 0) return null;
+      if (list.length === 1) return list[0];
+      const statusRank = { Completed: 4, Failed: 3, In_progress: 2, Not_started: 1 };
+      return [...list].sort((a, b) => {
+        const pctDiff = Number(b.progress_percentage || 0) - Number(a.progress_percentage || 0);
+        if (pctDiff !== 0) return pctDiff;
+        const rankDiff = (statusRank[b.progress_status] || 0) - (statusRank[a.progress_status] || 0);
+        if (rankDiff !== 0) return rankDiff;
+        return Number(a.id || 0) - Number(b.id || 0); // prefer older original row
+      })[0];
+    };
     try {
       let list = await strapi.documents(uid).findMany({
         filters: { user: { id: numUserId }, course: { id: numCourseId } },
         status: 'published',
-        limit: 1,
+        limit: 50,
       });
-      progress = Array.isArray(list) && list.length > 0 ? list[0] : null;
+      progress = pickBestProgress(list);
       if (!progress) {
         list = await strapi.documents(uid).findMany({
           filters: { user: { id: numUserId }, course: { id: numCourseId } },
           status: 'draft',
-          limit: 1,
+          limit: 50,
         });
-        progress = Array.isArray(list) && list.length > 0 ? list[0] : null;
+        progress = pickBestProgress(list);
       }
     } catch (e) {
       strapi.log.warn('getProgress documents failed, trying db.query fallback:', e?.message);
-      progress = await strapi.db.query(uid).findOne({
-        where: { user: numUserId, course: numCourseId },
-      });
+      try {
+        const rows = await strapi.db.query(uid).findMany({
+          where: { user: numUserId, course: numCourseId },
+          limit: 50,
+        });
+        progress = pickBestProgress(rows);
+      } catch (_) {
+        progress = await strapi.db.query(uid).findOne({
+          where: { user: numUserId, course: numCourseId },
+        });
+      }
     }
     if (!progress) {
       return ctx.send({
@@ -542,6 +640,7 @@ module.exports = createCoreController("api::user-progress.user-progress", ({ str
         certificate_issued: false,
         certificate_url: null,
         selected_language: null,
+        due_date: null,
         course: null,
         user: null,
         quiz_submission: null,
@@ -600,6 +699,7 @@ module.exports = createCoreController("api::user-progress.user-progress", ({ str
       certificate_issued: !!full.certificate_issued,
       certificate_url: full.certificate_url ?? null,
       selected_language: full.selected_language ?? null,
+      due_date: full.due_date ?? null,
       course: full.course ?? null,
       user: full.user ?? null,
       quiz_submission: full.quiz_submission ?? null,

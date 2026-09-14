@@ -1,3 +1,4 @@
+//@ts-nocheck
 'use strict';
 
 const COURSE_WORKFLOW_UID = 'api::course-workflow.course-workflow';

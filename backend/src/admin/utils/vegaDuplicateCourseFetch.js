@@ -196,6 +196,277 @@ function patchCourseAssignmentCoursesTable() {
   }
 }
 
+const CA_ACTIVE_FILTER_CLEARED_KEY = 'vega.courseAssignment.activeFilterCleared';
+const DEFAULT_ACTIVE_FILTER_VALUE = 'published';
+const LIST_VIEW_SETTINGS_PREFIX = 'STRAPI_LIST_VIEW_SETTINGS:';
+
+let lastCourseAssignmentListHadActiveFilter = false;
+/** After opening the collection from outside, force Active=published until Strapi finishes restoring. */
+let forceDefaultActiveResetUntil = 0;
+
+function isCourseAssignmentCollectionPath(pathname) {
+  const path = decodeSafe(pathname || '');
+  return /\/content-manager\/collection-types\/api::course-assignment\.course-assignment(?:\/|$)/i.test(path);
+}
+
+function isCourseAssignmentListPagePath(pathname) {
+  const path = decodeSafe(pathname || '');
+  return /\/content-manager\/collection-types\/api::course-assignment\.course-assignment\/?$/i.test(path);
+}
+
+function isCourseAssignmentListGetUrl(url) {
+  try {
+    const parsed = new URL(String(url || ''), window.location.origin);
+    return isCourseAssignmentListPagePath(parsed.pathname);
+  } catch (e) {
+    const decoded = decodeSafe(url);
+    return (
+      /\/content-manager\/collection-types\/api::course-assignment\.course-assignment(?:\?|$)/i.test(decoded) ||
+      /\/content-manager\/collection-types\/api%3A%3Acourse-assignment\.course-assignment(?:\?|$)/i.test(String(url || ''))
+    );
+  }
+}
+
+function urlHasActiveFieldFilter(url) {
+  const decoded = decodeSafe(url);
+  return /filters(?:\[\$and\]\[\d+\]|\[\$or\]\[\d+\])?\[active\]/i.test(decoded);
+}
+
+function isForceDefaultActiveResetActive() {
+  return Date.now() < forceDefaultActiveResetUntil;
+}
+
+/** Drop every filters[...] param; keep page/pageSize/sort. */
+function stripFilterSearchParams(searchParams) {
+  const keysToDelete = [];
+  searchParams.forEach((_, key) => {
+    if (String(key).startsWith('filters')) keysToDelete.push(key);
+  });
+  keysToDelete.forEach((key) => searchParams.delete(key));
+}
+
+function rebuildUrlWithActivePublishedOnly(url) {
+  const parsed = new URL(String(url || ''), window.location.origin);
+  stripFilterSearchParams(parsed.searchParams);
+  parsed.searchParams.set(`filters[$and][0][active][$eq]`, DEFAULT_ACTIVE_FILTER_VALUE);
+  return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+}
+
+function appendDefaultActiveFilterToUrl(url) {
+  const parsed = new URL(String(url || ''), window.location.origin);
+  let maxAndIndex = -1;
+  parsed.searchParams.forEach((_, key) => {
+    const match = String(key).match(/^filters\[\$and\]\[(\d+)\]/);
+    if (match) maxAndIndex = Math.max(maxAndIndex, Number(match[1]));
+  });
+  const nextIndex = maxAndIndex + 1;
+  parsed.searchParams.set(`filters[$and][${nextIndex}][active][$eq]`, DEFAULT_ACTIVE_FILTER_VALUE);
+  return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+}
+
+/**
+ * Strapi ListView persists filters in localStorage (STRAPI_LIST_VIEW_SETTINGS:+pathname).
+ * That is why reopening the collection restores the last course-name filter.
+ * Overwrite with Active=published on a fresh open of the collection.
+ */
+function resetPersistedCourseAssignmentListFilters() {
+  if (typeof window === 'undefined' || !window.localStorage) return;
+
+  const defaultFilters = { $and: [{ active: { $eq: DEFAULT_ACTIVE_FILTER_VALUE } }] };
+  const keys = [];
+  for (let i = 0; i < window.localStorage.length; i += 1) {
+    const key = window.localStorage.key(i);
+    if (
+      key &&
+      key.startsWith(LIST_VIEW_SETTINGS_PREFIX) &&
+      /course-assignment\.course-assignment/i.test(key)
+    ) {
+      keys.push(key);
+    }
+  }
+
+  // Also cover the current pathname variant even if nothing was stored yet.
+  const path = decodeSafe(window.location.pathname || '');
+  const listPathMatch = path.match(/(\/content-manager\/collection-types\/api::course-assignment\.course-assignment)\/?$/i);
+  if (listPathMatch) {
+    const candidate = `${LIST_VIEW_SETTINGS_PREFIX}${listPathMatch[1]}`;
+    if (!keys.includes(candidate)) keys.push(candidate);
+  }
+
+  keys.forEach((key) => {
+    let existing = {};
+    try {
+      existing = JSON.parse(window.localStorage.getItem(key) || '{}') || {};
+    } catch (e) {
+      existing = {};
+    }
+    const next = {
+      ...existing,
+      filters: defaultFilters,
+    };
+    try {
+      window.localStorage.setItem(key, JSON.stringify(next));
+    } catch (e) {
+      /* ignore */
+    }
+  });
+}
+
+function syncForcedActiveFilterToBrowserUrl() {
+  if (!isCourseAssignmentListPagePath(window.location.pathname)) return;
+  const next = rebuildUrlWithActivePublishedOnly(window.location.href);
+  if (next !== `${window.location.pathname}${window.location.search}${window.location.hash}`) {
+    window.history.replaceState(window.history.state, '', next);
+  }
+}
+
+/**
+ * Fresh open of Course Assignments (from sidebar / another CT) — ignore sticky filters.
+ */
+function onEnterCourseAssignmentListFresh() {
+  try {
+    sessionStorage.removeItem(CA_ACTIVE_FILTER_CLEARED_KEY);
+  } catch (e) {
+    /* ignore */
+  }
+  lastCourseAssignmentListHadActiveFilter = false;
+  forceDefaultActiveResetUntil = Date.now() + 1500;
+  resetPersistedCourseAssignmentListFilters();
+  try {
+    syncForcedActiveFilterToBrowserUrl();
+  } catch (e) {
+    /* ignore */
+  }
+}
+
+function onLeaveCourseAssignmentCollection() {
+  try {
+    sessionStorage.removeItem(CA_ACTIVE_FILTER_CLEARED_KEY);
+  } catch (e) {
+    /* ignore */
+  }
+  lastCourseAssignmentListHadActiveFilter = false;
+  forceDefaultActiveResetUntil = 0;
+}
+
+/**
+ * Default list filter Active=published, but allow clearing during the visit.
+ * On a fresh collection open, replace sticky filters (e.g. course name) with Active only.
+ */
+function applyClearableDefaultActiveFilter(url) {
+  if (isForceDefaultActiveResetActive()) {
+    lastCourseAssignmentListHadActiveFilter = true;
+    return rebuildUrlWithActivePublishedOnly(url);
+  }
+
+  const hasActive = urlHasActiveFieldFilter(url);
+
+  if (!hasActive && lastCourseAssignmentListHadActiveFilter) {
+    try {
+      sessionStorage.setItem(CA_ACTIVE_FILTER_CLEARED_KEY, '1');
+    } catch (e) {
+      /* ignore */
+    }
+  }
+
+  if (hasActive) {
+    try {
+      sessionStorage.removeItem(CA_ACTIVE_FILTER_CLEARED_KEY);
+    } catch (e) {
+      /* ignore */
+    }
+    lastCourseAssignmentListHadActiveFilter = true;
+    return url;
+  }
+
+  let cleared = false;
+  try {
+    cleared = sessionStorage.getItem(CA_ACTIVE_FILTER_CLEARED_KEY) === '1';
+  } catch (e) {
+    cleared = false;
+  }
+
+  if (cleared) {
+    lastCourseAssignmentListHadActiveFilter = false;
+    return url;
+  }
+
+  lastCourseAssignmentListHadActiveFilter = true;
+  return appendDefaultActiveFilterToUrl(url);
+}
+
+function syncDefaultActiveFilterToBrowserUrl() {
+  if (!isCourseAssignmentListPagePath(window.location.pathname)) return;
+
+  if (isForceDefaultActiveResetActive()) {
+    syncForcedActiveFilterToBrowserUrl();
+    return;
+  }
+
+  if (urlHasActiveFieldFilter(window.location.href)) return;
+  try {
+    if (sessionStorage.getItem(CA_ACTIVE_FILTER_CLEARED_KEY) === '1') return;
+  } catch (e) {
+    /* ignore */
+  }
+  const next = appendDefaultActiveFilterToUrl(window.location.href);
+  window.history.replaceState(window.history.state, '', next);
+}
+
+function handleCourseAssignmentPathChange(prevPathname, nextPathname) {
+  const wasList = isCourseAssignmentListPagePath(prevPathname);
+  const isList = isCourseAssignmentListPagePath(nextPathname);
+  const wasCollection = isCourseAssignmentCollectionPath(prevPathname);
+  const isCollection = isCourseAssignmentCollectionPath(nextPathname);
+
+  // Opened list from outside this collection (sidebar / another content-type)
+  if (!wasList && isList && !wasCollection) {
+    onEnterCourseAssignmentListFresh();
+    return;
+  }
+
+  // Left the collection entirely
+  if (wasCollection && !isCollection) {
+    onLeaveCourseAssignmentCollection();
+  }
+}
+
+function installCourseAssignmentListRouteWatcher() {
+  if (typeof window === 'undefined' || window.__vegaCourseAssignmentListRouteWatcherInstalled) return;
+  window.__vegaCourseAssignmentListRouteWatcherInstalled = true;
+
+  window.addEventListener('popstate', () => {
+    // Best-effort: treat browser back/forward onto the list as a fresh open
+    if (isCourseAssignmentListPagePath(window.location.pathname)) {
+      onEnterCourseAssignmentListFresh();
+    } else if (!isCourseAssignmentCollectionPath(window.location.pathname)) {
+      onLeaveCourseAssignmentCollection();
+    }
+  });
+
+  const origPushState = window.history.pushState.bind(window.history);
+  const origReplaceState = window.history.replaceState.bind(window.history);
+
+  window.history.pushState = function vegaPushState(state, title, url) {
+    const prevPathname = window.location.pathname;
+    const result = origPushState(state, title, url);
+    handleCourseAssignmentPathChange(prevPathname, window.location.pathname);
+    return result;
+  };
+
+  window.history.replaceState = function vegaReplaceState(state, title, url) {
+    const prevPathname = window.location.pathname;
+    const result = origReplaceState(state, title, url);
+    handleCourseAssignmentPathChange(prevPathname, window.location.pathname);
+    return result;
+  };
+
+  // Admin loaded directly on the list page
+  if (isCourseAssignmentListPagePath(window.location.pathname)) {
+    onEnterCourseAssignmentListFresh();
+  }
+}
+
 export function installCourseAssignmentCoursesTablePatch() {
   if (typeof window === 'undefined' || window.__vegaCourseAssignmentCoursesTablePatchInstalled) return;
   window.__vegaCourseAssignmentCoursesTablePatchInstalled = true;
@@ -227,7 +498,30 @@ export function installCourseAssignmentCoursesTablePatch() {
       'GET'
     ).toUpperCase();
 
-    const res = await origFetch(input, init);
+    let requestInput = input;
+    let nextInit = init;
+
+    if (method === 'GET' && isCourseAssignmentListGetUrl(url)) {
+      const rewritten = applyClearableDefaultActiveFilter(url);
+      if (rewritten !== url) {
+        if (typeof Request !== 'undefined' && input instanceof Request) {
+          requestInput = new Request(rewritten, input);
+          nextInit = undefined;
+        } else if (typeof input === 'string') {
+          requestInput = rewritten;
+        } else {
+          requestInput = rewritten;
+        }
+        try {
+          syncDefaultActiveFilterToBrowserUrl();
+        } catch (e) {
+          /* ignore */
+        }
+      }
+      url = rewritten;
+    }
+
+    const res = await origFetch(requestInput, nextInit);
 
     try {
       if (method === 'GET' && isCourseAssignmentCollectionUrl(url) && res.ok) {
@@ -272,4 +566,6 @@ export function installCourseAssignmentCoursesTablePatch() {
     };
     document.addEventListener('DOMContentLoaded', readyHandler);
   }
+
+  installCourseAssignmentListRouteWatcher();
 }

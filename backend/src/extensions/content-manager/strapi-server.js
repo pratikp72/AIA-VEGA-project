@@ -228,6 +228,55 @@ function normalizeCaseInsensitiveQueryFilters(ctx) {
   }
 }
 
+/**
+ * Case-insensitive $eq→$containsi would make "published" match "unpublished".
+ * Restore exact operators for the course-assignment `active` enum field.
+ * Does NOT force a default filter — clearing Active in the admin must show all rows.
+ * Default Active=published is applied client-side (clearable).
+ */
+function restoreExactActiveEnumFilters(node) {
+  if (Array.isArray(node)) {
+    return node.map(restoreExactActiveEnumFilters);
+  }
+  if (!node || typeof node !== 'object') return node;
+
+  const out = {};
+  Object.entries(node).forEach(([key, value]) => {
+    if (key === 'active' && value && typeof value === 'object' && !Array.isArray(value)) {
+      const next = { ...value };
+      if (next.$containsi != null && next.$eq == null) {
+        next.$eq = next.$containsi;
+        delete next.$containsi;
+      }
+      if (next.$notContainsi != null && next.$ne == null) {
+        next.$ne = next.$notContainsi;
+        delete next.$notContainsi;
+      }
+      out[key] = next;
+      return;
+    }
+    out[key] = restoreExactActiveEnumFilters(value);
+  });
+  return out;
+}
+
+function sanitizeCourseAssignmentActiveFilters(ctx) {
+  const modelUid = ctx?.params?.model;
+  if (modelUid !== COURSE_ASSIGNMENT_UID) return;
+
+  const query = ctx.request?.query;
+  if (!query || typeof query !== 'object') return;
+
+  const filters = query.filters;
+  if (!filters || typeof filters !== 'object') return;
+
+  const sanitized = restoreExactActiveEnumFilters(filters);
+  ctx.request.query.filters = sanitized;
+  if (ctx.query && typeof ctx.query === 'object') {
+    ctx.query.filters = sanitized;
+  }
+}
+
 const COURSE_CLONE_ASSIGNMENTS_LOG = '[course-clone-assignments]';
 
 function extractCourseIdentityFromCmBody(body) {
@@ -584,6 +633,7 @@ module.exports = (plugin) => {
   if (defaultCollectionFind) {
     collectionTypesController.find = async function find(ctx) {
       normalizeCaseInsensitiveQueryFilters(ctx);
+      sanitizeCourseAssignmentActiveFilters(ctx);
       await defaultCollectionFind(ctx);
       const modelUid = ctx.params?.model;
       await hydrateRelationsInCmBody(strapi, modelUid, ctx.body);

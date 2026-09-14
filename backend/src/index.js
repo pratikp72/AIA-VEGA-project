@@ -539,6 +539,31 @@ module.exports = {
       return await next();
     });
 
+    // Course-assignment update+publish (CM): snapshot users before draft update,
+    // then send course_unassigned on publish when users were removed.
+    strapi.documents.use(async (context, next) => {
+      if (
+        context.uid !== COURSE_ASSIGNMENT_UID
+        || !['update', 'publish'].includes(context.action)
+      ) {
+        return await next();
+      }
+      const {
+        handleCourseAssignmentDocumentMiddleware,
+      } = require('./lifecycles/user-progress-automation');
+      return await handleCourseAssignmentDocumentMiddleware(strapi, context, next);
+    });
+
+    // User-progress due_date changes (Content Manager uses Document Service).
+    // Db lifecycles alone often miss admin update/publish — hook documents.use.
+    strapi.documents.use(async (context, next) => {
+      if (context.uid !== 'api::user-progress.user-progress') {
+        return await next();
+      }
+      const { handleUserProgressDueDateDocumentMiddleware } = require('./lifecycles/user-progress-automation');
+      return await handleUserProgressDueDateDocumentMiddleware(strapi, context, next);
+    });
+
     // Course-assignment automation runs from docManager.create (Content Manager) and from db lifecycle (API/fallback).
     // We do not run it here in documents.use to avoid double-running when CM creates.
   },

@@ -3,7 +3,6 @@
 
 const { errors } = require('@strapi/utils');
 const { ValidationError } = errors;
-const { captureCourseAssignmentDueDateChange } = require('../../../../lifecycles/user-progress-automation');
 
 function isNumericId(value) {
   return typeof value === 'number' || (typeof value === 'string' && /^\d+$/.test(String(value)));
@@ -140,15 +139,19 @@ async function mergeIndividualUsersWithExisting(data, where) {
   };
 
   const merged = new Map();
+  const hasFullSet = Array.isArray(raw.set);
 
-  // Start from already saved users so publish updates cannot accidentally drop them.
-  for (const user of existingUsers) {
-    const entry = toRelationEntry(user);
-    const key = toKey(entry);
-    if (entry && key) merged.set(key, entry);
+  // Full `set` = replace the assignee list (omissions are removals).
+  // Incremental connect/disconnect only: keep existing users so publish cannot wipe them.
+  if (!hasFullSet) {
+    for (const user of existingUsers) {
+      const entry = toRelationEntry(user);
+      const key = toKey(entry);
+      if (entry && key) merged.set(key, entry);
+    }
   }
 
-  const addOps = [raw.set, raw.connect];
+  const addOps = hasFullSet ? [raw.set, raw.connect] : [raw.connect];
   for (const op of addOps) {
     if (!Array.isArray(op)) continue;
     for (const item of op) {
@@ -202,6 +205,6 @@ module.exports = {
     await mergeIndividualUsersWithExisting(event.params?.data, event.params?.where);
     mergeIndividualUserRelationPayload(event.params?.data);
     await validateIndividualPublish(event.params?.data, event.params?.where);
-    await captureCourseAssignmentDueDateChange(strapi, event.params?.data, event.params?.where);
+    // due_date_changed notifications are triggered from user-progress lifecycles
   },
 };
