@@ -609,6 +609,7 @@ async function handleExistingAssignmentUserChanges(strapi, result, params = {}) 
         targetType,
         excludeCompletedUsers: false,
       });
+      await reuseExistingUserProgressOnReassign(strapi, numericCourseId, reassignedUserIds);
     }
 
     if (progressNewIds.length > 0) {
@@ -842,6 +843,7 @@ async function handleCourseAssignmentDocumentMiddleware(strapi, context, next) {
           targetType,
           excludeCompletedUsers: false,
         });
+        await reuseExistingUserProgressOnReassign(strapi, numericCourseId, reassignedUserIds);
       }
 
       if (progressNewIds.length > 0) {
@@ -923,6 +925,8 @@ async function splitNewAndExistingUsers(strapi, userIds, numericCourseId) {
 
 /**
  * Classify newly listed / re-added users for enrollment notifications — per user.
+ * Progress rows are created only for first-time assigns that lack progress.
+ * Reassigned users must reuse their existing user-progress (never create a new one).
  */
 async function classifyNewlyListedUsersForNotifications(strapi, userIds, numericCourseId) {
   const normalizedIds = [...new Set((userIds || []).map((id) => Number(id)).filter(Boolean))];
@@ -941,9 +945,10 @@ async function classifyNewlyListedUsersForNotifications(strapi, userIds, numeric
     else assignedUserIds.push(uid);
   }
 
+  // Only first-time assigns may get a new progress row.
   const { newUserIds: progressNewIds } = await splitNewAndExistingUsers(
     strapi,
-    normalizedIds,
+    assignedUserIds,
     numericCourseId
   );
 
@@ -1680,6 +1685,13 @@ async function findExistingUserProgress(strapi, userId, courseId) {
   const cid = Number(courseId);
   if (!Number.isFinite(uid) || uid <= 0 || !Number.isFinite(cid) || cid <= 0) return null;
 
+  const matchesUserCourse = (row) => {
+    if (!row) return false;
+    const rowUser = Number(row.user?.id ?? row.user);
+    const rowCourse = Number(row.course?.id ?? row.course);
+    return rowUser === uid && rowCourse === cid;
+  };
+
   const tryQuery = async (where) => {
     try {
       return await strapi.db.query(USER_PROGRESS_UID).findOne({
@@ -1698,11 +1710,25 @@ async function findExistingUserProgress(strapi, userId, courseId) {
   let row =
     (await tryQuery({ user: uid, course: cid }))
     || (await tryQuery({ user: { id: uid }, course: { id: cid } }));
+  if (matchesUserCourse(row)) return row;
 
-  if (row) return row;
+  // Broader scans — relation filters can miss Strapi 5 link-table rows.
+  try {
+    const byCourse = await strapi.db.query(USER_PROGRESS_UID).findMany({
+      where: { course: cid },
+      populate: {
+        user: { select: ['id'] },
+        course: { select: ['id'] },
+      },
+      orderBy: { id: 'asc' },
+      limit: 500,
+    });
+    row = (byCourse || []).find(matchesUserCourse) || null;
+    if (row) return row;
+  } catch (_) { /* ignore */ }
 
   try {
-    const rows = await strapi.db.query(USER_PROGRESS_UID).findMany({
+    const byUser = await strapi.db.query(USER_PROGRESS_UID).findMany({
       where: { user: uid },
       populate: {
         user: { select: ['id'] },
@@ -1711,7 +1737,7 @@ async function findExistingUserProgress(strapi, userId, courseId) {
       orderBy: { id: 'asc' },
       limit: 200,
     });
-    row = (rows || []).find((r) => Number(r.course?.id ?? r.course) === cid) || null;
+    row = (byUser || []).find(matchesUserCourse) || null;
     if (row) return row;
   } catch (_) { /* ignore */ }
 
@@ -1721,13 +1747,55 @@ async function findExistingUserProgress(strapi, userId, courseId) {
       const list = await docService.findMany({
         filters: { user: { id: uid }, course: { id: cid } },
         status,
-        limit: 1,
+        limit: 5,
       });
-      if (Array.isArray(list) && list.length > 0) return list[0];
+      row = (list || []).find(matchesUserCourse) || (Array.isArray(list) && list[0]) || null;
+      if (row) return row;
     }
   } catch (_) { /* ignore */ }
 
   return null;
+}
+
+/**
+ * On reassignment: locate and keep the existing user-progress row.
+ * Never creates a new row — missing progress is logged as a warning.
+ */
+async function reuseExistingUserProgressOnReassign(strapi, courseId, userIds) {
+  const ids = [...new Set((userIds || []).map(Number).filter((id) => Number.isFinite(id) && id > 0))];
+  if (!courseId || !ids.length) return;
+
+  let reused = 0;
+  let missing = 0;
+  for (const userId of ids) {
+    const existing = await findExistingUserProgress(strapi, userId, courseId);
+    if (existing) {
+      reused++;
+      strapi.log.info(
+        'user-progress-automation: reassign reuse progress id=%s documentId=%s status=%s userId=%s courseId=%s',
+        existing.id,
+        existing.documentId || 'n/a',
+        existing.progress_status || 'n/a',
+        userId,
+        courseId
+      );
+      continue;
+    }
+    missing++;
+    strapi.log.warn(
+      'user-progress-automation: reassign found no existing progress for userId=%s courseId=%s — will NOT create a duplicate',
+      userId,
+      courseId
+    );
+  }
+  if (reused > 0 || missing > 0) {
+    strapi.log.info(
+      'user-progress-automation: reassign progress reuse done reused=%d missing=%d courseId=%s',
+      reused,
+      missing,
+      courseId
+    );
+  }
 }
 
 /**
@@ -2198,6 +2266,10 @@ function registerUserProgressLifecycles(strapi) {
                 excludeCompletedUsers: false,
               });
             }
+          }
+
+          if (reassignedUserIds.length > 0) {
+            await reuseExistingUserProgressOnReassign(strapi, numericCourseId, reassignedUserIds);
           }
 
           await createUserProgressEntries(strapi, numericCourseId, progressNewIds, due_date);
