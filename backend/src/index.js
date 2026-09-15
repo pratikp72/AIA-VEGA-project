@@ -564,8 +564,8 @@ module.exports = {
       return await handleUserProgressDueDateDocumentMiddleware(strapi, context, next);
     });
 
-    // Course-assignment automation runs from docManager.create (Content Manager) and from db lifecycle (API/fallback).
-    // We do not run it here in documents.use to avoid double-running when CM creates.
+    // Course-assignment create notifications run from db lifecycle afterCreate;
+    // edit/republish user-diff runs from handleCourseAssignmentDocumentMiddleware above.
   },
 
   bootstrap({ strapi }) {

@@ -10,8 +10,79 @@ let _backfillingDueDates = false;
 const _prevDueDateByProgressKey = new Map();
 const _dueDateNotificationSentProgressKeys = new Set();
 const _assignmentUserDiffHandledKeys = new Set();
+/** Prevents duplicate bell/email for same type+course+user within a short window */
+const _assignmentNotificationClaimKeys = new Set();
 /** documentId → { userIds, courseIds, pendingRemoved } captured BEFORE draft update mutates relations */
 const _prevAssignmentUsersByDocId = new Map();
+/** `${numericCourseId}:${userId}` → set when course_unassigned is sent (same-process re-add signal) */
+const _recentCourseUnassignKeys = new Set();
+
+function markAssignmentDiffHandled(documentId, ttlMs = 15000) {
+  const key = String(documentId || '');
+  if (!key) return;
+  _assignmentUserDiffHandledKeys.add(key);
+  setTimeout(() => _assignmentUserDiffHandledKeys.delete(key), ttlMs);
+}
+
+function isAssignmentDiffHandled(documentId) {
+  const key = String(documentId || '');
+  return Boolean(key && _assignmentUserDiffHandledKeys.has(key));
+}
+
+function markRecentCourseUnassign(numericCourseId, userIds, ttlMs = 300000) {
+  const courseKey = Number(numericCourseId);
+  if (!Number.isFinite(courseKey) || courseKey <= 0) return;
+  for (const rawId of userIds || []) {
+    const uid = Number(rawId);
+    if (!Number.isFinite(uid) || uid <= 0) continue;
+    const key = `${courseKey}:${uid}`;
+    _recentCourseUnassignKeys.add(key);
+    setTimeout(() => _recentCourseUnassignKeys.delete(key), ttlMs);
+  }
+}
+
+function wasRecentlyUnassignedFromCourse(numericCourseId, userId) {
+  const courseKey = Number(numericCourseId);
+  const uid = Number(userId);
+  if (!Number.isFinite(courseKey) || !Number.isFinite(uid)) return false;
+  return _recentCourseUnassignKeys.has(`${courseKey}:${uid}`);
+}
+
+/**
+ * Claim user ids for a notification send. Returns only ids not already claimed
+ * for the same type+course in the TTL window (stops middleware + afterCreate doubles).
+ * Assign/reassign are mutually exclusive per user+course.
+ */
+function claimAssignmentNotificationRecipients(type, courseId, userIds, ttlMs = 20000) {
+  const numericCourseId = Number(courseId);
+  const coursePart = Number.isFinite(numericCourseId) ? numericCourseId : courseId;
+  const siblingTypes =
+    type === 'course_assigned'
+      ? ['course_reassigned']
+      : type === 'course_reassigned'
+        ? ['course_assigned']
+        : [];
+  const claimed = [];
+  for (const rawId of userIds || []) {
+    const uid = Number(rawId);
+    if (!Number.isFinite(uid) || uid <= 0) continue;
+    const key = `${type}:${coursePart}:${uid}`;
+    if (_assignmentNotificationClaimKeys.has(key)) continue;
+    const siblingTaken = siblingTypes.some((sib) =>
+      _assignmentNotificationClaimKeys.has(`${sib}:${coursePart}:${uid}`)
+    );
+    if (siblingTaken) continue;
+    _assignmentNotificationClaimKeys.add(key);
+    setTimeout(() => _assignmentNotificationClaimKeys.delete(key), ttlMs);
+    for (const sib of siblingTypes) {
+      const sibKey = `${sib}:${coursePart}:${uid}`;
+      _assignmentNotificationClaimKeys.add(sibKey);
+      setTimeout(() => _assignmentNotificationClaimKeys.delete(sibKey), ttlMs);
+    }
+    claimed.push(uid);
+  }
+  return claimed;
+}
 
 function getProgressLifecycleKey(record) {
   if (!record) return '';
@@ -148,11 +219,6 @@ async function sendDueDateChangedForUserProgress(strapi, result, params = {}) {
     setTimeout(() => _dueDateNotificationSentProgressKeys.delete(key), 10000);
   }
   return true;
-}
-
-/** @deprecated Assignment-level due_date notifications are disabled; due dates live on user-progress. */
-async function captureCourseAssignmentDueDateChange() {
-  return;
 }
 
 /**
@@ -395,18 +461,36 @@ async function sendCourseUnassignedNotifications(strapi, userIds, courseIds) {
 
     const courseTitle = await resolveCourseTitleForNotification(strapi, rawCourseId);
     try {
+      const recipients = claimAssignmentNotificationRecipients(
+        'course_unassigned',
+        numericCourseId,
+        users.map((u) => u.id)
+      )
+        .map((id) => users.find((u) => Number(u.id) === id))
+        .filter(Boolean);
+      if (!recipients.length) {
+        strapi.log.info(
+          'user-progress-automation: skip duplicate course_unassigned for courseId=%s',
+          numericCourseId
+        );
+        continue;
+      }
       strapi.log.info(
         'user-progress-automation: sending course_unassigned to %d user(s) for courseId=%s',
-        users.length,
+        recipients.length,
         numericCourseId
       );
       await notifUtil.sendNotification(
         'course_unassigned',
         'Course Enrollment Update',
         `You are no longer eligible for "${courseTitle}". Your enrollment has been updated. Please contact your administrator if you have any questions.`,
-        users,
+        recipients,
         { courseId: numericCourseId },
         []
+      );
+      markRecentCourseUnassign(
+        numericCourseId,
+        recipients.map((u) => u.id)
       );
     } catch (e) {
       strapi.log.warn('user-progress-automation: course_unassigned failed: %s', e?.message || e);
@@ -419,21 +503,17 @@ async function sendCourseUnassignedNotifications(strapi, userIds, courseIds) {
  * - Removed users → course_unassigned
  * - Newly added users → course_assigned + user-progress create
  * Does NOT send due_date_changed (that lives on user-progress).
- * @param {number[]} [explicitPreviousUserIds] optional pre-captured previous user ids (documents.publish)
  */
-async function handleExistingAssignmentUserChanges(strapi, result, params = {}, explicitPreviousUserIds = null) {
+async function handleExistingAssignmentUserChanges(strapi, result, params = {}) {
   const dedupeKey = String(result?.documentId || result?.id || '');
-  if (dedupeKey && _assignmentUserDiffHandledKeys.has(dedupeKey)) {
+  if (dedupeKey && isAssignmentDiffHandled(dedupeKey)) {
     strapi.log.info(
       'user-progress-automation: skip duplicate assignment user-diff for %s',
       dedupeKey
     );
     return;
   }
-  if (dedupeKey) {
-    _assignmentUserDiffHandledKeys.add(dedupeKey);
-    setTimeout(() => _assignmentUserDiffHandledKeys.delete(dedupeKey), 10000);
-  }
+  if (dedupeKey) markAssignmentDiffHandled(dedupeKey);
 
   const assignmentId = result?.id ?? result?.documentId;
   let payload = null;
@@ -448,9 +528,7 @@ async function handleExistingAssignmentUserChanges(strapi, result, params = {}, 
   }
 
   const nextUserIds = [...new Set((payload?.userIds || []).map(Number).filter(Boolean))];
-  const prevUserIds = Array.isArray(explicitPreviousUserIds)
-    ? [...new Set(explicitPreviousUserIds.map(Number).filter(Boolean))]
-    : await getPreviousPublishedAssignmentUserIds(strapi, result);
+  const prevUserIds = await getPreviousPublishedAssignmentUserIds(strapi, result);
   const nextSet = new Set(nextUserIds);
   const prevSet = new Set(prevUserIds);
   const removedUserIds = prevUserIds.filter((id) => !nextSet.has(Number(id)));
@@ -472,6 +550,16 @@ async function handleExistingAssignmentUserChanges(strapi, result, params = {}, 
     addedUserIds.length
   );
 
+  // Without a previous baseline, every remaining user looks "added" and would wrongly
+  // get course_reassigned. Document middleware already handled the real remove/add diff.
+  if (prevUserIds.length === 0) {
+    strapi.log.info(
+      'user-progress-automation: skip existing-assignment add/reassign — empty previous user baseline (documentId=%s)',
+      result?.documentId ?? 'n/a'
+    );
+    return;
+  }
+
   if (removedUserIds.length > 0 && courseIds.length > 0) {
     await sendCourseUnassignedNotifications(strapi, removedUserIds, courseIds);
   }
@@ -486,9 +574,18 @@ async function handleExistingAssignmentUserChanges(strapi, result, params = {}, 
     const numericCourseId = await resolveCourseIdForDb(strapi, rawCourseId);
     if (!numericCourseId) continue;
 
-    const { newUserIds } = await splitNewAndExistingUsers(strapi, addedUserIds, numericCourseId);
+    const {
+      assignedUserIds: newUserIds,
+      reassignedUserIds,
+      progressNewIds,
+    } = await classifyNewlyListedUsersForNotifications(
+      strapi,
+      addedUserIds,
+      numericCourseId
+    );
+    const courseTitle = await resolveCourseTitleForNotification(strapi, rawCourseId);
+
     if (newUserIds.length > 0) {
-      const courseTitle = await resolveCourseTitleForNotification(strapi, rawCourseId);
       await notifyAssignmentUsersForCourse(strapi, {
         type: 'course_assigned',
         title: 'Course Assigned',
@@ -499,7 +596,23 @@ async function handleExistingAssignmentUserChanges(strapi, result, params = {}, 
         targetType,
         excludeCompletedUsers: true,
       });
-      await createUserProgressEntries(strapi, numericCourseId, newUserIds, due_date);
+    }
+
+    if (reassignedUserIds.length > 0) {
+      await notifyAssignmentUsersForCourse(strapi, {
+        type: 'course_reassigned',
+        title: 'Course Reassigned',
+        message: `"${courseTitle}" has been reassigned to you.`,
+        rawCourseId,
+        userIds: reassignedUserIds,
+        meta: { assignedBy: null, level: levelMap[targetType] || targetType },
+        targetType,
+        excludeCompletedUsers: false,
+      });
+    }
+
+    if (progressNewIds.length > 0) {
+      await createUserProgressEntries(strapi, numericCourseId, progressNewIds, due_date);
     }
   }
 }
@@ -592,6 +705,17 @@ async function handleCourseAssignmentDocumentMiddleware(strapi, context, next) {
     );
   }
 
+  // Claim ownership ONLY for existing-assignment edit/republish (prior user baseline).
+  const preSnap = documentId ? _prevAssignmentUsersByDocId.get(documentId) : null;
+  const middlewareOwnsUserDiff =
+    Boolean(documentId)
+    && (action === 'publish' || context.params?.status === 'published')
+    && Array.isArray(preSnap?.userIds)
+    && preSnap.userIds.length > 0;
+  if (middlewareOwnsUserDiff) {
+    markAssignmentDiffHandled(documentId);
+  }
+
   const result = await next();
   const resultDoc = result?.document ?? result;
 
@@ -603,6 +727,15 @@ async function handleCourseAssignmentDocumentMiddleware(strapi, context, next) {
 
   // Draft-only save: keep snapshot for publish; do not notify yet.
   if (!isPublishedResult) {
+    return result;
+  }
+
+  if (documentId && !middlewareOwnsUserDiff && isAssignmentDiffHandled(documentId)) {
+    strapi.log.info(
+      'user-progress-automation: skip document middleware user-diff — lifecycle already handled (documentId=%s)',
+      documentId
+    );
+    _prevAssignmentUsersByDocId.delete(documentId);
     return result;
   }
 
@@ -640,7 +773,13 @@ async function handleCourseAssignmentDocumentMiddleware(strapi, context, next) {
       ...disconnectedIds,
     ]),
   ];
-  const addedUserIds = nextUserIds.filter((id) => !prevSet.has(Number(id)));
+  // Only treat users as "added" when we had a real previous snapshot.
+  // Empty prev + non-empty next would mark every remaining user as added → false reassigns.
+  const addedUserIds = previousUserIds.length > 0
+    ? nextUserIds.filter((id) => !prevSet.has(Number(id)))
+    : extractRelationIds(data?.individual_user?.connect)
+        .map(Number)
+        .filter((id) => Number.isFinite(id) && id > 0 && nextSet.has(id));
 
   strapi.log.info(
     'user-progress-automation: assignment %s user-diff doc=%s prev=%d next=%d removed=%d added=%d courses=%s',
@@ -668,30 +807,56 @@ async function handleCourseAssignmentDocumentMiddleware(strapi, context, next) {
     for (const rawCourseId of courseIds) {
       const numericCourseId = await resolveCourseIdForDb(strapi, rawCourseId);
       if (!numericCourseId) continue;
-      const { newUserIds } = await splitNewAndExistingUsers(strapi, addedUserIds, numericCourseId);
-      if (!newUserIds.length) continue;
+      const {
+        assignedUserIds: newUserIds,
+        reassignedUserIds,
+        progressNewIds,
+      } = await classifyNewlyListedUsersForNotifications(
+        strapi,
+        addedUserIds,
+        numericCourseId
+      );
       const courseTitle = await resolveCourseTitleForNotification(strapi, rawCourseId);
-      await notifyAssignmentUsersForCourse(strapi, {
-        type: 'course_assigned',
-        title: 'Course Assigned',
-        message: `"${courseTitle}" has been assigned to you.`,
-        rawCourseId,
-        userIds: newUserIds,
-        meta: { assignedBy: null, level: levelMap[targetType] || targetType },
-        targetType,
-        excludeCompletedUsers: true,
-      });
-      await createUserProgressEntries(strapi, numericCourseId, newUserIds, due_date);
+
+      if (newUserIds.length > 0) {
+        await notifyAssignmentUsersForCourse(strapi, {
+          type: 'course_assigned',
+          title: 'Course Assigned',
+          message: `"${courseTitle}" has been assigned to you.`,
+          rawCourseId,
+          userIds: newUserIds,
+          meta: { assignedBy: null, level: levelMap[targetType] || targetType },
+          targetType,
+          excludeCompletedUsers: true,
+        });
+      }
+
+      if (reassignedUserIds.length > 0) {
+        await notifyAssignmentUsersForCourse(strapi, {
+          type: 'course_reassigned',
+          title: 'Course Reassigned',
+          message: `"${courseTitle}" has been reassigned to you.`,
+          rawCourseId,
+          userIds: reassignedUserIds,
+          meta: { assignedBy: null, level: levelMap[targetType] || targetType },
+          targetType,
+          excludeCompletedUsers: false,
+        });
+      }
+
+      if (progressNewIds.length > 0) {
+        await createUserProgressEntries(strapi, numericCourseId, progressNewIds, due_date);
+      }
     }
   }
 
-  if (documentId) _prevAssignmentUsersByDocId.delete(documentId);
+  // Mark handled so course-assignment afterCreate republication does not re-diff and
+  // blast course_reassigned to every remaining user.
+  if (documentId) {
+    markAssignmentDiffHandled(documentId);
+    _prevAssignmentUsersByDocId.delete(documentId);
+  }
   return result;
-}
-
-/** @deprecated use handleCourseAssignmentDocumentMiddleware */
-async function handleCourseAssignmentPublishDocumentMiddleware(strapi, context, next) {
-  return handleCourseAssignmentDocumentMiddleware(strapi, context, next);
 }
 
 async function filterUsersNotCompleted(strapi, userIds, numericCourseId) {
@@ -722,13 +887,8 @@ async function filterUsersNotCompleted(strapi, userIds, numericCourseId) {
 }
 
 /**
- * Split userIds into two buckets based on whether they already have a user-progress
- * record for this course:
- *   - existingUserIds: users who already have a progress record (any status)
- *   - newUserIds:      users who have NO prior progress record
- *
- * This is the single source of truth for "is this user being assigned for the first
- * time or were they already assigned before?"
+ * Split userIds by whether they already have a user-progress record for this course.
+ * Used for progress-row creation only — NOT for assign vs reassign notification type.
  */
 async function splitNewAndExistingUsers(strapi, userIds, numericCourseId) {
   const normalizedIds = [...new Set((userIds || []).map((id) => Number(id)).filter(Boolean))];
@@ -757,9 +917,159 @@ async function splitNewAndExistingUsers(strapi, userIds, numericCourseId) {
     return { newUserIds, existingUserIds };
   } catch (e) {
     strapi.log.warn('user-progress-automation: splitNewAndExistingUsers failed, treating all as new:', e?.message || e);
-    // Safe fallback: treat everyone as new so no one is silently skipped
     return { newUserIds: normalizedIds, existingUserIds: [] };
   }
+}
+
+/**
+ * Classify newly listed / re-added users for enrollment notifications — per user.
+ */
+async function classifyNewlyListedUsersForNotifications(strapi, userIds, numericCourseId) {
+  const normalizedIds = [...new Set((userIds || []).map((id) => Number(id)).filter(Boolean))];
+  if (!normalizedIds.length || !numericCourseId) {
+    return { assignedUserIds: normalizedIds, reassignedUserIds: [], progressNewIds: normalizedIds };
+  }
+
+  const reassignedUserIds = [];
+  const assignedUserIds = [];
+
+  for (const uid of normalizedIds) {
+    const isReassign =
+      wasRecentlyUnassignedFromCourse(numericCourseId, uid)
+      || (await isLatestEnrollmentUnassigned(strapi, uid, numericCourseId));
+    if (isReassign) reassignedUserIds.push(uid);
+    else assignedUserIds.push(uid);
+  }
+
+  const { newUserIds: progressNewIds } = await splitNewAndExistingUsers(
+    strapi,
+    normalizedIds,
+    numericCourseId
+  );
+
+  strapi.log.info(
+    'user-progress-automation: classifyNewlyListed courseId=%s assigned=[%s] reassigned=[%s] needsProgress=%d',
+    numericCourseId,
+    assignedUserIds.join(','),
+    reassignedUserIds.join(','),
+    progressNewIds.length
+  );
+
+  return { assignedUserIds, reassignedUserIds, progressNewIds };
+}
+
+function notificationMetaMatchesCourse(meta, numericCourseId, courseDocumentId = null) {
+  if (!meta || numericCourseId == null) return false;
+  const metaCourse = meta.courseId ?? meta.course_id;
+  if (metaCourse == null) return false;
+  const metaKey = String(metaCourse);
+  const metaNum = Number(metaCourse);
+  const courseKey = String(numericCourseId);
+  if (metaKey === courseKey) return true;
+  if (Number.isFinite(metaNum) && metaNum === Number(numericCourseId)) return true;
+  if (courseDocumentId && metaKey === String(courseDocumentId)) return true;
+  return false;
+}
+
+async function isLatestEnrollmentUnassigned(strapi, userId, numericCourseId) {
+  const uid = Number(userId);
+  const cid = Number(numericCourseId);
+  if (!Number.isFinite(uid) || uid <= 0 || !Number.isFinite(cid) || cid <= 0) return false;
+
+  let courseDocumentId = null;
+  try {
+    const course = await strapi.db.query(COURSE_UID).findOne({
+      where: { id: cid },
+      select: ['documentId'],
+    });
+    courseDocumentId = course?.documentId ? String(course.documentId) : null;
+  } catch (_) { /* ignore */ }
+
+  try {
+    const rows = await strapi.db.query('api::notification.notification').findMany({
+      where: {
+        toUser: { id: uid },
+        type: { $in: ['course_unassigned', 'course_assigned', 'course_reassigned'] },
+      },
+      select: ['id', 'type', 'meta', 'createdAt'],
+      orderBy: { createdAt: 'desc' },
+      limit: 40,
+    });
+
+    for (const row of rows || []) {
+      if (!notificationMetaMatchesCourse(row?.meta, cid, courseDocumentId)) continue;
+      return row.type === 'course_unassigned';
+    }
+    return false;
+  } catch (e) {
+    strapi.log.warn(
+      'user-progress-automation: isLatestEnrollmentUnassigned failed user=%s course=%s: %s',
+      uid,
+      cid,
+      e?.message || e
+    );
+    return false;
+  }
+}
+
+async function findUsersWithLatestUnassignedNotif(strapi, userIds, numericCourseId) {
+  const normalizedIds = [...new Set((userIds || []).map((id) => Number(id)).filter(Boolean))];
+  if (!normalizedIds.length || !numericCourseId) return [];
+
+  const out = [];
+  for (const uid of normalizedIds) {
+    if (await isLatestEnrollmentUnassigned(strapi, uid, numericCourseId)) {
+      out.push(uid);
+    }
+  }
+  return out;
+}
+
+async function reconcileAssignmentUserDiff(strapi, oldUserIds, newUserIds, numericCourseId) {
+  const base = diffAssignmentUserSets(oldUserIds, newUserIds);
+  const continuedIds = base.continuedUserIds || [];
+  if (!continuedIds.length) return base;
+
+  const openUnassignIds = await findUsersWithLatestUnassignedNotif(
+    strapi,
+    continuedIds,
+    numericCourseId
+  );
+  const openUnassignSet = new Set(openUnassignIds.map(Number));
+
+  const { newUserIds: phantomContinuedIds, existingUserIds: continuedWithProgress } =
+    await splitNewAndExistingUsers(strapi, continuedIds, numericCourseId);
+
+  const readdFromStaleIds = continuedWithProgress.filter((id) => openUnassignSet.has(Number(id)));
+  const readdSet = new Set(readdFromStaleIds.map(Number));
+
+  const continuedUserIds = continuedWithProgress.filter(
+    (id) => !readdSet.has(Number(id))
+  );
+  const newlyListedUserIds = [
+    ...new Set([
+      ...base.newlyListedUserIds,
+      ...phantomContinuedIds,
+      ...readdFromStaleIds,
+    ]),
+  ];
+
+  strapi.log.info(
+    'user-progress-automation: reconcile membership courseId=%s continued=%d→%d readdStale=%d phantom=%d newlyListed=%d→%d',
+    numericCourseId,
+    continuedIds.length,
+    continuedUserIds.length,
+    readdFromStaleIds.length,
+    phantomContinuedIds.length,
+    base.newlyListedUserIds.length,
+    newlyListedUserIds.length
+  );
+
+  return {
+    unassignedUserIds: base.unassignedUserIds,
+    newlyListedUserIds,
+    continuedUserIds,
+  };
 }
 
 async function resolveCourseTitleForNotification(strapi, rawCourseId) {
@@ -791,12 +1101,14 @@ async function notifyAssignmentUsersForCourse(strapi, {
   const numericCourseId = await resolveCourseIdForDb(strapi, rawCourseId);
   if (!numericCourseId) return;
 
-  const recipientUserIds = excludeCompletedUsers
+  let recipientUserIds = excludeCompletedUsers
     ? await filterUsersNotCompleted(strapi, userIds, numericCourseId)
     : [...new Set((userIds || []).map((id) => Number(id)).filter(Boolean))];
+
+  recipientUserIds = claimAssignmentNotificationRecipients(type, numericCourseId, recipientUserIds);
   if (!recipientUserIds.length) {
     strapi.log.info(
-      'user-progress-automation: skip %s — no eligible users for courseId=%s',
+      'user-progress-automation: skip %s — no eligible/unclaimed users for courseId=%s',
       type,
       numericCourseId
     );
@@ -812,7 +1124,7 @@ async function notifyAssignmentUsersForCourse(strapi, {
   const levelMap = { Individual: 'individual', Department: 'department', Company: 'company', Location: 'work_location' };
   const enrichedMeta = {
     ...meta,
-    courseId: rawCourseId,
+    courseId: numericCourseId,
     ...(targetType ? { level: levelMap[targetType] || targetType } : {}),
   };
 
@@ -826,13 +1138,6 @@ async function notifyAssignmentUsersForCourse(strapi, {
     [],
     { sendEmail: emailEnabled, sendSocket: true }
   );
-}
-
-async function loadAssignmentFromWhere(strapi, where) {
-  if (!where || typeof where !== 'object') return null;
-  if (where.id != null) return loadAssignment(strapi, where.id);
-  if (where.documentId != null) return loadAssignment(strapi, where.documentId);
-  return null;
 }
 
 async function sendDueDateChangedNotifications(strapi, result, payload) {
@@ -1165,7 +1470,28 @@ async function getAssignedUserIds(strapi, assignmentId) {
   let userIds = [];
 
   if (targetType === 'Individual' && Array.isArray(assignment.individual_user)) {
-    userIds = assignment.individual_user.map(getUserId).filter(Boolean);
+    const extracted = assignment.individual_user.map(getUserId).filter(Boolean);
+    const numericIds = [];
+    const docIds = [];
+    for (const id of extracted) {
+      if (typeof id === 'number' || (typeof id === 'string' && /^\d+$/.test(String(id)))) {
+        numericIds.push(Number(id));
+      } else if (typeof id === 'string' && id.length > 0) {
+        docIds.push(id);
+      }
+    }
+    if (docIds.length > 0) {
+      try {
+        const resolved = await strapi.db.query('plugin::users-permissions.user').findMany({
+          where: { documentId: { $in: docIds } },
+          select: ['id'],
+        });
+        (resolved || []).forEach((u) => { if (u?.id) numericIds.push(Number(u.id)); });
+      } catch (e) {
+        strapi.log.warn('user-progress-automation: failed resolving individual_user documentIds: %s', e?.message || e);
+      }
+    }
+    userIds = [...new Set(numericIds.filter(Boolean))];
     if (companyNames.length > 0 && userIds.length > 0) {
       const users = await strapi.db.query('plugin::users-permissions.user').findMany({
         where: scopeUserWhere({ id: { $in: userIds } }, companyNames),
@@ -1464,27 +1790,31 @@ async function createUserProgressEntries(strapi, courseId, userIds, dueDate) {
 }
 
 /**
- * When a new course-assignment is created for a course:
- *  1. Find all OTHER published assignments for that same course (excluding the new one).
- *  2. Mark them active='unpublished'.
- *  3. Collect users covered by those OLD assignments who are NOT in the new assignment's user list.
- *  4. Send those removed users a professional notification.
+ * Compare previous published assignment users vs the new assignment list.
+ *   - newlyListedUserIds: in new list, not in old → either brand-new or returning after unassign
+ *   - continuedUserIds:   in both lists          → still enrolled; no assign/reassign notif
+ *   - unassignedUserIds:  in old list, not in new → dropped from the course
+ *
+ * Reassignment is NOT "in both lists". A continuous user (e.g. A on old and new)
+ * must not get course_reassigned. Reassigned = newly listed again AND already has
+ * user-progress for this course (typically after a prior course_unassigned).
  */
-async function autoUnpublishOldAssignmentsForCourse(strapi, numericCourseId, newAssignmentId, newAssignmentDocumentId, newUserIds, notifUtil) {
-  const LOG = '[course-assignment-unpublish]';
+function diffAssignmentUserSets(oldUserIds, newUserIds) {
+  const toNumericIds = (ids) =>
+    [...new Set((ids || []).map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0))];
+  const oldSet = new Set(toNumericIds(oldUserIds));
+  const newSet = new Set(toNumericIds(newUserIds));
+  return {
+    unassignedUserIds: [...oldSet].filter((id) => !newSet.has(id)),
+    newlyListedUserIds: [...newSet].filter((id) => !oldSet.has(id)),
+    continuedUserIds: [...newSet].filter((id) => oldSet.has(id)),
+  };
+}
 
-  // Build the exclusion condition.
-  // In Strapi v5 draftAndPublish, one "document" has TWO db rows (draft + published)
-  // with different numeric ids but the same documentId.
-  // We must exclude ALL rows belonging to the new document, not just the one row
-  // returned in result.id — otherwise the draft row gets matched and unpublished too.
-  //
-  // Strategy: use documentId exclusion if available, plus exclude by id as fallback.
-  // Also exclude any row with id >= newAssignmentId to avoid race conditions where
-  // the new row is still being processed.
+async function findUniqueOldPublishedAssignments(strapi, numericCourseId, newAssignmentId, newAssignmentDocumentId) {
+  const LOG = '[course-assignment-unpublish]';
   let excludeWhere;
   if (newAssignmentDocumentId) {
-    // Get ALL row ids that belong to this new document (draft + published)
     let allRowsOfNewDoc = [];
     try {
       allRowsOfNewDoc = await strapi.db.query(COURSE_ASSIGNMENT_UID).findMany({
@@ -1501,10 +1831,8 @@ async function autoUnpublishOldAssignmentsForCourse(strapi, numericCourseId, new
     excludeWhere = { id: { $ne: newAssignmentId } };
   }
 
-  // Find all OTHER published Individual assignments for this course
   let oldAssignments = [];
   try {
-    // Build where clause with all exclusions combined
     const oldWhere = Object.assign(
       {},
       excludeWhere,
@@ -1515,26 +1843,17 @@ async function autoUnpublishOldAssignmentsForCourse(strapi, numericCourseId, new
       where: oldWhere,
       populate: {
         individual_user: { select: ['id', 'email'] },
-        departments:     { select: ['name'] },
-        work_locations:  { select: ['name'] },
-        company:         { select: ['name'] },
+        departments: { select: ['name'] },
+        work_locations: { select: ['name'] },
+        company: { select: ['name'] },
       },
       limit: 1000,
     });
   } catch (e) {
     strapi.log.warn(`${LOG} failed fetching old assignments courseId=${numericCourseId}: ${e?.message || e}`);
-    return;
+    return [];
   }
 
-  if (oldAssignments.length === 0) {
-    strapi.log.info(`${LOG} no old published assignments found for courseId=${numericCourseId} (newAssignmentId=${newAssignmentId})`);
-    return;
-  }
-
-  strapi.log.info(`${LOG} found ${oldAssignments.length} old assignment rows for courseId=${numericCourseId}`);
-
-  // Deduplicate by documentId — db.query returns both draft and published rows
-  // for the same Strapi v5 document. We only need to process each document once.
   const seenDocIds = new Set();
   const uniqueOldAssignments = [];
   for (const a of oldAssignments) {
@@ -1543,86 +1862,99 @@ async function autoUnpublishOldAssignmentsForCourse(strapi, numericCourseId, new
     seenDocIds.add(key);
     uniqueOldAssignments.push(a);
   }
+  return uniqueOldAssignments;
+}
+
+async function collectUserIdsFromAssignments(strapi, assignments) {
+  const ids = new Set();
+  for (const assignment of assignments || []) {
+    try {
+      const payload = await getAssignedUserIds(strapi, assignment.id);
+      for (const uid of payload?.userIds || []) {
+        const n = Number(uid);
+        if (Number.isFinite(n) && n > 0) ids.add(n);
+      }
+    } catch (e) {
+      strapi.log.warn(
+        '[course-assignment-unpublish] failed resolving users for old assignment id=%s: %s',
+        assignment?.id,
+        e?.message || e
+      );
+      const users = Array.isArray(assignment?.individual_user) ? assignment.individual_user : [];
+      const extracted = users.map(getUserId).filter(Boolean);
+      const numericIds = [];
+      const docIds = [];
+      for (const id of extracted) {
+        if (typeof id === 'number' || (typeof id === 'string' && /^\d+$/.test(String(id)))) {
+          numericIds.push(Number(id));
+        } else if (typeof id === 'string' && id.length > 0) {
+          docIds.push(id);
+        }
+      }
+      if (docIds.length > 0) {
+        try {
+          const resolved = await strapi.db.query('plugin::users-permissions.user').findMany({
+            where: { documentId: { $in: docIds } },
+            select: ['id'],
+          });
+          (resolved || []).forEach((u) => { if (u?.id) numericIds.push(Number(u.id)); });
+        } catch (_) {}
+      }
+      numericIds.forEach((n) => { if (Number.isFinite(n) && n > 0) ids.add(n); });
+    }
+  }
+  return [...ids];
+}
+
+/**
+ * When a new course-assignment is created for a course:
+ *  1. Find all OTHER published assignments for that same course (excluding the new one).
+ *  2. Mark them active='unpublished'.
+ *  3. Collect users covered by those OLD assignments who are NOT in the new assignment's user list.
+ *  4. Send those removed users a professional notification.
+ * @returns {{ oldUserIds: number[], unassignedUserIds: number[], continuedUserIds: number[], newlyListedUserIds: number[] }}
+ */
+async function autoUnpublishOldAssignmentsForCourse(
+  strapi,
+  numericCourseId,
+  newAssignmentId,
+  newAssignmentDocumentId,
+  newUserIds
+) {
+  const LOG = '[course-assignment-unpublish]';
+  const nextUserIds = [...new Set((newUserIds || []).map(Number).filter(Boolean))];
+
+  const uniqueOldAssignments = await findUniqueOldPublishedAssignments(
+    strapi,
+    numericCourseId,
+    newAssignmentId,
+    newAssignmentDocumentId
+  );
+
+  if (uniqueOldAssignments.length === 0) {
+    strapi.log.info(`${LOG} no old published assignments found for courseId=${numericCourseId} (newAssignmentId=${newAssignmentId})`);
+    return;
+  }
 
   strapi.log.info(`${LOG} unique old assignments: ${uniqueOldAssignments.length}`);
 
-  // Build set of user IDs in the NEW assignment for fast lookup
-  const newUserIdSet = new Set(newUserIds.map((id) => Number(id)));
-  strapi.log.info(`${LOG} new assignment has ${newUserIdSet.size} users: [${[...newUserIdSet].join(',')}]`);
+  const oldUserIds = await collectUserIdsFromAssignments(strapi, uniqueOldAssignments);
+  const { unassignedUserIds } = diffAssignmentUserSets(oldUserIds, nextUserIds);
 
-  // STEP 1: Collect removed users BEFORE marking assignments unpublished
-  const removedUserMap = new Map(); // userId → { id, email }
-  const removedUserIds = [];
-  for (const oldAssignment of uniqueOldAssignments) {
-    strapi.log.info(`${LOG} checking old assignment id=${oldAssignment.id} type=${oldAssignment.assignment_target_type} users=${JSON.stringify((oldAssignment.individual_user || []).map(u => u?.id))}`);
-    if (oldAssignment.assignment_target_type === 'Individual') {
-      const users = Array.isArray(oldAssignment.individual_user) ? oldAssignment.individual_user : [];
-      for (const u of users) {
-        const uid = Number(u?.id);
-        if (!uid) continue;
-        if (!newUserIdSet.has(uid) && !removedUserMap.has(uid)) {
-          removedUserMap.set(uid, { id: uid, email: u.email || null });
-          removedUserIds.push(uid);
-        }
-      }
-    }
-  }
+  strapi.log.info(
+    `${LOG} user split courseId=%s old=%d new=%d unassigned=%d`,
+    numericCourseId,
+    oldUserIds.length,
+    nextUserIds.length,
+    unassignedUserIds.length
+  );
 
-  strapi.log.info(`${LOG} removed users before DB fetch: ${removedUserIds.length} ids=[${removedUserIds.join(',')}]`);
-
-  // Fetch full user details (id + email) directly — relation populate may not return email
-  if (removedUserIds.length > 0) {
-    try {
-      const fullUsers = await strapi.db.query('plugin::users-permissions.user').findMany({
-        where: { id: { $in: removedUserIds } },
-        select: ['id', 'email', 'username'],
-      });
-      strapi.log.info(`${LOG} fetched ${fullUsers.length} full user records for removed users`);
-      for (const u of (fullUsers || [])) {
-        if (u?.id) {
-          removedUserMap.set(Number(u.id), { id: Number(u.id), email: u.email || null });
-        }
-      }
-    } catch (e) {
-      strapi.log.warn(`${LOG} failed fetching removed user details: ${e?.message || e}`);
-    }
-  }
-
-  // STEP 2: Send notification to removed users BEFORE marking assignments unpublished
-  if (removedUserMap.size > 0) {
-    let courseTitle = 'a course';
-    try {
-      const course = await strapi.db.query(COURSE_UID).findOne({
-        where: { id: numericCourseId },
-        select: ['title'],
-      });
-      if (course?.title) courseTitle = course.title;
-    } catch (_) {}
-
-    if (notifUtil) {
-      try {
-        const removedUsersForNotif = [...removedUserMap.values()];
-        strapi.log.info(`${LOG} sending unenrollment notification to ${removedUsersForNotif.length} user(s): ${JSON.stringify(removedUsersForNotif.map(u => u.id))}`);
-        await notifUtil.sendNotification(
-          'course_unassigned',
-          'Course Enrollment Update',
-          `You are no longer eligible for "${courseTitle}". Your enrollment has been updated. Please contact your administrator if you have any questions.`,
-          removedUsersForNotif,
-          { courseId: numericCourseId },
-          []
-        );
-        strapi.log.info(`${LOG} unenrollment notification sent to ${removedUsersForNotif.length} user(s) for courseId=${numericCourseId}`);
-      } catch (notifErr) {
-        strapi.log.warn(`${LOG} notification failed: ${notifErr?.message || notifErr}`);
-      }
-    } else {
-      strapi.log.warn(`${LOG} notifUtil not available — skipping notification`);
-    }
+  if (unassignedUserIds.length > 0) {
+    await sendCourseUnassignedNotifications(strapi, unassignedUserIds, [numericCourseId]);
   } else {
     strapi.log.info(`${LOG} no removed users to notify for courseId=${numericCourseId}`);
   }
 
-  // STEP 3: Mark all old assignments as unpublished AFTER notification is sent
   for (const oldAssignment of uniqueOldAssignments) {
     try {
       if (oldAssignment.documentId) {
@@ -1742,15 +2074,36 @@ function registerUserProgressLifecycles(strapi) {
 
         if (result?.assignment_target_type === 'Individual' && _creatingSubEntries) return;
 
-        // Existing assignment republish/edit: handle user add/remove (not due_date).
+        // Existing assignment republish/edit: document middleware owns the user diff
+        // (and claims the doc before publish next()). Skip here to avoid double/miss.
         const isExistingAssignmentEdit = await isRepublicationAfterEdit(strapi, result);
         if (isExistingAssignmentEdit) {
+          if (isAssignmentDiffHandled(result?.documentId)) {
+            strapi.log.info(
+              'user-progress-automation: skip afterCreate edit diff — already handled by document middleware (documentId=%s)',
+              result?.documentId ?? 'n/a'
+            );
+            return;
+          }
           strapi.log.info(
             'user-progress-automation: existing assignment update — syncing user add/remove (documentId=%s)',
             result?.documentId ?? 'n/a'
           );
           await handleExistingAssignmentUserChanges(strapi, result, params);
           return;
+        }
+
+        const documentIdKey = result?.documentId ? String(result.documentId) : '';
+        const dedupeKey = documentIdKey
+          || (result?.id != null ? `create-id:${result.id}` : '');
+        const middlewareAlreadyHandled = Boolean(dedupeKey && isAssignmentDiffHandled(dedupeKey));
+        if (middlewareAlreadyHandled) {
+          strapi.log.info(
+            'user-progress-automation: afterCreate notify skipped — document middleware already handled (documentId=%s)',
+            dedupeKey || 'n/a'
+          );
+        } else if (dedupeKey) {
+          markAssignmentDiffHandled(dedupeKey);
         }
 
         const assignmentId = result.id ?? result.documentId;
@@ -1772,48 +2125,83 @@ function registerUserProgressLifecycles(strapi) {
         userIds = [...new Set(userIds)];
 
         const allCourseIds = (Array.isArray(courseIds) && courseIds.length > 0) ? [...new Set(courseIds)] : [courseId];
-        const notifUtil = strapi.utils?.notification;
         const levelMap = { Individual: 'individual', Department: 'department', Company: 'company', Location: 'work_location' };
 
         for (const rawCourseId of allCourseIds) {
           const numericCourseId = await resolveCourseIdForDb(strapi, rawCourseId);
           if (!numericCourseId) continue;
 
-          // Split users into brand-new assignees vs users who already had this course before.
-          // - newUserIds:      get the "Course Assigned" notification + a fresh user-progress record
-          // - existingUserIds: already have a progress record → no notification, no date change
-          const { newUserIds, existingUserIds } = await splitNewAndExistingUsers(strapi, userIds, numericCourseId);
-
-          strapi.log.info(
-            'user-progress-automation: afterCreate courseId=%s — notifying %d new user(s), skipping notification for %d existing user(s)',
+          const uniqueOldAssignments = await findUniqueOldPublishedAssignments(
+            strapi,
             numericCourseId,
-            newUserIds.length,
-            existingUserIds.length
+            result.id,
+            result.documentId
+          );
+          const oldUserIds = await collectUserIdsFromAssignments(strapi, uniqueOldAssignments);
+          const {
+            newlyListedUserIds,
+            continuedUserIds,
+            unassignedUserIds,
+          } = await reconcileAssignmentUserDiff(
+            strapi,
+            oldUserIds,
+            userIds,
+            numericCourseId
           );
 
-          // Only notify users who are genuinely receiving this course for the first time
-          if (newUserIds.length > 0) {
+          const {
+            assignedUserIds: newUserIds,
+            reassignedUserIds,
+            progressNewIds,
+          } = await classifyNewlyListedUsersForNotifications(
+            strapi,
+            newlyListedUserIds,
+            numericCourseId
+          );
+
+          strapi.log.info(
+            'user-progress-automation: afterCreate courseId=%s — new=%d reassigned=%d continued=%d unassigned=%d oldCollected=%d skipNotify=%s',
+            numericCourseId,
+            newUserIds.length,
+            reassignedUserIds.length,
+            continuedUserIds.length,
+            unassignedUserIds.length,
+            oldUserIds.length,
+            middlewareAlreadyHandled
+          );
+
+          if (!middlewareAlreadyHandled) {
             const courseTitle = await resolveCourseTitleForNotification(strapi, rawCourseId);
-            await notifyAssignmentUsersForCourse(strapi, {
-              type: 'course_assigned',
-              title: 'Course Assigned',
-              message: `"${courseTitle}" has been assigned to you.`,
-              rawCourseId,
-              userIds: newUserIds,
-              meta: { assignedBy: null, level: levelMap[targetType] || targetType },
-              targetType,
-              // newUserIds already excludes anyone with a prior progress record, so
-              // Completed users cannot be in this list. Keep the guard anyway for safety.
-              excludeCompletedUsers: true,
-            });
+
+            if (newUserIds.length > 0) {
+              await notifyAssignmentUsersForCourse(strapi, {
+                type: 'course_assigned',
+                title: 'Course Assigned',
+                message: `"${courseTitle}" has been assigned to you.`,
+                rawCourseId,
+                userIds: newUserIds,
+                meta: { assignedBy: null, level: levelMap[targetType] || targetType },
+                targetType,
+                excludeCompletedUsers: true,
+              });
+            }
+
+            if (reassignedUserIds.length > 0) {
+              await notifyAssignmentUsersForCourse(strapi, {
+                type: 'course_reassigned',
+                title: 'Course Reassigned',
+                message: `"${courseTitle}" has been reassigned to you.`,
+                rawCourseId,
+                userIds: reassignedUserIds,
+                meta: { assignedBy: null, level: levelMap[targetType] || targetType },
+                targetType,
+                excludeCompletedUsers: false,
+              });
+            }
           }
 
-          // Create progress records for new users only (existing users already have theirs)
-          await createUserProgressEntries(strapi, numericCourseId, newUserIds, due_date);
+          await createUserProgressEntries(strapi, numericCourseId, progressNewIds, due_date);
 
-          // For group assignments, explode into per-user Individual records.
-          // Existing users: only active status is updated (due_date preserved — see fix in createCourseAssignmentEntries).
-          // New users: get a fresh Individual record with the new due_date.
           if (targetType !== 'Individual') {
             await createCourseAssignmentEntries(strapi, numericCourseId, userIds, due_date, active, payload?.company);
           }
@@ -1825,8 +2213,7 @@ function registerUserProgressLifecycles(strapi) {
               numericCourseId,
               result.id,
               result.documentId,
-              userIds,
-              notifUtil
+              userIds
             );
           } catch (unpubErr) {
             strapi.log.error(
@@ -1909,45 +2296,6 @@ function registerUserProgressLifecycles(strapi) {
   });
 
   strapi.log.info('User-progress automation: user-progress due_date → notify; course-assignment → Not_started; quiz-submission → In_progress/Failed');
-}
-
-async function processCourseAssignmentCreate(strapi, params, result) {
-  strapi.log.info('user-progress-automation: processCourseAssignmentCreate called');
-  try {
-    const doc = result?.document ?? result;
-    const data = params?.data;
-    let payload = null;
-    if (data) {
-      payload = await getAssignedUserIdsFromParams(strapi, { data }, doc);
-    }
-    if (!payload || !payload.userIds || payload.userIds.length === 0) {
-      const assignmentId = doc?.id ?? doc?.documentId;
-      strapi.log.info('user-progress-automation: no users from params, trying fallback load', { assignmentId, hasData: !!data });
-      if (assignmentId != null) {
-        await new Promise((r) => setTimeout(r, 300));
-        payload = await getAssignedUserIds(strapi, assignmentId);
-      }
-    }
-    let { courseId, userIds, due_date, active, targetType } = payload || {};
-    if (!courseId || !userIds || userIds.length === 0) {
-      strapi.log.warn('user-progress-automation: no users to create entries for', { courseId, userIdsCount: userIds?.length ?? 0, targetType });
-      return;
-    }
-    userIds = [...new Set(userIds)]; // one user-progress per user
-    courseId = await resolveCourseIdForDb(strapi, courseId);
-    if (!courseId) {
-      strapi.log.warn('user-progress-automation: could not resolve courseId for DB');
-      return;
-    }
-    strapi.log.info('user-progress-automation: creating entries (%d users, courseId=%s, targetType=%s)', userIds.length, courseId, targetType);
-    await createUserProgressEntries(strapi, courseId, userIds, due_date);
-    if (targetType !== 'Individual') {
-      await createCourseAssignmentEntries(strapi, courseId, userIds, due_date, active);
-    }
-    strapi.log.info('user-progress-automation: processCourseAssignmentCreate done');
-  } catch (e) {
-    strapi.log.error('user-progress-automation processCourseAssignmentCreate:', e?.message || e);
-  }
 }
 
 /**
@@ -2039,10 +2387,7 @@ async function backfillUserProgressDueDates(strapi) {
 
 module.exports = {
   registerUserProgressLifecycles,
-  processCourseAssignmentCreate,
-  captureCourseAssignmentDueDateChange,
   backfillUserProgressDueDates,
   handleUserProgressDueDateDocumentMiddleware,
   handleCourseAssignmentDocumentMiddleware,
-  handleCourseAssignmentPublishDocumentMiddleware,
 };

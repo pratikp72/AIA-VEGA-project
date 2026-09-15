@@ -161,6 +161,21 @@ function buildNotificationBodyContent(type, message, meta = {}) {
     `;
   }
 
+  if (type === 'course_reassigned') {
+    return `
+      ${greeting}
+      <p style="font-size:15px;color:${BODY_TEXT};margin:0 0 10px;">
+        You have been <strong style="color:${PRIMARY};">reassigned</strong> to a course on the <strong style="color:${PRIMARY};">AIA-VEGA Learning Portal</strong>.
+      </p>
+      ${courseChip(PRIMARY, PRIMARY_LIGHT)}
+      <p style="font-size:14px;color:${GRAY_TEXT};margin:10px 0;">
+        You were previously unenrolled from this course and are now enrolled again.
+        Please log in to the portal to continue. Your earlier progress is still available where applicable.
+      </p>
+      <p style="font-size:12px;color:${GRAY_TEXT};margin:0;">If you have any questions, please reach out to your Learning &amp; Development team.</p>
+    `;
+  }
+
   if (type === 'course_unassigned') {
     return `
       ${greeting}
